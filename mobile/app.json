@@ -25,7 +25,14 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Seawolf Rides uses your location once to set your approximate starting area. Your exact location is never saved or shared."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
