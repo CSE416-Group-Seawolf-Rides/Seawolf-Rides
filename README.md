@@ -26,7 +26,7 @@ The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.24, an
 
 ```text
 .
-├── .github/workflows/ci.yml  # Mobile lint, type-check, test, and export checks
+├── .github/workflows/ci.yml  # Parallel lint, type-check, unit-test, and export checks
 ├── .gitignore
 ├── .nvmrc                    # Exact Node.js version
 ├── package.json              # Root convenience scripts
@@ -138,6 +138,7 @@ Firebase's `EXPO_PUBLIC_*` values are public client configuration embedded in th
 - [M1 proposal and requirements](docs/requirements.md)
 - [M2 design](docs/design.md)
 - [Editable architecture diagram](docs/architecture.mmd)
+- [CI/CD and merge protection](docs/ci-cd.md)
 
 ## Development Status
 

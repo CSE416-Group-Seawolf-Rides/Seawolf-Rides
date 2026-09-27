@@ -5,21 +5,30 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  pull_request_review:
+    types: [submitted]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  mobile:
-    name: Mobile checks
+  static-analysis:
+    name: Static analysis (lint)
+    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: mobile
 
     steps:
-      - name: Check out repository
+      - name: Check out pull request revision
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
@@ -31,14 +40,86 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
+      - name: Run static analysis
         run: npm run lint
 
-      - name: Type-check
+  compilation:
+    name: Compilation (type-check)
+    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Check out pull request revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
         run: npm run typecheck
 
-      - name: Test
+  unit-tests:
+    name: Unit tests
+    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Check out pull request revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
         run: npm run test
 
-      - name: Export bundle
+  build:
+    name: Build (Expo export)
+    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Check out pull request revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Export Android bundle
         run: npm run build
