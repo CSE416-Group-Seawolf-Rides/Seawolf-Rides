@@ -73,7 +73,7 @@ The editable source is [architecture.mmd](architecture.mmd). The solid mobile-to
 | Technology | Purpose | Reason for selection | Decision status |
 |---|---|---|---|
 | React Native 0.86.3 | Cross-platform mobile framework | Supports a single mobile-first client codebase | Implemented for the M2 technical and UX prototype |
-| Expo SDK 57.0.24 | React Native development and testing tooling | Reduces native setup overhead and supports the initial Expo Go workflow | Initialized with the blank TypeScript template |
+| Expo SDK 57.0.25 | React Native development and testing tooling | Reduces native setup overhead and supports the initial Expo Go workflow | Initialized with the blank TypeScript template |
 | TypeScript 6.0.3 | Client and application language | Static types can keep shared entities and matching interfaces consistent | Initialized with strict checking |
 | Node.js 24.21.0 LTS | Shared development and CI runtime | Pins every operating system and CI to one Expo-compatible runtime | Selected and recorded in `.nvmrc` and package engines |
 | npm | Dependency and script management | Ships with Node.js and provides reproducible installs from the committed lockfile | Selected; application lockfile is maintained in `mobile/` |

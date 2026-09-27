@@ -20,7 +20,7 @@ These are requirements, not claims of implemented functionality. Stripe cost sha
 
 ## Technology Stack
 
-The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.24, and TypeScript 6.0.3. Node.js 24.21.0 and npm are standardized for local development and CI. The M2 prototype uses the Firebase JavaScript SDK to read one restricted sample commute from Firestore; authentication, the final backend boundary, and a routing provider remain unresolved. Matching will begin with deterministic, independently testable rules rather than machine learning.
+The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.25, and TypeScript 6.0.3. Node.js 24.21.0 and npm are standardized for local development and CI. The M2 prototype uses the Firebase JavaScript SDK to read one restricted sample commute from Firestore; authentication, the final backend boundary, and a routing provider remain unresolved. Matching will begin with deterministic, independently testable rules rather than machine learning.
 
 ## Repository Structure
 
@@ -93,6 +93,7 @@ After the initial `mobile/npm ci`, common commands can be run from the repositor
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Start the Expo development server |
+| `npm run doctor` | Validate Expo dependency and project compatibility |
 | `npm run lint` | Run Expo's ESLint configuration |
 | `npm run typecheck` | Run TypeScript with `noEmit` |
 | `npm run test` | Run the Node.js automated tests |

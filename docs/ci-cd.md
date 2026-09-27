@@ -9,6 +9,9 @@ The `CI` GitHub Actions workflow runs four independent jobs in parallel:
 - `Unit tests`
 - `Build (Expo export)`
 
+The static-analysis job also runs Expo Doctor so SDK and package compatibility
+problems fail the existing required check without changing its ruleset name.
+
 The workflow runs when a pull request targets `main`, after an approving pull
 request review is submitted, and after changes land on `main`. Running the
 checks before review gives reviewers early feedback. Running them again after
