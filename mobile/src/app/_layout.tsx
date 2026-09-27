@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -29,11 +29,16 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  const isWelcomeRoute = usePathname() === '/';
+
   return (
     <SafeAreaProvider>
       <SessionProvider>
         <StatusBar style="dark" />
-        <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <SafeAreaView
+          edges={isWelcomeRoute ? ['left', 'right'] : ['top', 'left', 'right']}
+          style={styles.safeArea}
+        >
           <RootNavigator />
         </SafeAreaView>
       </SessionProvider>
