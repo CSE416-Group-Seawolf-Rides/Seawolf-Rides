@@ -22,6 +22,7 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={!!user && !needsOnboarding}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="commute-setup" options={{ presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>
   );

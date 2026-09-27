@@ -1,10 +1,16 @@
-export type CommuteRole = 'driver' | 'rider' | 'both';
+import type { CommuteStepId } from '../commute/commuteModel';
+import { getCommuteSteps } from '../commute/commuteModel';
 
-export type OnboardingStepId = 'role' | 'name';
+export type CommuteRole = 'driver' | 'rider' | 'both';
+export type CommutePlan = 'now' | 'later';
+
+export type OnboardingStepId = 'role' | 'name' | 'plan';
+export type OnboardingFlowStep = OnboardingStepId | CommuteStepId;
 
 export interface OnboardingDraft {
   role?: CommuteRole;
   firstName: string;
+  plan?: CommutePlan;
 }
 
 export interface OnboardingProfile {
@@ -34,18 +40,57 @@ export const roleReactions: Record<CommuteRole, string> = {
   both: 'Best of both. Drive on the days that suit you and ride on the rest.',
 };
 
-// Commute details (destination, days, arrival times, seats) are intentionally left
-// out until the team settles those requirements.
-export const onboardingSteps: OnboardingStepId[] = ['role', 'name'];
+export function planOptions(
+  role: CommuteRole | undefined,
+): { value: CommutePlan; title: string; description: string }[] {
+  const payoff =
+    role === 'driver'
+      ? 'Riders on your route can start requesting seats.'
+      : role === 'rider'
+        ? 'See drivers who match your week right away.'
+        : 'Get matched on the days you drive and the days you ride.';
 
-export function getNextStep(current: OnboardingStepId): OnboardingStepId | 'done' {
-  return onboardingSteps[onboardingSteps.indexOf(current) + 1] ?? 'done';
+  return [
+    { value: 'now', title: 'Set it up now', description: `About 2 minutes. ${payoff}` },
+    {
+      value: 'later',
+      title: 'I’ll do it later',
+      description: 'Look around first. You can add it anytime from Home.',
+    },
+  ];
+}
+
+export const planReactions: Record<CommutePlan, string> = {
+  now: 'Four quick steps: where you start, where you park, and your week.',
+  later: 'No problem. Your matches will get much better once you add it.',
+};
+
+// The commute steps only join the flow when someone chooses to set it up now.
+export function getOnboardingFlow(draft: OnboardingDraft): OnboardingFlowStep[] {
+  const steps: OnboardingFlowStep[] = ['role', 'name', 'plan'];
+  if (draft.plan === 'now' && draft.role) {
+    steps.push(...getCommuteSteps(draft.role));
+  }
+  return steps;
+}
+
+export function getNextStep(
+  draft: OnboardingDraft,
+  current: OnboardingFlowStep,
+): OnboardingFlowStep | 'done' {
+  const steps = getOnboardingFlow(draft);
+  return steps[steps.indexOf(current) + 1] ?? 'done';
 }
 
 // Progress counts the final "done" screen as the last segment, so the bar is never
 // empty on the first question and only fills completely at the end.
-export function getStepProgress(step: OnboardingStepId): number {
-  return (onboardingSteps.indexOf(step) + 1) / (onboardingSteps.length + 1);
+export function getStepProgress(
+  draft: OnboardingDraft,
+  step: OnboardingFlowStep,
+): { from: number; to: number } {
+  const steps = getOnboardingFlow(draft);
+  const index = steps.indexOf(step);
+  return { from: index / (steps.length + 1), to: (index + 1) / (steps.length + 1) };
 }
 
 export function buildOnboardingProfile(draft: OnboardingDraft): OnboardingProfile {

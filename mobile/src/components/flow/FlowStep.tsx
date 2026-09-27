@@ -1,37 +1,47 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, ReactNode } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton } from '../../components/AppButton';
 import { colors, spacing } from '../../theme';
-import { getStepProgress, onboardingSteps, OnboardingStepId } from '../onboardingModel';
+import { AppButton } from '../AppButton';
 import { ProgressBar } from './ProgressBar';
 import { ReactionBubble } from './ReactionBubble';
 
-interface OnboardingStepProps extends PropsWithChildren {
-  step: OnboardingStepId;
+export interface FlowProgress {
+  from: number;
+  to: number;
+}
+
+interface FlowStepProps extends PropsWithChildren {
+  progress: FlowProgress;
   title: string;
   subtitle?: string;
   reaction?: string | null;
   continueLabel?: string;
   canContinue: boolean;
   onContinue: () => void;
+  // "close" dismisses a whole flow (e.g. the first step of a modal); "back" goes one step.
+  leading?: 'back' | 'close';
+  onLeadingPress?: () => void;
+  footerNote?: ReactNode;
 }
 
-export function OnboardingStep({
-  step,
+// Shared layout for one-question-per-screen flows (onboarding, commute setup):
+// back/close, animated progress, the question, answers, a reaction, and a pinned CTA.
+export function FlowStep({
+  progress,
   title,
   subtitle,
   reaction = null,
   continueLabel = 'Continue',
   canContinue,
   onContinue,
+  leading = 'back',
+  onLeadingPress = () => router.back(),
+  footerNote,
   children,
-}: OnboardingStepProps) {
-  const progress = getStepProgress(step);
-  const previousProgress = onboardingSteps.indexOf(step) / (onboardingSteps.length + 1);
-
+}: FlowStepProps) {
   return (
     <KeyboardAvoidingView
       behavior={process.env.EXPO_OS === 'ios' ? 'padding' : undefined}
@@ -39,15 +49,19 @@ export function OnboardingStep({
     >
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Go back"
+          accessibilityLabel={leading === 'close' ? 'Close' : 'Go back'}
           accessibilityRole="button"
           hitSlop={10}
-          onPress={() => router.back()}
+          onPress={onLeadingPress}
           style={({ pressed }) => pressed && styles.pressed}
         >
-          <Ionicons color={colors.textMuted} name="chevron-back" size={28} />
+          <Ionicons
+            color={colors.textMuted}
+            name={leading === 'close' ? 'close' : 'chevron-back'}
+            size={28}
+          />
         </Pressable>
-        <ProgressBar from={previousProgress} to={progress} />
+        <ProgressBar from={progress.from} to={progress.to} />
         <View style={styles.headerSpacer} />
       </View>
 
@@ -68,6 +82,7 @@ export function OnboardingStep({
 
       <View style={styles.footer}>
         <AppButton disabled={!canContinue} label={continueLabel} onPress={onContinue} />
+        {footerNote}
       </View>
     </KeyboardAvoidingView>
   );
@@ -114,6 +129,7 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   footer: {
+    gap: spacing.sm,
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,

@@ -1,17 +1,17 @@
-import { ChoiceCard } from '../../onboarding/components/ChoiceCard';
-import { OnboardingStep } from '../../onboarding/components/OnboardingStep';
-import { roleOptions, roleReactions } from '../../onboarding/onboardingModel';
+import { ChoiceCard } from '../../components/flow/ChoiceCard';
+import { FlowStep } from '../../components/flow/FlowStep';
+import { getStepProgress, roleOptions, roleReactions } from '../../onboarding/onboardingModel';
 import { useOnboarding } from '../../onboarding/OnboardingProvider';
 
 export default function RoleStepRoute() {
   const { draft, updateDraft, goToNextStep } = useOnboarding();
 
   return (
-    <OnboardingStep
+    <FlowStep
       canContinue={draft.role !== undefined}
       onContinue={() => goToNextStep('role')}
+      progress={getStepProgress(draft, 'role')}
       reaction={draft.role ? roleReactions[draft.role] : null}
-      step="role"
       subtitle="You can change this anytime."
       title="How will you get to campus?"
     >
@@ -24,6 +24,6 @@ export default function RoleStepRoute() {
           title={option.title}
         />
       ))}
-    </OnboardingStep>
+    </FlowStep>
   );
 }

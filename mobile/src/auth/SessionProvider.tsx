@@ -1,14 +1,17 @@
 import { createContext, PropsWithChildren, useContext, useMemo, useState } from 'react';
 
+import { CommuteSchedule } from '../commute/commuteModel';
 import { OnboardingProfile } from '../onboarding/onboardingModel';
 import { AuthUser } from './authService';
 
 interface Session {
   user: AuthUser | null;
   profile: OnboardingProfile | null;
+  commute: CommuteSchedule | null;
   needsOnboarding: boolean;
   signIn: (user: AuthUser) => void;
   completeOnboarding: (profile: OnboardingProfile) => void;
+  saveCommute: (commute: CommuteSchedule) => void;
   signOut: () => void;
 }
 
@@ -18,20 +21,24 @@ const SessionContext = createContext<Session | null>(null);
 export function SessionProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<OnboardingProfile | null>(null);
+  const [commute, setCommute] = useState<CommuteSchedule | null>(null);
 
   const session = useMemo<Session>(
     () => ({
       user,
       profile,
+      commute,
       needsOnboarding: user !== null && user.isNewUser && profile === null,
       signIn: setUser,
       completeOnboarding: setProfile,
+      saveCommute: setCommute,
       signOut: () => {
         setUser(null);
         setProfile(null);
+        setCommute(null);
       },
     }),
-    [user, profile],
+    [user, profile, commute],
   );
 
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;

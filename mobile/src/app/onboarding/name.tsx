@@ -1,27 +1,25 @@
-import { router } from 'expo-router';
-
+import { FlowStep } from '../../components/flow/FlowStep';
 import { TextField } from '../../components/TextField';
-import { OnboardingStep } from '../../onboarding/components/OnboardingStep';
+import { getStepProgress } from '../../onboarding/onboardingModel';
 import { useOnboarding } from '../../onboarding/OnboardingProvider';
 
 export default function NameStepRoute() {
-  const { draft, updateDraft } = useOnboarding();
+  const { draft, updateDraft, goToNextStep } = useOnboarding();
   const canContinue = draft.firstName.trim().length > 0;
 
-  function finish() {
+  function next() {
     if (canContinue) {
-      router.push('/onboarding/done');
+      goToNextStep('name');
     }
   }
 
   return (
-    <OnboardingStep
+    <FlowStep
       canContinue={canContinue}
-      continueLabel="Finish"
-      onContinue={finish}
-      step="name"
+      onContinue={next}
+      progress={getStepProgress(draft, 'name')}
       subtitle="Drivers and riders will see this on your profile."
-      title="Last one — what’s your first name?"
+      title="What’s your first name?"
     >
       <TextField
         autoCapitalize="words"
@@ -30,12 +28,12 @@ export default function NameStepRoute() {
         autoFocus
         label="First name"
         onChangeText={(value) => updateDraft({ firstName: value })}
-        onSubmitEditing={finish}
+        onSubmitEditing={next}
         placeholder="Your first name"
-        returnKeyType="done"
+        returnKeyType="next"
         textContentType="givenName"
         value={draft.firstName}
       />
-    </OnboardingStep>
+    </FlowStep>
   );
 }

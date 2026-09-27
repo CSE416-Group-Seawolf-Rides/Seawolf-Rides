@@ -4,21 +4,24 @@ import { AppButton } from '../components/AppButton';
 import { Card } from '../components/Card';
 import { DetailRow } from '../components/DetailRow';
 import { SavedCommuteCard } from '../components/SavedCommuteCard';
+import { SetUpCommuteCard } from '../components/SetUpCommuteCard';
 import { Screen } from '../components/Screen';
 import { rideSearchFixture } from '../prototypeData/fixtures';
 import { colors, radii, spacing } from '../theme';
 
 interface MatchScreenProps {
   onFindCommuters: () => void;
+  onSetUpCommute?: () => void;
 }
 
-export function MatchScreen({ onFindCommuters }: MatchScreenProps) {
+export function MatchScreen({ onFindCommuters, onSetUpCommute }: MatchScreenProps) {
   return (
     <Screen
       eyebrow="FIND A RIDE"
       subtitle="Find a commute that fits your schedule."
       title="Seawolf Rides"
     >
+      {onSetUpCommute && <SetUpCommuteCard onPress={onSetUpCommute} />}
       <Card>
         <View style={styles.cardHeading}>
           <Text style={styles.cardTitle}>Ride search</Text>

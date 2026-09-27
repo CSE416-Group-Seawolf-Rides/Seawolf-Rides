@@ -14,12 +14,12 @@ export default function OnboardingIntroRoute() {
           Let’s get you moving.
         </Text>
         <Text style={styles.subtitle}>
-          Two quick questions and you’re in.
+          A few quick questions to get you matched with people who share your commute.
         </Text>
       </View>
       <View style={styles.footer}>
         <AppButton label="Let’s go" onPress={() => router.push('/onboarding/role')} />
-        <Text style={styles.note}>You can change your answers anytime.</Text>
+        <Text style={styles.note}>Takes about 2 minutes. You can change anything later.</Text>
       </View>
     </View>
   );
