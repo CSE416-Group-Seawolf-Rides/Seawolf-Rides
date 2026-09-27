@@ -210,10 +210,16 @@ export function buildCommuteSchedule(draft: CommuteDraft, role: CommuteRole): Co
     throw new Error('A starting area, campus spot, and valid schedule are required.');
   }
 
+  // Someone can go back and change roles after choosing their days. Enforce the
+  // profile's single-role mode here so stale draft modes cannot reach matching.
+  const days = sortDays(draft.days).map((schedule) =>
+    role === 'both' ? schedule : { ...schedule, mode: defaultDayMode(role) },
+  );
+
   return {
     startArea: draft.startArea,
     campusLot: draft.campusLot,
-    days: sortDays(draft.days),
+    days,
     seats: role === 'rider' ? undefined : draft.seats,
   };
 }
