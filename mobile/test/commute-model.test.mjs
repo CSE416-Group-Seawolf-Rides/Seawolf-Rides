@@ -10,6 +10,7 @@ import {
   getDayError,
   hasSameTimes,
   isScheduleValid,
+  setDayMode,
   setLegTime,
   toggleDay,
   toPrivacyArea,
@@ -90,4 +91,34 @@ test('saving requires every part and drops seats for riders', () => {
   assert.equal(buildCommuteSchedule(draft, 'driver').seats, 4);
   assert.throws(() => buildCommuteSchedule({ ...draft, campusLot: undefined }, 'rider'));
   assert.throws(() => buildCommuteSchedule({ ...draft, days: [] }, 'rider'));
+});
+
+test('saving normalizes stale day modes after changing to a single role', () => {
+  const driverDays = toggleDay([], 'mon', 'driver');
+  const riderDays = toggleDay([], 'tue', 'rider');
+  const baseDraft = {
+    ...emptyCommuteDraft,
+    startArea: toPrivacyArea(home, 'Centereach area'),
+    campusLot: 'westSide',
+  };
+
+  assert.equal(buildCommuteSchedule({ ...baseDraft, days: driverDays }, 'rider').days[0].mode, 'ride');
+  assert.equal(buildCommuteSchedule({ ...baseDraft, days: riderDays }, 'driver').days[0].mode, 'drive');
+});
+
+test('saving preserves per-day modes for hybrid commuters', () => {
+  let days = toggleDay(toggleDay([], 'mon', 'both'), 'tue', 'both');
+  days = setDayMode(days, 'mon', 'drive');
+  days = setDayMode(days, 'tue', 'ride');
+  const draft = {
+    ...emptyCommuteDraft,
+    startArea: toPrivacyArea(home, 'Centereach area'),
+    campusLot: 'lot40',
+    days,
+  };
+
+  assert.deepEqual(
+    buildCommuteSchedule(draft, 'both').days.map((day) => day.mode),
+    ['drive', 'ride'],
+  );
 });

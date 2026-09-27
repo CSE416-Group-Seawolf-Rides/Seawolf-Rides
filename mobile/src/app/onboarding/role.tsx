@@ -12,7 +12,7 @@ export default function RoleStepRoute() {
       onContinue={() => goToNextStep('role')}
       progress={getStepProgress(draft, 'role')}
       reaction={draft.role ? roleReactions[draft.role] : null}
-      subtitle="You can change this anytime."
+      subtitle="Choose what best matches your usual commute."
       title="How will you get to campus?"
     >
       {roleOptions.map((option) => (

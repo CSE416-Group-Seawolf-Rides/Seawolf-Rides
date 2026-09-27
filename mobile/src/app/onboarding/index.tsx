@@ -19,7 +19,7 @@ export default function OnboardingIntroRoute() {
       </View>
       <View style={styles.footer}>
         <AppButton label="Let’s go" onPress={() => router.push('/onboarding/role')} />
-        <Text style={styles.note}>Takes about 2 minutes. You can change anything later.</Text>
+        <Text style={styles.note}>Takes about 2 minutes. You can update your commute later.</Text>
       </View>
     </View>
   );
