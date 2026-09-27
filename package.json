@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "npm --prefix mobile run start",
+    "doctor": "npm --prefix mobile run doctor",
     "lint": "npm --prefix mobile run lint",
     "typecheck": "npm --prefix mobile run typecheck",
     "test": "npm --prefix mobile run test",

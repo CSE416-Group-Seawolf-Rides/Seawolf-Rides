@@ -26,12 +26,12 @@ jobs:
 
     steps:
       - name: Check out pull request revision
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -43,6 +43,9 @@ jobs:
       - name: Run static analysis
         run: npm run lint
 
+      - name: Check Expo project health
+        run: npm run doctor
+
   compilation:
     name: Compilation (type-check)
     if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
@@ -53,12 +56,12 @@ jobs:
 
     steps:
       - name: Check out pull request revision
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -80,12 +83,12 @@ jobs:
 
     steps:
       - name: Check out pull request revision
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -107,12 +110,12 @@ jobs:
 
     steps:
       - name: Check out pull request revision
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
