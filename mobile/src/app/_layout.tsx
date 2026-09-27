@@ -5,7 +5,6 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { SessionProvider, useSession } from '../auth/SessionProvider';
 import { stackScreenOptions } from '../navigation/stackScreenOptions';
-import { RideRequestsProvider } from '../prototypeData/RideRequestsProvider';
 import { colors } from '../theme';
 
 function RootNavigator() {
@@ -29,12 +28,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <SessionProvider>
-        <RideRequestsProvider>
-          <StatusBar style="dark" />
-          <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
-            <RootNavigator />
-          </SafeAreaView>
-        </RideRequestsProvider>
+        <StatusBar style="dark" />
+        <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+          <RootNavigator />
+        </SafeAreaView>
       </SessionProvider>
     </SafeAreaProvider>
   );

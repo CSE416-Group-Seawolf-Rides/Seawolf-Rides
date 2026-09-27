@@ -4,7 +4,10 @@ import { ComponentProps } from 'react';
 import { ColorValue } from 'react-native';
 
 import { BottomTabBar } from '../../components/BottomTabBar';
-import { useRideRequests } from '../../prototypeData/RideRequestsProvider';
+import {
+  RideRequestsProvider,
+  useRideRequests,
+} from '../../prototypeData/RideRequestsProvider';
 import { colors } from '../../theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -29,7 +32,7 @@ function tabIcon(selected: IconName, unselected: IconName) {
 // - Rides: everything already in motion — pending requests and scheduled commutes.
 // - Inbox: conversations with matched drivers and riders.
 // - Account: profile, commute role, and sign-out.
-export default function TabsLayout() {
+function TabsNavigator() {
   const { requestedCommuteIds } = useRideRequests();
   const pendingRequests = requestedCommuteIds.length;
 
@@ -66,5 +69,15 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+  );
+}
+
+export default function TabsLayout() {
+  // Prototype ride requests belong to the active session. Keeping their provider
+  // inside the protected tabs subtree clears them when sign-out unmounts the tabs.
+  return (
+    <RideRequestsProvider>
+      <TabsNavigator />
+    </RideRequestsProvider>
   );
 }
