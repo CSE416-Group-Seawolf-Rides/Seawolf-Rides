@@ -8,16 +8,19 @@ import { stackScreenOptions } from '../navigation/stackScreenOptions';
 import { colors } from '../theme';
 
 function RootNavigator() {
-  const { user } = useSession();
+  const { user, needsOnboarding } = useSession();
 
-  // Signing in or out is a one-way door: the guard drops the other group's history,
-  // so back never returns to the login screen after signing in.
+  // Signing in, finishing onboarding, and signing out are one-way doors: each guard
+  // drops the previous group's history, so back never returns to a finished stage.
   return (
     <Stack screenOptions={stackScreenOptions}>
       <Stack.Protected guard={!user}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
-      <Stack.Protected guard={!!user}>
+      <Stack.Protected guard={needsOnboarding}>
+        <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      <Stack.Protected guard={!!user && !needsOnboarding}>
         <Stack.Screen name="(tabs)" />
       </Stack.Protected>
     </Stack>
