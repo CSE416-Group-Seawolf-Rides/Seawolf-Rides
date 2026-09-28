@@ -41,7 +41,8 @@ export function OfferCard({ match, requestStatus, canRequest, onOpen, onRequest 
       </View>
 
       <Text style={styles.times}>
-        Pickup ~{formatTime(offer.pickupTime)} · Arrives {formatTime(offer.arriveBy)}
+        Pickup ~{formatTime(offer.pickupTime)} · Arrives {formatTime(offer.arriveBy)} ·{' '}
+        {offer.leaveAt === null ? 'Morning only' : `Leaves ${formatTime(offer.leaveAt)}`}
       </Text>
       <DayPills days={offer.days} highlighted={sharedDays} />
       {fit && <Text style={[styles.fit, !fit.good && styles.fitLate]}>{fit.label}</Text>}

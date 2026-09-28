@@ -22,7 +22,7 @@ export default function TripDetailRoute() {
   const trip = getUpcoming(
     commute,
     outgoing,
-    incomingForCommute(commute, incoming).map((view) => view.request),
+    incomingForCommute(commute, incoming, outgoing).map((view) => view.request),
     driverOfferFixtures,
     now,
     skipped,
@@ -39,7 +39,7 @@ export default function TripDetailRoute() {
 
   return (
     <TripDetailScreen
-      bookedDays={(offer && requestSummary(outgoing, offer.id)?.days) || []}
+      bookedDays={(offer && requestSummary(outgoing, offer.id)?.acceptedDays) || []}
       onBack={() => router.back()}
       onMessage={chatId ? () => router.navigate(`/inbox/${chatId}`, { withAnchor: true }) : undefined}
       onOpenDriver={() => offer && router.navigate(`/home/driver/${offer.id}`, { withAnchor: true })}

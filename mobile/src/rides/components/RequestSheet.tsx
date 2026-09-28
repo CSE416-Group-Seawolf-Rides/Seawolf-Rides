@@ -46,7 +46,8 @@ export function RequestSheet({
           </Text>
           <Text style={styles.subtitle}>
             Pickup ~{formatTime(offer.pickupTime)} · Arrive {formatTime(offer.arriveBy)} at{' '}
-            {lotTitle(offer.campusLot)}
+            {lotTitle(offer.campusLot)} ·{' '}
+            {offer.leaveAt === null ? 'No ride home' : `Leave ${formatTime(offer.leaveAt)}`}
           </Text>
 
           <Text style={styles.label}>Which days?</Text>

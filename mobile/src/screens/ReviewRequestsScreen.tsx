@@ -47,6 +47,7 @@ export function ReviewRequestsScreen({ pending, onRespond, onDone }: ReviewReque
       title="Ride requests"
     >
       <IncomingRequestCard
+        conflictDay={current.conflictDay}
         fullDay={current.fullDay}
         key={current.request.id}
         onAccept={() => onRespond(current.request.id, 'accepted')}

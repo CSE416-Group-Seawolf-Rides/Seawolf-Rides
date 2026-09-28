@@ -26,7 +26,7 @@ export default function HomeRoute() {
   const { outgoing, incoming, skipped, sendRequest } = useRides();
   const { now, greeting, dateLabel, dates, today } = useHomeClock();
 
-  const incomingViews = incomingForCommute(commute, incoming);
+  const incomingViews = incomingForCommute(commute, incoming, outgoing);
   const relevantIncoming = incomingViews.map((view) => view.request);
   const nextTrip = getNextTrip(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped);
   const chatId = nextTrip?.offer?.chatId;
@@ -83,7 +83,7 @@ export default function HomeRoute() {
       previewMatches={matchDrivers(null, driverOfferFixtures)}
       requestableDaysFor={(offerId) => {
         const offer = driverOfferFixtures.find((candidate) => candidate.id === offerId);
-        return commute && offer ? requestableDays(commute, offer, outgoing) : [];
+        return commute && offer ? requestableDays(commute, offer, outgoing, incoming) : [];
       }}
       ridesSomeDays={commute ? ridingDays(commute).length > 0 : false}
       role={role}

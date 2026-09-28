@@ -8,7 +8,7 @@ import { ReviewRequestsScreen } from '../../../screens/ReviewRequestsScreen';
 
 export default function ReviewRequestsRoute() {
   const { commute } = useSession();
-  const { incoming, respondToRequest } = useRides();
+  const { outgoing, incoming, respondToRequest } = useRides();
 
   return (
     <ReviewRequestsScreen
@@ -21,7 +21,7 @@ export default function ReviewRequestsRoute() {
         );
         respondToRequest(requestId, status);
       }}
-      pending={incomingForCommute(commute, incoming).filter(
+      pending={incomingForCommute(commute, incoming, outgoing).filter(
         (view) => view.request.status === 'pending',
       )}
     />

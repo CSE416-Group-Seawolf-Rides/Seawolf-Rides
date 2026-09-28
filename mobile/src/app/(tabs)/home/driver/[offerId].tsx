@@ -9,7 +9,7 @@ import { OfferDetailScreen } from '../../../../screens/OfferDetailScreen';
 export default function DriverOfferRoute() {
   const { offerId } = useLocalSearchParams<{ offerId: string }>();
   const { commute } = useSession();
-  const { outgoing, sendRequest, cancelRequest } = useRides();
+  const { outgoing, incoming, sendRequest, cancelRequest } = useRides();
   const offer = driverOfferFixtures.find((candidate) => candidate.id === offerId);
 
   if (!offer) {
@@ -18,7 +18,7 @@ export default function DriverOfferRoute() {
 
   const match = matchDrivers(commute, [offer])[0] ?? { offer, sharedDays: [], arrivalGap: null };
   const request = requestSummary(outgoing, offer.id);
-  const openDays = commute ? requestableDays(commute, offer, outgoing) : [];
+  const openDays = commute ? requestableDays(commute, offer, outgoing, incoming) : [];
   const chatId = offer.chatId;
 
   return (
@@ -33,7 +33,8 @@ export default function DriverOfferRoute() {
       onSetUpCommute={() => router.push('/commute-setup')}
       requestStatus={request?.status}
       requestableDays={openDays}
-      requestedDays={request?.days ?? []}
+      acceptedDays={request?.acceptedDays ?? []}
+      pendingDays={request?.pendingDays ?? []}
     />
   );
 }

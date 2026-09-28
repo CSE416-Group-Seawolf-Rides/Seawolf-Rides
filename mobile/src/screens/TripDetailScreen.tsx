@@ -44,7 +44,11 @@ export function TripDetailScreen({
     <Screen
       eyebrow={`${riding ? 'RIDE' : 'DRIVE'} · ${trip.whenLabel.toUpperCase()}`}
       onBack={onBack}
-      subtitle={`Arrive ${riding ? '~' : 'by '}${formatTime(trip.arriveBy)} at ${lotTitle(trip.campusLot)}`}
+      subtitle={
+        trip.arriveBy !== null
+          ? `Arrive ${riding ? '~' : 'by '}${formatTime(trip.arriveBy)} at ${lotTitle(trip.campusLot)}`
+          : `Leave campus at ${formatTime(trip.leaveAt!)} from ${lotTitle(trip.campusLot)}`
+      }
       title={trip.dateLabel}
     >
       {trip.skipped && (
@@ -61,7 +65,7 @@ export function TripDetailScreen({
 
       {riding && trip.offer && (
         <>
-          {!trip.skipped && (
+          {!trip.skipped && trip.pickupTime !== undefined && (
             <PickupSpotCard
               note={`Suggested by ${driver}. Need a different spot? Sort it out in chat.`}
               spot={trip.offer.pickupSpot}
@@ -84,11 +88,15 @@ export function TripDetailScreen({
           </Pressable>
 
           <Card style={styles.details}>
-            <DetailRow
-              label="Pickup"
-              value={trip.pickupTime !== undefined ? `Around ${formatTime(trip.pickupTime)}` : 'To be agreed'}
-            />
-            <DetailRow label="Arrives on campus" value={`${formatTime(trip.arriveBy)} · ${lotTitle(trip.campusLot)}`} />
+            {trip.pickupTime !== undefined && (
+              <DetailRow label="Pickup" value={`Around ${formatTime(trip.pickupTime)}`} />
+            )}
+            {trip.arriveBy !== null && (
+              <DetailRow
+                label="Arrives on campus"
+                value={`${formatTime(trip.arriveBy)} · ${lotTitle(trip.campusLot)}`}
+              />
+            )}
             {trip.leaveAt !== null && (
               <DetailRow label="Ride home" value={`Leaves campus ${formatTime(trip.leaveAt)}`} />
             )}
@@ -99,7 +107,15 @@ export function TripDetailScreen({
       {!riding && (
         <>
           <Card style={styles.details}>
-            <DetailRow label="Arrive by" value={`${formatTime(trip.arriveBy)} · ${lotTitle(trip.campusLot)}`} />
+            {trip.arriveBy !== null && (
+              <DetailRow
+                label="Arrive by"
+                value={`${formatTime(trip.arriveBy)} · ${lotTitle(trip.campusLot)}`}
+              />
+            )}
+            {trip.leaveAt !== null && (
+              <DetailRow label="Leave campus" value={formatTime(trip.leaveAt)} />
+            )}
             <DetailRow label="Seats" value={`${riders.length} of ${trip.seats ?? riders.length} filled`} />
           </Card>
 

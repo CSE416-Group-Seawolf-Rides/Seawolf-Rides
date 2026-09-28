@@ -37,13 +37,23 @@ function AgendaRow({ item, last, onPress }: { item: UpcomingItem; last: boolean;
   let detail: string;
   if (item.kind === 'open') {
     headline = item.pending ? 'Request sent' : 'No driver yet';
-    detail = item.pending ? 'Waiting for a driver to accept' : `Arrive by ${formatTime(item.arriveBy)}`;
+    detail = item.pending
+      ? 'Waiting for a driver to accept'
+      : item.arriveBy !== null
+        ? `Arrive by ${formatTime(item.arriveBy)}`
+        : `Leave campus at ${formatTime(item.leaveAt!)}`;
   } else if (item.kind === 'ride') {
-    headline = `${formatTime(item.pickupTime ?? item.arriveBy)} · ${item.offer?.driverName}`;
-    detail = skipped ? 'Skipped' : `Ride to ${lotTitle(item.campusLot)}`;
+    const time = item.pickupTime ?? item.leaveAt ?? item.arriveBy;
+    headline = `${time === null ? 'Time TBD' : formatTime(time)} · ${item.offer?.driverName}`;
+    detail = skipped
+      ? 'Skipped'
+      : item.arriveBy !== null
+        ? `Ride to ${lotTitle(item.campusLot)}`
+        : `Ride home from ${lotTitle(item.campusLot)}`;
   } else {
     const riders = item.riders ?? [];
-    headline = `${formatTime(item.arriveBy)} · You drive`;
+    const time = item.arriveBy ?? item.leaveAt;
+    headline = `${time === null ? 'Time TBD' : formatTime(time)} · You drive`;
     detail = skipped ? 'Skipped' : riders.map((rider) => rider.riderName).join(', ');
   }
 

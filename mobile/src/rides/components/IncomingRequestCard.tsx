@@ -12,6 +12,7 @@ interface IncomingRequestCardProps {
   request: IncomingRequest;
   sharedDays: Weekday[];
   fullDay?: Weekday;
+  conflictDay?: Weekday;
   onAccept: () => void;
   onDecline: () => void;
 }
@@ -22,10 +23,13 @@ export function IncomingRequestCard({
   request,
   sharedDays,
   fullDay,
+  conflictDay,
   onAccept,
   onDecline,
 }: IncomingRequestCardProps) {
   const fullDayName = fullDay && weekdays.find((weekday) => weekday.value === fullDay)?.name;
+  const conflictDayName =
+    conflictDay && weekdays.find((weekday) => weekday.value === conflictDay)?.name;
 
   return (
     <View style={styles.card}>
@@ -56,6 +60,12 @@ export function IncomingRequestCard({
               Your car is full on {fullDayName}. Add a seat in Account to accept.
             </Text>
           )}
+          {conflictDayName && (
+            <Text style={styles.full}>
+              You already have a driver on {conflictDayName}. Cancel that ride before accepting a
+              rider.
+            </Text>
+          )}
           <View style={styles.actions}>
             <View style={styles.action}>
               <AppButton
@@ -68,7 +78,7 @@ export function IncomingRequestCard({
             <View style={styles.action}>
               <AppButton
                 accessibilityLabel={`Accept ${request.riderName}`}
-                disabled={Boolean(fullDay)}
+                disabled={Boolean(fullDay || conflictDay)}
                 label="Accept"
                 onPress={onAccept}
               />

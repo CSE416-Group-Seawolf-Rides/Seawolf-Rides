@@ -29,6 +29,13 @@ export function NextTripCard({ trip, onMessage, onDetails }: NextTripCardProps) 
             with {trip.offer.driverName} · {trip.offer.vehicle}
           </Text>
         </>
+      ) : riding && trip.offer && trip.leaveAt !== null ? (
+        <>
+          <Text style={styles.headline}>{formatTime(trip.leaveAt)} ride home</Text>
+          <Text style={styles.detail}>
+            with {trip.offer.driverName} · {trip.offer.vehicle}
+          </Text>
+        </>
       ) : (
         <>
           <Text style={styles.headline}>
@@ -41,8 +48,9 @@ export function NextTripCard({ trip, onMessage, onDetails }: NextTripCardProps) 
         </>
       )}
       <Text style={styles.detail}>
-        Arrive {riding ? '~' : 'by '}
-        {formatTime(trip.arriveBy)} at {lotTitle(trip.campusLot)}
+        {trip.arriveBy !== null
+          ? `Arrive ${riding ? '~' : 'by '}${formatTime(trip.arriveBy)} at ${lotTitle(trip.campusLot)}`
+          : `Leave campus at ${formatTime(trip.leaveAt!)} from ${lotTitle(trip.campusLot)}`}
       </Text>
 
       {(onMessage || onDetails) && (
