@@ -12,6 +12,8 @@ import {
   incomingForCommute,
   matchDrivers,
   matchDriversForDay,
+  reconcileRideState,
+  reconcileSkippedDays,
   requestableDays,
   requestSummary,
   sharedDrivingDays,
@@ -121,6 +123,28 @@ test('drivers only see requests for days they drive, and cannot overfill the car
   assert.deepEqual(canAccept(driverCommute, dev, [dev]), { ok: true });
 });
 
+test('either days cannot accept a rider after a driver is confirmed', () => {
+  const commute = {
+    startArea: area,
+    campusLot: 'tabler',
+    days: [day('mon', 'either')],
+    seats: 2,
+  };
+  const request = riderRequest('dev', ['mon']);
+  const outgoing = [{ id: 'ride', offerId: 'alex', days: ['mon'], status: 'accepted' }];
+
+  assert.deepEqual(canAccept(commute, request, [request], outgoing), {
+    ok: false,
+    conflictDay: 'mon',
+  });
+  assert.deepEqual(
+    requestableDays(commute, offer('alex', ['mon'], 520), [], [
+      riderRequest('maya', ['mon'], 'accepted'),
+    ]),
+    [],
+  );
+});
+
 test('the next trip is the next confirmed day, skipping today once its time has passed', () => {
   const offers = [offer('alex', ['mon', 'wed', 'fri'], 8 * 60 + 40)];
   const outgoing = [{ id: 'r', offerId: 'alex', days: ['mon', 'fri'], status: 'accepted' }];
@@ -134,6 +158,34 @@ test('the next trip is the next confirmed day, skipping today once its time has 
 
   const mondayMorning = new Date(2026, 8, 28, 7, 0);
   assert.equal(getNextTrip(riderCommute, outgoing, [], offers, mondayMorning).whenLabel, 'Today');
+
+  const mondayMidday = new Date(2026, 8, 28, 12, 0);
+  assert.equal(getNextTrip(riderCommute, outgoing, [], offers, mondayMidday).whenLabel, 'Today');
+});
+
+test('return-only schedules match drivers and remain upcoming until the ride home', () => {
+  const commute = {
+    startArea: area,
+    campusLot: 'tabler',
+    days: [day('mon', 'ride', null, 17 * 60)],
+  };
+  const alex = offer('alex', ['mon'], 8 * 60 + 40, { leaveAt: 17 * 60 + 15 });
+  const morningOnly = offer('morning', ['mon'], 8 * 60 + 30, { leaveAt: null });
+
+  assert.deepEqual(matchDrivers(commute, [alex, morningOnly]).map((match) => match.offer.id), [
+    'alex',
+  ]);
+  assert.deepEqual(requestableDays(commute, morningOnly, []), []);
+  const [trip] = getUpcoming(
+    commute,
+    [{ id: 'return', offerId: 'alex', days: ['mon'], status: 'accepted' }],
+    [],
+    [alex],
+    new Date(2026, 8, 28, 12, 0),
+  );
+  assert.equal(trip.kind, 'ride');
+  assert.equal(trip.arriveBy, null);
+  assert.equal(trip.leaveAt, 17 * 60 + 15);
 });
 
 test('a driver’s next trip lists the riders they accepted', () => {
@@ -224,9 +276,36 @@ test('requests with the same driver roll up per day without replacing each other
     { id: 'a', offerId: 'alex', days: ['mon', 'wed'], status: 'accepted' },
     { id: 'b', offerId: 'alex', days: ['fri'], status: 'pending' },
   ];
-  assert.deepEqual(requestSummary(outgoing, 'alex'), { status: 'accepted', days: ['mon', 'wed', 'fri'] });
+  assert.deepEqual(requestSummary(outgoing, 'alex'), {
+    status: 'accepted',
+    days: ['mon', 'wed', 'fri'],
+    acceptedDays: ['mon', 'wed'],
+    pendingDays: ['fri'],
+    declinedDays: [],
+  });
   assert.equal(requestSummary(outgoing, 'alex', 'fri').status, 'pending');
   assert.equal(requestSummary(outgoing, 'sarah'), undefined);
+});
+
+test('commute changes remove incompatible ride state and obsolete skips', () => {
+  const driverOnly = {
+    startArea: area,
+    campusLot: 'tabler',
+    days: [day('mon', 'drive')],
+    seats: 2,
+  };
+  const state = reconcileRideState(
+    driverOnly,
+    [{ id: 'ride', offerId: 'alex', days: ['mon'], status: 'accepted' }],
+    [riderRequest('dev', ['mon'], 'accepted')],
+  );
+
+  assert.deepEqual(state.outgoing, []);
+  assert.deepEqual(state.incoming.map((request) => request.id), ['dev']);
+  assert.deepEqual(
+    reconcileSkippedDays(driverOnly, ['2026-09-28', '2026-09-29']),
+    ['2026-09-28'],
+  );
 });
 
 test('only shared riding days not already requested can be requested', () => {

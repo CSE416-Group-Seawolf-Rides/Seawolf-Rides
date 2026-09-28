@@ -13,7 +13,13 @@ import { useSession } from '../auth/SessionProvider';
 import type { Weekday } from '../commute/commuteModel';
 import { demoIncoming, demoOutgoing } from '../prototypeData/demoAccount';
 import { riderRequestFixtures } from './rideFixtures';
-import { IncomingRequest, OutgoingRequest } from './rideModel';
+import {
+  IncomingRequest,
+  OutgoingRequest,
+  reconcileRideState,
+  reconcileSkippedDays,
+  sharedDrivingDays,
+} from './rideModel';
 
 interface Rides {
   outgoing: OutgoingRequest[];
@@ -36,7 +42,7 @@ const DEMO_DRIVER_RESPONSE_MS = 5000;
 
 // Frontend-only M2 state. Lives inside the signed-in tabs, so sign-out clears it.
 export function RidesProvider({ children }: PropsWithChildren) {
-  const { user } = useSession();
+  const { user, commute } = useSession();
   // Returning (demo) users start mid-week; brand-new accounts start from scratch.
   const returning = user !== null && !user.isNewUser;
   const [outgoing, setOutgoing] = useState<OutgoingRequest[]>(() =>
@@ -49,11 +55,45 @@ export function RidesProvider({ children }: PropsWithChildren) {
   );
   const [skipped, setSkipped] = useState<string[]>([]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const commuteRef = useRef(commute);
+  const outgoingRef = useRef(outgoing);
+  const incomingRef = useRef(incoming);
+
+  useEffect(() => {
+    commuteRef.current = commute;
+  }, [commute]);
+
+  useEffect(() => {
+    outgoingRef.current = outgoing;
+  }, [outgoing]);
+
+  useEffect(() => {
+    incomingRef.current = incoming;
+  }, [incoming]);
 
   useEffect(() => {
     const pending = timers.current;
     return () => pending.forEach((timer) => clearTimeout(timer));
   }, []);
+
+  useEffect(() => {
+    if (!commute) {
+      return;
+    }
+    setOutgoing((current) => {
+      const next = reconcileRideState(commute, current, []).outgoing;
+      const keptIds = new Set(next.map((request) => request.id));
+      current
+        .filter((request) => !keptIds.has(request.id))
+        .forEach((request) => {
+          clearTimeout(timers.current.get(request.id));
+          timers.current.delete(request.id);
+        });
+      return next;
+    });
+    setIncoming((current) => reconcileRideState(commute, [], current).incoming);
+    setSkipped((current) => reconcileSkippedDays(commute, current));
+  }, [commute]);
 
   const rides = useMemo<Rides>(
     () => ({
@@ -62,20 +102,54 @@ export function RidesProvider({ children }: PropsWithChildren) {
       // Adds a request alongside any earlier ones with the same driver, so asking for
       // Friday never touches an already-confirmed Monday.
       sendRequest: (offerId, days) => {
+        const allowedDays = commute
+          ? days.filter(
+              (day) =>
+                !incomingRef.current.some(
+                  (request) =>
+                    request.status === 'accepted' &&
+                    request.days.includes(day) &&
+                    sharedDrivingDays(commute, request).includes(day),
+                ),
+            )
+          : days;
+        if (allowedDays.length === 0) {
+          return;
+        }
         const id = `request-${offerId}-${Date.now()}`;
-        setOutgoing((current) => [...current, { id, offerId, days, status: 'pending' }]);
+        setOutgoing((current) => [
+          ...current,
+          { id, offerId, days: allowedDays, status: 'pending' },
+        ]);
         timers.current.set(
           id,
           setTimeout(() => {
             timers.current.delete(id);
+            const currentCommute = commuteRef.current;
+            const currentDays =
+              outgoingRef.current.find((request) => request.id === id)?.days ?? [];
+            const hasDrivingConflict =
+              currentCommute !== null &&
+              currentDays.some((day) =>
+                incomingRef.current.some(
+                  (request) =>
+                    request.status === 'accepted' &&
+                    request.days.includes(day) &&
+                    sharedDrivingDays(currentCommute, request).includes(day),
+                ),
+              );
             setOutgoing((current) =>
               current.map((request) =>
                 request.id === id && request.status === 'pending'
-                  ? { ...request, status: 'accepted' }
+                  ? { ...request, status: hasDrivingConflict ? 'declined' : 'accepted' }
                   : request,
               ),
             );
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Haptics.notificationAsync(
+              hasDrivingConflict
+                ? Haptics.NotificationFeedbackType.Warning
+                : Haptics.NotificationFeedbackType.Success,
+            );
           }, DEMO_DRIVER_RESPONSE_MS),
         );
       },
@@ -99,14 +173,29 @@ export function RidesProvider({ children }: PropsWithChildren) {
       },
       respondToRequest: (requestId, status) =>
         setIncoming((current) =>
-          current.map((request) => (request.id === requestId ? { ...request, status } : request)),
+          current.map((request) => {
+            if (request.id !== requestId) {
+              return request;
+            }
+            const hasRidingConflict =
+              status === 'accepted' &&
+              commute !== null &&
+              sharedDrivingDays(commute, request).some((day) =>
+                outgoingRef.current.some(
+                  (outgoingRequest) =>
+                    outgoingRequest.status === 'accepted' &&
+                    outgoingRequest.days.includes(day),
+                ),
+              );
+            return hasRidingConflict ? request : { ...request, status };
+          }),
         ),
       skipped,
       skipTrip: (tripId) =>
         setSkipped((current) => (current.includes(tripId) ? current : [...current, tripId])),
       undoSkip: (tripId) => setSkipped((current) => current.filter((id) => id !== tripId)),
     }),
-    [outgoing, incoming, skipped],
+    [commute, outgoing, incoming, skipped],
   );
 
   return <RidesContext.Provider value={rides}>{children}</RidesContext.Provider>;

@@ -18,7 +18,8 @@ import { colors, spacing } from '../theme';
 interface OfferDetailScreenProps {
   match: DriverMatch;
   requestStatus?: RequestStatus;
-  requestedDays: Weekday[];
+  acceptedDays: Weekday[];
+  pendingDays: Weekday[];
   // Shared days not yet requested from anyone; what a new request can ask for.
   requestableDays: Weekday[];
   hasCommute: boolean;
@@ -33,7 +34,8 @@ interface OfferDetailScreenProps {
 export function OfferDetailScreen({
   match,
   requestStatus,
-  requestedDays,
+  acceptedDays,
+  pendingDays,
   requestableDays,
   hasCommute,
   canRequest,
@@ -77,7 +79,7 @@ export function OfferDetailScreen({
         {fit && <Text style={[styles.fit, !fit.good && styles.fitLate]}>{fit.label}</Text>}
       </Card>
 
-      {requestStatus === 'accepted' ? (
+      {acceptedDays.length > 0 ? (
         <PickupSpotCard
           note={`Suggested by ${offer.driverName}. Need a different spot? Sort it out in chat.`}
           spot={offer.pickupSpot}
@@ -90,9 +92,14 @@ export function OfferDetailScreen({
         </Text>
       )}
 
-      {requestStatus === undefined &&
+      {(requestStatus === undefined || requestStatus === 'declined') &&
         (canRequest ? (
-          <AppButton label="Request a ride" onPress={() => setRequesting(true)} />
+          <View style={styles.status}>
+            {requestStatus === 'declined' && (
+              <StatusPill label={`${offer.driverName} couldn’t take this request`} tone="neutral" />
+            )}
+            <AppButton label="Request a ride" onPress={() => setRequesting(true)} />
+          </View>
         ) : hasCommute ? (
           <Text style={styles.noOverlap}>
             {offer.driverName} doesn’t commute on any of your days.
@@ -108,9 +115,15 @@ export function OfferDetailScreen({
         </View>
       )}
 
-      {requestStatus === 'accepted' && (
+      {acceptedDays.length > 0 && (
         <View style={styles.status}>
-          <StatusPill label={`Confirmed · ${describeWeekdays(requestedDays)}`} tone="success" />
+          <StatusPill label={`Confirmed · ${describeWeekdays(acceptedDays)}`} tone="success" />
+          {pendingDays.length > 0 && (
+            <StatusPill
+              label={`Requested · ${describeWeekdays(pendingDays)} · waiting for ${offer.driverName}`}
+              tone="warning"
+            />
+          )}
           {onMessage && <AppButton label={`Message ${offer.driverName}`} onPress={onMessage} />}
           {requestableDays.length > 0 && (
             <AppButton
@@ -133,7 +146,7 @@ export function OfferDetailScreen({
           choices={[
             {
               label: `Stop riding with ${offer.driverName}`,
-              description: `Cancels every day you booked (${describeWeekdays(requestedDays)}). ${offer.driverName} will be notified.`,
+              description: `Cancels your confirmed days (${describeWeekdays(acceptedDays)})${pendingDays.length > 0 ? ` and your pending request for ${describeWeekdays(pendingDays)}` : ''}. ${offer.driverName} will be notified.`,
               destructive: true,
               onPress: () => {
                 setConfirmingStop(false);

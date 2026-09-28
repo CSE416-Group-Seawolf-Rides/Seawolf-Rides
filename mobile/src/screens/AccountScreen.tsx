@@ -141,7 +141,7 @@ export function AccountScreen({
               }
             },
           }))}
-          message="Your commute stays the same. We’ll update which days you drive or ride."
+          message="We’ll update each commute day and remove carpools that no longer fit how you travel."
           onClose={() => setSheet(null)}
           title="How do you get to campus?"
         />

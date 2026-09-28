@@ -65,11 +65,17 @@ const isRidingMode = (mode: DayMode) => mode !== 'drive';
 const isDrivingMode = (mode: DayMode) => mode !== 'ride';
 
 export function ridingDays(commute: CommuteSchedule): DaySchedule[] {
-  return commute.days.filter((day) => isRidingMode(day.mode) && day.arriveBy !== null);
+  return commute.days.filter(
+    (day) => isRidingMode(day.mode) && (day.arriveBy !== null || day.leaveAt !== null),
+  );
 }
 
 export function drivingDays(commute: CommuteSchedule): DaySchedule[] {
   return commute.days.filter((day) => isDrivingMode(day.mode));
+}
+
+function offerServesPlan(offer: DriverOffer, plan: DaySchedule): boolean {
+  return plan.arriveBy !== null || (plan.leaveAt !== null && offer.leaveAt !== null);
 }
 
 // ---- Matching -----------------------------------------------------------------
@@ -84,8 +90,10 @@ export function matchDrivers(commute: CommuteSchedule | null, offers: DriverOffe
   const days = ridingDays(commute);
   const matches = offers
     .map((offer) => {
-      const shared = days.filter((day) => offer.days.includes(day.day));
-      const target = shared[0]?.arriveBy ?? null;
+      const shared = days.filter(
+        (day) => offer.days.includes(day.day) && offerServesPlan(offer, day),
+      );
+      const target = shared.find((day) => day.arriveBy !== null)?.arriveBy ?? null;
       return {
         offer,
         sharedDays: shared.map((day) => day.day),
@@ -115,12 +123,21 @@ export function matchDriversForDay(
 }
 
 // Someone can have several requests with one driver (say Mon/Wed accepted, then Fri
-// asked later). This rolls them up: confirmed if any day is, and every day asked for.
+// asked later). Keep the aggregate status for compact cards, but preserve each status's
+// days so detail screens never present a pending day as confirmed.
+export interface RequestSummary {
+  status: RequestStatus;
+  days: Weekday[];
+  acceptedDays: Weekday[];
+  pendingDays: Weekday[];
+  declinedDays: Weekday[];
+}
+
 export function requestSummary(
   outgoing: OutgoingRequest[],
   offerId: string,
   day?: Weekday,
-): { status: RequestStatus; days: Weekday[] } | undefined {
+): RequestSummary | undefined {
   const requests = outgoing.filter(
     (request) => request.offerId === offerId && (!day || request.days.includes(day)),
   );
@@ -132,10 +149,21 @@ export function requestSummary(
     : requests.some((r) => r.status === 'pending')
       ? 'pending'
       : 'declined';
+  const daysForStatus = (requestStatus: RequestStatus) =>
+    weekdays
+      .map((weekday) => weekday.value)
+      .filter((value) =>
+        requests.some(
+          (request) => request.status === requestStatus && request.days.includes(value),
+        ),
+      );
+  const acceptedDays = daysForStatus('accepted');
+  const pendingDays = daysForStatus('pending');
+  const declinedDays = daysForStatus('declined');
   const days = weekdays
     .map((weekday) => weekday.value)
     .filter((value) => requests.some((request) => request.days.includes(value)));
-  return { status, days };
+  return { status, days, acceptedDays, pendingDays, declinedDays };
 }
 
 // Shared riding days with this driver that aren't already requested from anyone.
@@ -143,11 +171,21 @@ export function requestableDays(
   commute: CommuteSchedule,
   offer: DriverOffer,
   outgoing: OutgoingRequest[],
+  incoming: IncomingRequest[] = [],
 ): Weekday[] {
   const taken = outgoing.filter((request) => request.status !== 'declined').flatMap((r) => r.days);
+  const drivingCommitments = incoming
+    .filter((request) => request.status === 'accepted')
+    .flatMap((request) => sharedDrivingDays(commute, request));
   return ridingDays(commute)
-    .map((plan) => plan.day)
-    .filter((day) => offer.days.includes(day) && !taken.includes(day));
+    .filter(
+      (plan) =>
+        offer.days.includes(plan.day) &&
+        offerServesPlan(offer, plan) &&
+        !taken.includes(plan.day) &&
+        !drivingCommitments.includes(plan.day),
+    )
+    .map((plan) => plan.day);
 }
 
 // ---- Carpools ------------------------------------------------------------------
@@ -228,8 +266,12 @@ export function describeArrivalFit(gap: number | null): { label: string; good: b
 // Requests only matter for days the user is actually driving.
 export function sharedDrivingDays(commute: CommuteSchedule, request: RiderRequest): Weekday[] {
   return drivingDays(commute)
-    .map((day) => day.day)
-    .filter((day) => request.days.includes(day));
+    .filter(
+      (plan) =>
+        request.days.includes(plan.day) &&
+        (plan.arriveBy !== null || (plan.leaveAt !== null && request.leaveAt !== null)),
+    )
+    .map((day) => day.day);
 }
 
 export function seatsTaken(day: Weekday, incoming: IncomingRequest[]): number {
@@ -241,23 +283,31 @@ export interface IncomingRequestView {
   request: IncomingRequest;
   sharedDays: Weekday[];
   fullDay?: Weekday;
+  conflictDay?: Weekday;
 }
 
 // Requests that overlap the days the user drives, with any day that's already full.
 export function incomingForCommute(
   commute: CommuteSchedule | null,
   incoming: IncomingRequest[],
+  outgoing: OutgoingRequest[] = [],
 ): IncomingRequestView[] {
   if (!commute) {
     return [];
   }
   return incoming
-    .map((request) => ({
-      request,
-      sharedDays: sharedDrivingDays(commute, request),
-      fullDay:
-        request.status === 'pending' ? canAccept(commute, request, incoming).fullDay : undefined,
-    }))
+    .map((request) => {
+      const acceptance =
+        request.status === 'pending'
+          ? canAccept(commute, request, incoming, outgoing)
+          : { ok: true };
+      return {
+        request,
+        sharedDays: sharedDrivingDays(commute, request),
+        fullDay: acceptance.fullDay,
+        conflictDay: acceptance.conflictDay,
+      };
+    })
     .filter((view) => view.sharedDays.length > 0);
 }
 
@@ -265,12 +315,60 @@ export function canAccept(
   commute: CommuteSchedule,
   request: IncomingRequest,
   incoming: IncomingRequest[],
-): { ok: boolean; fullDay?: Weekday } {
+  outgoing: OutgoingRequest[] = [],
+): { ok: boolean; fullDay?: Weekday; conflictDay?: Weekday } {
+  const conflictDay = sharedDrivingDays(commute, request).find((day) =>
+    outgoing.some(
+      (outgoingRequest) =>
+        outgoingRequest.status === 'accepted' && outgoingRequest.days.includes(day),
+    ),
+  );
+  if (conflictDay) {
+    return { ok: false, conflictDay };
+  }
   const seats = commute.seats ?? 0;
   const fullDay = sharedDrivingDays(commute, request).find(
     (day) => seatsTaken(day, incoming) >= seats,
   );
   return fullDay ? { ok: false, fullDay } : { ok: true };
+}
+
+function sameDays(a: Weekday[], b: Weekday[]): boolean {
+  return a.length === b.length && a.every((day, index) => day === b[index]);
+}
+
+export function reconcileRideState(
+  commute: CommuteSchedule,
+  outgoing: OutgoingRequest[],
+  incoming: IncomingRequest[],
+): { outgoing: OutgoingRequest[]; incoming: IncomingRequest[] } {
+  const riding = new Set(ridingDays(commute).map((plan) => plan.day));
+  const driving = new Set(drivingDays(commute).map((plan) => plan.day));
+
+  const nextOutgoing = outgoing.flatMap((request) => {
+    const days = request.days.filter((day) => riding.has(day));
+    if (days.length === 0) {
+      return [];
+    }
+    return [sameDays(days, request.days) ? request : { ...request, days }];
+  });
+  const nextIncoming = incoming.flatMap((request) => {
+    const days = request.days.filter((day) => driving.has(day));
+    if (days.length === 0) {
+      return [];
+    }
+    return [sameDays(days, request.days) ? request : { ...request, days }];
+  });
+
+  return { outgoing: nextOutgoing, incoming: nextIncoming };
+}
+
+export function reconcileSkippedDays(commute: CommuteSchedule, skipped: string[]): string[] {
+  const commuteDays = new Set(commute.days.map((plan) => plan.day));
+  return skipped.filter((id) => {
+    const date = new Date(`${id}T12:00:00`);
+    return !Number.isNaN(date.getTime()) && commuteDays.has(weekdayOf(date));
+  });
 }
 
 // ---- Week overview ------------------------------------------------------------
@@ -323,7 +421,7 @@ interface TripDate {
 
 export interface Trip extends TripDate {
   kind: 'ride' | 'drive';
-  arriveBy: number;
+  arriveBy: number | null;
   leaveAt: number | null;
   campusLot: CampusLotId;
   skipped: boolean;
@@ -336,7 +434,8 @@ export interface Trip extends TripDate {
 // A day the user needs a ride but has no driver yet.
 export interface OpenDay extends TripDate {
   kind: 'open';
-  arriveBy: number;
+  arriveBy: number | null;
+  leaveAt: number | null;
   pending: boolean;
 }
 
@@ -407,7 +506,7 @@ export function getUpcoming(
     const date = addDays(now, offset);
     const day = weekdayOf(date);
     const plan = commute.days.find((schedule) => schedule.day === day);
-    if (!plan || plan.arriveBy === null || (offset === 0 && plan.arriveBy <= minutesNow)) {
+    if (!plan || (plan.arriveBy === null && plan.leaveAt === null)) {
       continue;
     }
 
@@ -431,18 +530,26 @@ export function getUpcoming(
 
     if (isRidingMode(plan.mode)) {
       const accepted = outgoing.find((r) => r.status === 'accepted' && r.days.includes(day));
-      const offer = accepted && offers.find((candidate) => candidate.id === accepted.offerId);
+      const offer =
+        accepted &&
+        offers.find(
+          (candidate) => candidate.id === accepted.offerId && offerServesPlan(candidate, plan),
+        );
       if (offer) {
-        items.push({
+        const item: Trip = {
           ...base,
           ...trip,
           kind: 'ride',
-          arriveBy: offer.arriveBy,
+          arriveBy: plan.arriveBy === null ? null : offer.arriveBy,
           leaveAt: plan.leaveAt === null ? null : offer.leaveAt,
           campusLot: offer.campusLot,
-          pickupTime: offer.pickupTime,
+          pickupTime: plan.arriveBy === null ? undefined : offer.pickupTime,
           offer,
-        });
+        };
+        const endTime = item.leaveAt ?? item.arriveBy;
+        if (offset !== 0 || endTime === null || endTime > minutesNow) {
+          items.push(item);
+        }
         continue;
       }
     }
@@ -450,7 +557,7 @@ export function getUpcoming(
     if (isDrivingMode(plan.mode)) {
       const riders = incoming.filter((r) => r.status === 'accepted' && r.days.includes(day));
       if (riders.length > 0) {
-        items.push({
+        const item: Trip = {
           ...base,
           ...trip,
           kind: 'drive',
@@ -458,19 +565,28 @@ export function getUpcoming(
           campusLot: commute.campusLot,
           riders,
           seats: commute.seats,
-        });
+        };
+        const endTime = item.leaveAt ?? item.arriveBy;
+        if (offset !== 0 || endTime === null || endTime > minutesNow) {
+          items.push(item);
+        }
         continue;
       }
     }
 
     // Drivers without riders just drive as usual, so only riders get an open day.
     if (isRidingMode(plan.mode)) {
-      items.push({
+      const item: OpenDay = {
         ...base,
         kind: 'open',
         arriveBy: plan.arriveBy,
+        leaveAt: plan.leaveAt,
         pending: outgoing.some((r) => r.status === 'pending' && r.days.includes(day)),
-      });
+      };
+      const endTime = item.leaveAt ?? item.arriveBy;
+      if (offset !== 0 || endTime === null || endTime > minutesNow) {
+        items.push(item);
+      }
     }
   }
 

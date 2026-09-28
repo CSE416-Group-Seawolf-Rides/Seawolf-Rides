@@ -12,7 +12,7 @@ export default function RidesRoute() {
   const { outgoing, incoming, skipped, withdrawRequest } = useRides();
   const { now } = useHomeClock();
 
-  const incomingViews = incomingForCommute(commute, incoming);
+  const incomingViews = incomingForCommute(commute, incoming, outgoing);
   const upcoming = getUpcoming(
     commute,
     outgoing,

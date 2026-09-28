@@ -10,7 +10,7 @@ import { DayDriversScreen } from '../../../../screens/DayDriversScreen';
 export default function DayDriversRoute() {
   const { day } = useLocalSearchParams<{ day: Weekday }>();
   const { commute } = useSession();
-  const { outgoing, sendRequest } = useRides();
+  const { outgoing, incoming, sendRequest } = useRides();
   const weekday = weekdays.find((option) => option.value === day);
 
   if (!commute || !weekday) {
@@ -27,7 +27,7 @@ export default function DayDriversRoute() {
       onSendRequest={sendRequest}
       requestableDaysFor={(offerId) => {
         const offer = driverOfferFixtures.find((candidate) => candidate.id === offerId);
-        return offer ? requestableDays(commute, offer, outgoing) : [];
+        return offer ? requestableDays(commute, offer, outgoing, incoming) : [];
       }}
       statusFor={(offerId) => requestSummary(outgoing, offerId, weekday.value)?.status}
     />

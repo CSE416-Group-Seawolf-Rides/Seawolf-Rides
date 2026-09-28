@@ -123,7 +123,9 @@ function DriverCard({
       </View>
 
       <Text numberOfLines={1} style={[styles.fit, fit && !fit.good && styles.fitLate]}>
-        {fit ? fit.label : `${offer.seatsLeft} seat${offer.seatsLeft === 1 ? '' : 's'} open`}
+        {fit
+          ? fit.label
+          : `${offer.leaveAt === null ? 'Morning only' : `Leaves ${formatTime(offer.leaveAt)}`} · ${offer.seatsLeft} seat${offer.seatsLeft === 1 ? '' : 's'} open`}
       </Text>
 
       {status === 'accepted' ? (
