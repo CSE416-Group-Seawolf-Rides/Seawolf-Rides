@@ -14,7 +14,8 @@ export interface FlowProgress {
 }
 
 interface FlowStepProps extends PropsWithChildren {
-  progress: FlowProgress;
+  // Omitted when editing a single step outside the guided flow.
+  progress?: FlowProgress;
   title: string;
   subtitle?: string;
   reaction?: string | null;
@@ -61,7 +62,11 @@ export function FlowStep({
             size={28}
           />
         </Pressable>
-        <ProgressBar from={progress.from} to={progress.to} />
+        {progress ? (
+          <ProgressBar from={progress.from} to={progress.to} />
+        ) : (
+          <View style={styles.flex} />
+        )}
         <View style={styles.headerSpacer} />
       </View>
 

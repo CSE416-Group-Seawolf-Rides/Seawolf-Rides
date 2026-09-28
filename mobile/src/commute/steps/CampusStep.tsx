@@ -6,7 +6,8 @@ import { useCommuteDraft } from '../CommuteDraftProvider';
 
 interface CampusStepProps {
   role: CommuteRole;
-  progress: FlowProgress;
+  progress?: FlowProgress;
+  continueLabel?: string;
   onContinue: () => void;
 }
 
@@ -26,11 +27,12 @@ function reactionFor(role: CommuteRole, lot: CampusLotId): string {
     : `Got it. Riders headed to ${name} will see your trips first.`;
 }
 
-export function CampusStep({ role, progress, onContinue }: CampusStepProps) {
+export function CampusStep({ role, progress, onContinue, continueLabel }: CampusStepProps) {
   const { draft, updateDraft } = useCommuteDraft();
 
   return (
     <FlowStep
+      continueLabel={continueLabel}
       canContinue={draft.campusLot !== undefined}
       onContinue={onContinue}
       progress={progress}

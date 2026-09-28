@@ -5,6 +5,7 @@ import { CommuteDraft, emptyCommuteDraft } from './commuteModel';
 interface CommuteDraftState {
   draft: CommuteDraft;
   updateDraft: (changes: Partial<CommuteDraft>) => void;
+  resetDraft: (draft: CommuteDraft) => void;
 }
 
 const CommuteDraftContext = createContext<CommuteDraftState | null>(null);
@@ -25,6 +26,7 @@ export function CommuteDraftProvider({
     () => ({
       draft,
       updateDraft: (changes) => setDraft((current) => ({ ...current, ...changes })),
+      resetDraft: setDraft,
     }),
     [draft],
   );

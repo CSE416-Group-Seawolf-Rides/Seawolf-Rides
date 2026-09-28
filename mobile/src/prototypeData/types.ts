@@ -1,31 +1,3 @@
-export interface PrototypeCommuterResult {
-  id: string;
-  driverName: string;
-  driverRole: 'Driver';
-  originArea: string;
-  destination: string;
-  pickupEstimate: string;
-  arrivalEstimate: string;
-  addedDetourMinutes: number;
-  seatsAvailable: number;
-  recurringDays: string[];
-  routeStops: string[];
-}
-
-export interface ScheduledRide {
-  id: string;
-  day: string;
-  dateLabel: string;
-  driverName: string;
-  riderName: string;
-  pickupTime: string;
-  expectedArrival: string;
-  origin: string;
-  destination: string;
-  routeStops: string[];
-  chatId: string;
-}
-
 export interface ChatPreview {
   id: string;
   participantName: string;
@@ -36,7 +8,7 @@ export interface ChatPreview {
 
 export interface PrototypeChatMessage {
   id: string;
-  sender: 'me' | 'driver';
+  sender: 'me' | 'them';
   text: string;
   timestamp: string;
 }
@@ -44,4 +16,7 @@ export interface PrototypeChatMessage {
 export interface PrototypeConversation {
   preview: ChatPreview;
   messages: PrototypeChatMessage[];
+  // The match this chat belongs to. Chats with no match are the demo user's history.
+  offerId?: string;
+  riderId?: string;
 }

@@ -17,36 +17,45 @@ export function ChatsScreen({ chats, onOpenChat }: ChatsScreenProps) {
       subtitle="Continue conversations about upcoming commutes."
       title="Inbox"
     >
-      <Card style={styles.inboxCard}>
-        {chats.map((chat, index) => (
-          <Pressable
-            accessibilityLabel={`Open chat with ${chat.participantName}`}
-            accessibilityRole="button"
-            key={chat.id}
-            onPress={() => onOpenChat(chat.id)}
-            style={({ pressed }) => [
-              styles.chatRow,
-              index < chats.length - 1 && styles.chatBorder,
-              pressed && styles.chatPressed,
-            ]}
-          >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{chat.participantName.charAt(0)}</Text>
-            </View>
-            <View style={styles.chatCopy}>
-              <View style={styles.nameRow}>
-                <Text style={styles.name}>{chat.participantName}</Text>
-                <Text style={styles.timestamp}>{chat.timestamp}</Text>
+      {chats.length === 0 ? (
+        <Card>
+          <Text style={styles.empty}>
+            No messages yet. Once a driver accepts your request, or you accept a rider, you can
+            plan the pickup here.
+          </Text>
+        </Card>
+      ) : (
+        <Card style={styles.inboxCard}>
+          {chats.map((chat, index) => (
+            <Pressable
+              accessibilityLabel={`Open chat with ${chat.participantName}`}
+              accessibilityRole="button"
+              key={chat.id}
+              onPress={() => onOpenChat(chat.id)}
+              style={({ pressed }) => [
+                styles.chatRow,
+                index < chats.length - 1 && styles.chatBorder,
+                pressed && styles.chatPressed,
+              ]}
+            >
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{chat.participantName.charAt(0)}</Text>
               </View>
-              <Text style={styles.commute}>{chat.commuteLabel}</Text>
-              <Text numberOfLines={1} style={styles.message}>
-                {chat.lastMessage}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        ))}
-      </Card>
+              <View style={styles.chatCopy}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name}>{chat.participantName}</Text>
+                  <Text style={styles.timestamp}>{chat.timestamp}</Text>
+                </View>
+                <Text style={styles.commute}>{chat.commuteLabel}</Text>
+                <Text numberOfLines={1} style={styles.message}>
+                  {chat.lastMessage}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          ))}
+        </Card>
+      )}
 
       <Text style={styles.fixtureNote}>
         Conversations shown here are local prototype fixtures and are not persisted.
@@ -119,6 +128,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 28,
     marginLeft: spacing.sm,
+  },
+  empty: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   fixtureNote: {
     color: colors.textMuted,

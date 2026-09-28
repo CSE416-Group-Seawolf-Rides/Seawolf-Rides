@@ -8,11 +8,12 @@ import { MAX_SEATS, MIN_SEATS } from '../commuteModel';
 import { useCommuteDraft } from '../CommuteDraftProvider';
 
 interface SeatsStepProps {
-  progress: FlowProgress;
+  progress?: FlowProgress;
+  continueLabel?: string;
   onContinue: () => void;
 }
 
-export function SeatsStep({ progress, onContinue }: SeatsStepProps) {
+export function SeatsStep({ progress, onContinue, continueLabel }: SeatsStepProps) {
   const { draft, updateDraft } = useCommuteDraft();
   const seats = draft.seats;
 
@@ -26,6 +27,7 @@ export function SeatsStep({ progress, onContinue }: SeatsStepProps) {
 
   return (
     <FlowStep
+      continueLabel={continueLabel}
       canContinue
       onContinue={onContinue}
       progress={progress}

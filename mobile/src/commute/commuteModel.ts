@@ -249,7 +249,13 @@ export function describeLeg(minutes: number | null, leg: TripLeg): string {
   return leg === 'arriveBy' ? `Arrive by ${formatTime(minutes)}` : `Leave at ${formatTime(minutes)}`;
 }
 
+export function describeWeekdays(days: Weekday[]): string {
+  return weekdays
+    .filter((weekday) => days.includes(weekday.value))
+    .map((weekday) => weekday.short)
+    .join(', ');
+}
+
 export function describeDays(days: DaySchedule[]): string {
-  const short = weekdays.filter((weekday) => days.some((d) => d.day === weekday.value));
-  return short.map((weekday) => weekday.short).join(', ');
+  return describeWeekdays(days.map((schedule) => schedule.day));
 }

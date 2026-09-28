@@ -12,7 +12,8 @@ import { useCommuteDraft } from '../CommuteDraftProvider';
 import { PrivacyAreaMap } from '../components/PrivacyAreaMap';
 
 interface StartAreaStepProps {
-  progress: FlowProgress;
+  progress?: FlowProgress;
+  continueLabel?: string;
   onContinue: () => void;
   leading?: 'back' | 'close';
   onLeadingPress?: () => void;
@@ -31,7 +32,13 @@ async function labelFor(center: Coordinates): Promise<string> {
   }
 }
 
-export function StartAreaStep({ progress, onContinue, leading, onLeadingPress }: StartAreaStepProps) {
+export function StartAreaStep({
+  progress,
+  onContinue,
+  leading,
+  onLeadingPress,
+  continueLabel,
+}: StartAreaStepProps) {
   const { draft, updateDraft } = useCommuteDraft();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<Status>('idle');
@@ -89,6 +96,7 @@ export function StartAreaStep({ progress, onContinue, leading, onLeadingPress }:
 
   return (
     <FlowStep
+      continueLabel={continueLabel}
       canContinue={area !== undefined && status === 'idle'}
       leading={leading}
       onContinue={onContinue}
