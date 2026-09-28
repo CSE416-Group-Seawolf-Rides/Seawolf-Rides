@@ -17,13 +17,27 @@ import { PrivacyAreaMap } from '../components/PrivacyAreaMap';
 
 interface ReviewStepProps {
   role: CommuteRole;
-  progress: FlowProgress;
+  progress?: FlowProgress;
   saveLabel: string;
+  title?: string;
+  subtitle?: string;
+  leading?: 'back' | 'close';
+  onLeadingPress?: () => void;
   onEdit: (step: CommuteStepId) => void;
   onSave: () => void;
 }
 
-export function ReviewStep({ role, progress, saveLabel, onEdit, onSave }: ReviewStepProps) {
+export function ReviewStep({
+  role,
+  progress,
+  saveLabel,
+  title = 'Here’s your commute',
+  subtitle = 'Check it over. You can change any of this later.',
+  leading,
+  onLeadingPress,
+  onEdit,
+  onSave,
+}: ReviewStepProps) {
   const { draft } = useCommuteDraft();
   const complete = Boolean(draft.startArea && draft.campusLot && isScheduleValid(draft.days));
 
@@ -31,10 +45,12 @@ export function ReviewStep({ role, progress, saveLabel, onEdit, onSave }: Review
     <FlowStep
       canContinue={complete}
       continueLabel={saveLabel}
+      leading={leading}
       onContinue={onSave}
+      onLeadingPress={onLeadingPress}
       progress={progress}
-      subtitle="Check it over. You can change any of this later."
-      title="Here’s your commute"
+      subtitle={subtitle}
+      title={title}
     >
       <Section onEdit={() => onEdit('start')} title="Starting area">
         {draft.startArea && <PrivacyAreaMap area={draft.startArea} height={160} />}

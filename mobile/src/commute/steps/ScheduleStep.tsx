@@ -28,7 +28,8 @@ import { TimeField } from '../components/TimeField';
 
 interface ScheduleStepProps {
   role: CommuteRole;
-  progress: FlowProgress;
+  progress?: FlowProgress;
+  continueLabel?: string;
   onContinue: () => void;
 }
 
@@ -58,7 +59,7 @@ function dayName(day: Weekday): string {
   return weekdays.find((weekday) => weekday.value === day)?.name ?? day;
 }
 
-export function ScheduleStep({ role, progress, onContinue }: ScheduleStepProps) {
+export function ScheduleStep({ role, progress, onContinue, continueLabel }: ScheduleStepProps) {
   const { draft, updateDraft } = useCommuteDraft();
   const days = draft.days;
   const [byDay, setByDay] = useState(() => days.length > 0 && !hasSameTimes(days));
@@ -117,6 +118,7 @@ export function ScheduleStep({ role, progress, onContinue }: ScheduleStepProps) 
 
   return (
     <FlowStep
+      continueLabel={continueLabel}
       canContinue={isScheduleValid(days)}
       onContinue={onContinue}
       progress={progress}

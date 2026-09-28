@@ -1,90 +1,71 @@
-import {
-  PrototypeCommuterResult,
-  PrototypeConversation,
-  ScheduledRide,
-} from './types';
+import { PrototypeConversation } from './types';
 
 // Frontend-only M2 fixtures. None of these values are calculated or persisted.
-export const rideSearchFixture = {
-  startingArea: 'Flushing, Queens',
-  destination: 'Stony Brook University',
-  day: 'Monday',
-  arrivalTarget: '9:00 AM',
-  scheduleFlexibility: '±15 minutes',
-} as const;
-
-export const commuterResultFixtures: PrototypeCommuterResult[] = [
-  {
-    id: 'alex-monday',
-    driverName: 'Alex',
-    driverRole: 'Driver',
-    originArea: 'Bayside, Queens',
-    destination: 'Stony Brook University',
-    pickupEstimate: '7:40 AM',
-    arrivalEstimate: '8:50 AM',
-    addedDetourMinutes: 6,
-    seatsAvailable: 2,
-    recurringDays: ['Monday', 'Wednesday', 'Friday'],
-    routeStops: ['Bayside, Queens', 'Pickup near rider', 'Stony Brook University'],
-  },
-  {
-    id: 'sarah-monday',
-    driverName: 'Sarah',
-    driverRole: 'Driver',
-    originArea: 'Flushing, Queens',
-    destination: 'Stony Brook University',
-    pickupEstimate: '7:35 AM',
-    arrivalEstimate: '8:45 AM',
-    addedDetourMinutes: 8,
-    seatsAvailable: 1,
-    recurringDays: ['Monday', 'Wednesday'],
-    routeStops: ['Flushing, Queens', 'Pickup near rider', 'Stony Brook University'],
-  },
-];
-
-export const scheduledRideFixtures: ScheduledRide[] = [
-  {
-    id: 'alex-upcoming',
-    day: 'Monday',
-    dateLabel: 'Monday, September 28',
-    driverName: 'Alex',
-    riderName: 'You',
-    pickupTime: '7:40 AM',
-    expectedArrival: '~8:50 AM',
-    origin: 'Flushing, Queens',
-    destination: 'Stony Brook University',
-    routeStops: ['Driver origin', 'Rider pickup', 'Stony Brook University'],
-    chatId: 'alex-chat',
-  },
-];
-
+// Details (spots, times, days) match the ride fixtures so the demo tells one story.
 export const conversationFixtures: PrototypeConversation[] = [
   {
+    offerId: 'alex',
     preview: {
       id: 'alex-chat',
       participantName: 'Alex',
-      commuteLabel: 'Monday commute',
-      lastMessage: 'See you around 7:40!',
-      timestamp: '9:18 AM',
+      commuteLabel: 'Driver · Mon, Wed to Tabler',
+      lastMessage: 'See you Monday!',
+      timestamp: 'Yesterday',
     },
     messages: [
       {
         id: 'alex-1',
-        sender: 'driver',
-        text: 'Hi! I can meet near Main Street for Monday’s commute.',
-        timestamp: '9:12 AM',
+        sender: 'them',
+        text: 'Hey! Got your request. Happy to have you on Mondays and Wednesdays.',
+        timestamp: '6:02 PM',
       },
       {
         id: 'alex-2',
-        sender: 'me',
-        text: 'That works for me. I’ll be ready a few minutes early.',
-        timestamp: '9:16 AM',
+        sender: 'them',
+        text: 'I’ll be at the Macy’s entrance at Smith Haven around 7:55. Gray Civic.',
+        timestamp: '6:03 PM',
       },
       {
         id: 'alex-3',
-        sender: 'driver',
-        text: 'Great — see you around 7:40!',
-        timestamp: '9:18 AM',
+        sender: 'me',
+        text: 'Perfect, I’ll be there a few minutes early.',
+        timestamp: '6:10 PM',
+      },
+      {
+        id: 'alex-4',
+        sender: 'them',
+        text: 'See you Monday!',
+        timestamp: '6:11 PM',
+      },
+    ],
+  },
+  {
+    riderId: 'maya',
+    preview: {
+      id: 'maya-chat',
+      participantName: 'Maya',
+      commuteLabel: 'Rider · Tue, Thu',
+      lastMessage: 'Great, I’ll wait by the bike racks.',
+      timestamp: '9:41 AM',
+    },
+    messages: [
+      {
+        id: 'maya-1',
+        sender: 'them',
+        text: 'Thanks for accepting! Is the north lot at Ronkonkoma station okay for pickup?',
+        timestamp: '9:30 AM',
+      },
+      {
+        id: 'maya-2',
+        sender: 'me',
+        text: 'Yep, works for me. I’ll swing by around 8:30.',
+        timestamp: '9:38 AM',
+      },
+      {
+        id: 'maya-3',
+        sender: 'them',
+        text: 'Great, I’ll wait by the bike racks.',
+        timestamp: '9:41 AM',
       },
     ],
   },
@@ -92,22 +73,22 @@ export const conversationFixtures: PrototypeConversation[] = [
     preview: {
       id: 'sarah-chat',
       participantName: 'Sarah',
-      commuteLabel: 'Wednesday commute',
-      lastMessage: 'That pickup spot works for me.',
-      timestamp: 'Yesterday',
+      commuteLabel: 'Past driver',
+      lastMessage: 'No problem at all, good luck!',
+      timestamp: 'Last week',
     },
     messages: [
       {
         id: 'sarah-1',
         sender: 'me',
-        text: 'Would the library entrance work as an approximate pickup area?',
-        timestamp: '4:32 PM',
+        text: 'Hi Sarah, I have to skip tomorrow. My exam got moved to the morning. Sorry for the short notice!',
+        timestamp: '8:12 PM',
       },
       {
         id: 'sarah-2',
-        sender: 'driver',
-        text: 'That pickup spot works for me.',
-        timestamp: '4:38 PM',
+        sender: 'them',
+        text: 'No problem at all, good luck!',
+        timestamp: '8:20 PM',
       },
     ],
   },

@@ -2,6 +2,7 @@ import { createContext, PropsWithChildren, useContext, useMemo, useState } from 
 
 import { CommuteSchedule } from '../commute/commuteModel';
 import { OnboardingProfile } from '../onboarding/onboardingModel';
+import { demoCommute, demoProfileFor } from '../prototypeData/demoAccount';
 import { AuthUser } from './authService';
 
 interface Session {
@@ -29,7 +30,14 @@ export function SessionProvider({ children }: PropsWithChildren) {
       profile,
       commute,
       needsOnboarding: user !== null && user.isNewUser && profile === null,
-      signIn: setUser,
+      signIn: (nextUser) => {
+        setUser(nextUser);
+        // Returning users have no stored account yet, so they get the demo commuter.
+        if (!nextUser.isNewUser) {
+          setProfile(demoProfileFor(nextUser));
+          setCommute(demoCommute);
+        }
+      },
       completeOnboarding: setProfile,
       saveCommute: setCommute,
       signOut: () => {

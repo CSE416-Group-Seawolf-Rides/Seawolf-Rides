@@ -1,22 +1,57 @@
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 
-import { scheduledRideFixtures } from '../../../prototypeData/fixtures';
-import { ScheduledRideDetailScreen } from '../../../screens/ScheduledRideDetailScreen';
+import { useSession } from '../../../auth/SessionProvider';
+import { driverOfferFixtures } from '../../../rides/rideFixtures';
+import {
+  getUpcoming,
+  incomingForCommute,
+  isTrip,
+  requestSummary,
+} from '../../../rides/rideModel';
+import { useRides } from '../../../rides/RidesProvider';
+import { useHomeClock } from '../../../rides/useHomeClock';
+import { TripDetailScreen } from '../../../screens/TripDetailScreen';
 
-export default function ScheduledRideDetailRoute() {
+// A trip's id is its local date, e.g. /rides/2026-09-28.
+export default function TripDetailRoute() {
   const { rideId } = useLocalSearchParams<{ rideId: string }>();
-  const ride = scheduledRideFixtures.find((fixture) => fixture.id === rideId);
+  const { commute } = useSession();
+  const { outgoing, incoming, skipped, skipTrip, undoSkip, cancelRequest } = useRides();
+  const { now } = useHomeClock();
 
-  if (!ride) {
+  const trip = getUpcoming(
+    commute,
+    outgoing,
+    incomingForCommute(commute, incoming).map((view) => view.request),
+    driverOfferFixtures,
+    now,
+    skipped,
+  )
+    .filter(isTrip)
+    .find((candidate) => candidate.id === rideId);
+
+  if (!trip) {
     return <Redirect href="/rides" />;
   }
 
+  const offer = trip.offer;
+  const chatId = offer?.chatId;
+
   return (
-    <ScheduledRideDetailScreen
+    <TripDetailScreen
+      bookedDays={(offer && requestSummary(outgoing, offer.id)?.days) || []}
       onBack={() => router.back()}
-      // Switches to the Inbox tab with the inbox kept underneath the conversation.
-      onMessageDriver={(chatId) => router.navigate(`/inbox/${chatId}`, { withAnchor: true })}
-      ride={ride}
+      onMessage={chatId ? () => router.navigate(`/inbox/${chatId}`, { withAnchor: true }) : undefined}
+      onOpenDriver={() => offer && router.navigate(`/home/driver/${offer.id}`, { withAnchor: true })}
+      onSkip={() => skipTrip(trip.id)}
+      onStopRiding={() => {
+        if (offer) {
+          router.back();
+          cancelRequest(offer.id);
+        }
+      }}
+      onUndoSkip={() => undoSkip(trip.id)}
+      trip={trip}
     />
   );
 }

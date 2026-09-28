@@ -143,13 +143,13 @@ Firebase's `EXPO_PUBLIC_*` values are public client configuration embedded in th
 
 ## Development Status
 
-The project is in M2 (design and setup). The Expo app demonstrates the intended Match, Schedule, and Chats experience and performs a real Firestore read for `commutes/sample-commute-001`, including initial, loading, success, missing-document, and recoverable-error states. The prototype has launched successfully on a physical iPhone using Expo Go, and GitHub Actions has completed successfully on `main` using `npm ci`, lint, type-check, tests, and the Expo export/build check.
+The project is in M2 (design and setup). The Expo app demonstrates the intended sign-in, onboarding, Home, Rides, Inbox, and Account experience and includes a tested Firestore repository for `commutes/sample-commute-001` (the read is no longer shown in the app's UI). The prototype has launched successfully on a physical iPhone using Expo Go, and GitHub Actions has completed successfully on `main` using `npm ci`, lint, type-check, tests, and the Expo export/build check.
 
 ### M2 Prototype Scope
 
-- **Real:** the Match home screen can load the restricted sample commute from Firestore using local public Firebase client configuration.
-- **Simulated locally:** search criteria, driver recommendations, ride requests, scheduled rides, route placeholders, conversations, and locally appended messages are typed frontend fixtures or component state.
-- **Not implemented:** authentication, real matching, routing/maps, live traffic, persisted ride requests or chat, payments, and the M3 backend workflow.
+- **Real:** `mobile/src/commutes/sampleCommuteRepository.ts` reads the restricted sample commute from Firestore using local public Firebase client configuration. It is covered by tests but no longer surfaced on a screen.
+- **Simulated locally:** sign-in (signing in, rather than registering, loads a demo returning commuter with a week already in progress), onboarding answers and the saved commute, driver matches and rider requests, ride request responses (drivers auto-accept after a few seconds in the demo), dated upcoming trips and skipped days, pickup spots, past-trip history, conversations, and locally appended messages are typed frontend fixtures or component state.
+- **Not implemented:** real authentication, real matching, routing, live traffic, persisted ride requests or chat, payments, and the M3 backend workflow.
 
 ## Team
 
