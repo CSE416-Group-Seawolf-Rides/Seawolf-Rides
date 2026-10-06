@@ -1,21 +1,30 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, type Region } from 'react-native-maps';
+import MapView, { Circle, Marker, type Region } from 'react-native-maps';
 
 import type { CommuteSchedule, Weekday } from '../commute/commuteModel';
-import { dayModeLabels, formatTime, weekdays } from '../commute/commuteModel';
+import {
+  dayModeLabels,
+  formatTime,
+  METERS_PER_MILE,
+  weekdays,
+} from '../commute/commuteModel';
+import type { RiderMapCandidate } from '../map/riderMapModel';
 import { colors, radii, spacing } from '../theme';
 
 interface MapScreenProps {
   commute: CommuteSchedule | null;
+  riders: RiderMapCandidate[];
   today: Weekday;
 }
 
 type MapStatus = 'loading' | 'ready' | 'denied' | 'error';
 
 const LOCATION_DELTA = 0.02;
+const OVERVIEW_HOLD_MS = 1500;
+const USER_FOCUS_DURATION_MS = 900;
 
 function regionAround(latitude: number, longitude: number): Region {
   return {
@@ -26,7 +35,10 @@ function regionAround(latitude: number, longitude: number): Region {
   };
 }
 
-function TodayCommuteCard({ commute, today }: MapScreenProps) {
+function TodayCommuteCard({
+  commute,
+  today,
+}: Pick<MapScreenProps, 'commute' | 'today'>) {
   const dayName = weekdays.find((weekday) => weekday.value === today)?.name ?? today;
   const schedule = commute?.days.find((day) => day.day === today);
 
@@ -54,10 +66,13 @@ function TodayCommuteCard({ commute, today }: MapScreenProps) {
   );
 }
 
-export function MapScreen({ commute, today }: MapScreenProps) {
+export function MapScreen({ commute, riders, today }: MapScreenProps) {
   const mapRef = useRef<MapView>(null);
+  const hasPresentedInitialOverview = useRef(false);
+  const userFocusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<MapStatus>('loading');
   const [initialRegion, setInitialRegion] = useState<Region | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -98,6 +113,34 @@ export function MapScreen({ commute, today }: MapScreenProps) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (userFocusTimer.current) {
+        clearTimeout(userFocusTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapReady || !initialRegion || riders.length === 0 || hasPresentedInitialOverview.current) {
+      return;
+    }
+
+    hasPresentedInitialOverview.current = true;
+    mapRef.current?.fitToCoordinates(
+      [initialRegion, ...riders.map((rider) => rider.approximateArea.center)],
+      {
+        animated: false,
+        edgePadding: { top: 200, right: 80, bottom: 160, left: 80 },
+      },
+    );
+
+    userFocusTimer.current = setTimeout(() => {
+      mapRef.current?.animateToRegion(initialRegion, USER_FOCUS_DURATION_MS);
+      userFocusTimer.current = null;
+    }, OVERVIEW_HOLD_MS);
+  }, [initialRegion, mapReady, riders]);
 
   async function recenterMap() {
     if (!initialRegion) {
@@ -147,7 +190,12 @@ export function MapScreen({ commute, today }: MapScreenProps) {
 
   return (
     <View style={styles.container}>
-      <MapView initialRegion={initialRegion} ref={mapRef} style={styles.map}>
+      <MapView
+        initialRegion={initialRegion}
+        onMapReady={() => setMapReady(true)}
+        ref={mapRef}
+        style={styles.map}
+      >
         <Marker
           accessibilityLabel="Your location"
           coordinate={initialRegion}
@@ -155,6 +203,27 @@ export function MapScreen({ commute, today }: MapScreenProps) {
         >
           <Ionicons color={colors.accent} name="location" size={44} />
         </Marker>
+        {riders.map((rider) => (
+          <Fragment key={rider.id}>
+            <Circle
+              center={rider.approximateArea.center}
+              fillColor="rgba(153, 0, 0, 0.14)"
+              radius={rider.approximateArea.radiusMiles * METERS_PER_MILE}
+              strokeColor={colors.accent}
+              strokeWidth={2}
+            />
+            <Marker
+              accessibilityLabel={`${rider.name}, approximate area`}
+              coordinate={rider.approximateArea.center}
+              description="Approximate area"
+              title={rider.name}
+            >
+              <View style={styles.riderMarker}>
+                <Ionicons color={colors.accent} name="person" size={18} />
+              </View>
+            </Marker>
+          </Fragment>
+        ))}
       </MapView>
 
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -258,5 +327,20 @@ const styles = StyleSheet.create({
   },
   recenterPressed: {
     opacity: 0.7,
+  },
+  riderMarker: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.accent,
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    elevation: 2,
+    height: 34,
+    justifyContent: 'center',
+    shadowColor: '#17212b',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.14,
+    shadowRadius: 5,
+    width: 34,
   },
 });
