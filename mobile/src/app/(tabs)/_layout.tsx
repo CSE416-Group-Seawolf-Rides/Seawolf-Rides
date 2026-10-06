@@ -25,10 +25,11 @@ function tabIcon(selected: IconName, unselected: IconName) {
   };
 }
 
-// Four destinations, modeled on ride apps (Home, Activity, Account) plus the carpool
+// Five destinations, modeled on ride apps (Home, Activity, Map, Account) plus the carpool
 // inbox that drivers and riders need to coordinate pickups:
 // - Home: your next ride, your week, and what needs doing (requests, matches).
 // - Rides: everything already in motion — dated trips, requests in flight, and history.
+// - Map: a placeholder for the future map experience.
 // - Inbox: conversations with matched drivers and riders.
 // - Account: profile, commute role, and sign-out.
 function TabsNavigator() {
@@ -62,6 +63,10 @@ function TabsNavigator() {
       <Tabs.Screen
         name="rides"
         options={{ title: 'Rides', tabBarIcon: tabIcon('calendar-clear', 'calendar-clear-outline') }}
+      />
+      <Tabs.Screen
+        name="map"
+        options={{ title: 'Map', tabBarIcon: tabIcon('map', 'map-outline') }}
       />
       <Tabs.Screen
         name="inbox"
