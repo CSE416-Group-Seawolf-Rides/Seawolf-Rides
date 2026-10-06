@@ -8,9 +8,11 @@ import type { CommuteSchedule, Weekday } from '../commute/commuteModel';
 import {
   dayModeLabels,
   formatTime,
+  lotTitle,
   METERS_PER_MILE,
   weekdays,
 } from '../commute/commuteModel';
+import { getCampusDestinationMapLocation } from '../map/campusDestinations';
 import type { RiderMapCandidate } from '../map/riderMapModel';
 import { colors, radii, spacing } from '../theme';
 
@@ -62,6 +64,12 @@ function TodayCommuteCard({
           </Text>
         </>
       )}
+      {commute ? (
+        <View style={styles.scheduleDestination}>
+          <Text style={styles.scheduleDestinationLabel}>Destination</Text>
+          <Text style={styles.scheduleDestinationValue}>{lotTitle(commute.campusLot)}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -73,6 +81,9 @@ export function MapScreen({ commute, riders, today }: MapScreenProps) {
   const [status, setStatus] = useState<MapStatus>('loading');
   const [initialRegion, setInitialRegion] = useState<Region | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const campusDestination = commute
+    ? getCampusDestinationMapLocation(commute.campusLot)
+    : null;
 
   useEffect(() => {
     let active = true;
@@ -203,6 +214,18 @@ export function MapScreen({ commute, riders, today }: MapScreenProps) {
         >
           <Ionicons color={colors.accent} name="location" size={44} />
         </Marker>
+        {campusDestination ? (
+          <Marker
+            accessibilityLabel={`${campusDestination.title}, your destination`}
+            coordinate={campusDestination.coordinate}
+            description="Your destination"
+            title={campusDestination.title}
+          >
+            <View style={styles.destinationMarker}>
+              <Ionicons color={colors.surface} name="flag" size={18} />
+            </View>
+          </Marker>
+        ) : null}
         {riders.map((rider) => (
           <Fragment key={rider.id}>
             <Circle
@@ -307,6 +330,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 19,
   },
+  scheduleDestination: {
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  scheduleDestinationLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  scheduleDestinationValue: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 19,
+    maxWidth: 150,
+  },
   recenterButton: {
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -327,6 +369,21 @@ const styles = StyleSheet.create({
   },
   recenterPressed: {
     opacity: 0.7,
+  },
+  destinationMarker: {
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    borderColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 2,
+    elevation: 3,
+    height: 36,
+    justifyContent: 'center',
+    shadowColor: '#17212b',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    width: 36,
   },
   riderMarker: {
     alignItems: 'center',
