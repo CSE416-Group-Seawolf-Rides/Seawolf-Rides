@@ -138,6 +138,7 @@ Firebase's `EXPO_PUBLIC_*` values are public client configuration embedded in th
 
 - [M1 proposal and requirements](docs/requirements.md)
 - [M2 design](docs/design.md)
+- [M3 routing provider comparison](docs/routing-provider-comparison.md)
 - [Editable architecture diagram](docs/architecture.mmd)
 - [CI/CD and merge protection](docs/ci-cd.md)
 
