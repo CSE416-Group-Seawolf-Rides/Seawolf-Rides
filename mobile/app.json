@@ -29,7 +29,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Seawolf Rides uses your location once to set your approximate starting area. Your exact location is never saved or shared."
+          "locationWhenInUsePermission": "Seawolf Rides uses your location to show your position on the map and set your approximate starting area. Your exact location is never saved or shared."
         }
       ],
       "@react-native-community/datetimepicker"
