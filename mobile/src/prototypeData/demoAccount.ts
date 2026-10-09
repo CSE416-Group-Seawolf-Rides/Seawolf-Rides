@@ -1,20 +1,13 @@
-import type { AuthUser } from '../auth/authService';
 import { type CommuteSchedule, toPrivacyArea } from '../commute/commuteModel';
-import type { OnboardingProfile } from '../onboarding/onboardingModel';
 import type { IncomingRequest, OutgoingRequest, RiderRequest } from '../rides/rideModel';
 
-// Frontend-only M2 demo account. Until accounts are stored in a database, anyone who
-// signs in (instead of registering) is treated as this returning commuter, so every
-// screen has something real-looking to show. New registrations still start empty.
+// Frontend-only M2 fixtures retained for model tests. Real signed-in accounts do not
+// receive this profile, commute, history, or ride state.
 
 // "wolfie.seawolf@stonybrook.edu" → "Wolfie"; "jdoe42@…" → "Jdoe".
 export function firstNameFromEmail(email: string): string {
   const token = email.split('@')[0].split(/[._\-+\d]/).find(Boolean) ?? '';
   return token ? token.charAt(0).toUpperCase() + token.slice(1).toLowerCase() : 'there';
-}
-
-export function demoProfileFor(user: AuthUser): OnboardingProfile {
-  return { firstName: firstNameFromEmail(user.email), role: 'both' };
 }
 
 // Rides on Mon/Wed/Fri, drives Tue/Thu. The start is stored as a 2-mile privacy

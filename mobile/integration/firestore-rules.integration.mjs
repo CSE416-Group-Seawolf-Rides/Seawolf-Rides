@@ -15,6 +15,15 @@ import { loadUserData, saveUserData } from '../src/persistence/userDataRepositor
 const projectId = 'demo-seawolf-rides';
 let environment;
 
+const verifiedStonyBrookToken = {
+  email: 'wolfie@stonybrook.edu',
+  email_verified: true,
+};
+
+function authenticatedUser(uid, token = verifiedStonyBrookToken) {
+  return environment.authenticatedContext(uid, token).firestore();
+}
+
 const profile = {
   schemaVersion: 1,
   firstName: 'Wolfie',
@@ -54,8 +63,11 @@ after(async () => {
 });
 
 test('only the authenticated owner can read or write a profile', async () => {
-  const owner = environment.authenticatedContext('wolfie').firestore();
-  const otherUser = environment.authenticatedContext('seawolf').firestore();
+  const owner = authenticatedUser('wolfie');
+  const otherUser = authenticatedUser('seawolf', {
+    email: 'seawolf@stonybrook.edu',
+    email_verified: true,
+  });
   const guest = environment.unauthenticatedContext().firestore();
   const ownerProfile = doc(owner, 'users/wolfie');
 
@@ -66,9 +78,37 @@ test('only the authenticated owner can read or write a profile', async () => {
   await assertFails(setDoc(doc(otherUser, 'users/wolfie'), profile));
 });
 
+test('unverified and non-Stony Brook accounts cannot access user data', async () => {
+  const verifiedOwner = authenticatedUser('wolfie');
+  const unverifiedOwner = authenticatedUser('wolfie', {
+    email: 'wolfie@stonybrook.edu',
+    email_verified: false,
+  });
+  const outsideOwner = authenticatedUser('wolfie', {
+    email: 'wolfie@example.com',
+    email_verified: true,
+  });
+  const lookalikeDomainOwner = authenticatedUser('wolfie', {
+    email: 'wolfie@stonybrook.edu.example.com',
+    email_verified: true,
+  });
+  const profilePath = 'users/wolfie';
+
+  await assertSucceeds(setDoc(doc(verifiedOwner, profilePath), profile));
+  await assertFails(getDoc(doc(unverifiedOwner, profilePath)));
+  await assertFails(getDoc(doc(outsideOwner, profilePath)));
+  await assertFails(getDoc(doc(lookalikeDomainOwner, profilePath)));
+  await assertFails(setDoc(doc(unverifiedOwner, profilePath), profile));
+  await assertFails(setDoc(doc(outsideOwner, profilePath), profile));
+  await assertFails(setDoc(doc(lookalikeDomainOwner, profilePath), profile));
+});
+
 test('commutes are owner-only and must keep the matching owner id', async () => {
-  const owner = environment.authenticatedContext('wolfie').firestore();
-  const otherUser = environment.authenticatedContext('seawolf').firestore();
+  const owner = authenticatedUser('wolfie');
+  const otherUser = authenticatedUser('seawolf', {
+    email: 'seawolf@stonybrook.edu',
+    email_verified: true,
+  });
   const ownerCommute = doc(owner, 'users/wolfie/commutes/primary');
 
   await assertSucceeds(setDoc(ownerCommute, commute));
@@ -78,7 +118,7 @@ test('commutes are owner-only and must keep the matching owner id', async () => 
 });
 
 test('the persistence repository round-trips an owner profile and primary commute', async () => {
-  const owner = environment.authenticatedContext('wolfie').firestore();
+  const owner = authenticatedUser('wolfie');
   const domainProfile = { firstName: 'Wolfie', role: 'both' };
   const domainCommute = {
     startArea: toPrivacyArea(

@@ -1,5 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Alert } from 'react-native';
 
 import { useSession } from '../auth/SessionProvider';
 import { buildCommuteSchedule } from './commuteModel';
@@ -17,10 +18,14 @@ export function useCommuteEdit() {
 
   return {
     editing: edit === '1',
-    saveEdit: () => {
-      saveCommute(buildCommuteSchedule(draft, role));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+    saveEdit: async () => {
+      try {
+        await saveCommute(buildCommuteSchedule(draft, role));
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.back();
+      } catch {
+        Alert.alert('Couldn’t save your commute', 'Check your connection and try again.');
+      }
     },
   };
 }

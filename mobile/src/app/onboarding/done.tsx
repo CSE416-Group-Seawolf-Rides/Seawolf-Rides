@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '../../auth/SessionProvider';
 import { AppButton } from '../../components/AppButton';
@@ -16,6 +16,20 @@ export default function OnboardingDoneRoute() {
   const { commute, completeOnboarding } = useSession();
   const profile = useMemo(() => buildOnboardingProfile(draft), [draft]);
   const [pop] = useState(() => new Animated.Value(0));
+  const [saving, setSaving] = useState(false);
+
+  async function finishOnboarding() {
+    setSaving(true);
+    try {
+      await completeOnboarding(profile);
+    } catch {
+      setSaving(false);
+      Alert.alert(
+        'Couldn’t save your profile',
+        'Check your connection and try again. Your answers are still here.',
+      );
+    }
+  }
 
   // Finishing onboarding is a rare, first-time moment, so it earns a little delight.
   useEffect(() => {
@@ -73,7 +87,11 @@ export default function OnboardingDoneRoute() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <AppButton label="Start exploring" onPress={() => completeOnboarding(profile)} />
+        <AppButton
+          disabled={saving}
+          label={saving ? 'Saving…' : 'Start exploring'}
+          onPress={finishOnboarding}
+        />
       </View>
     </View>
   );

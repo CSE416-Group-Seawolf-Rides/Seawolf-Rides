@@ -1,4 +1,11 @@
-import { FirebaseOptions, getApp, getApps, initializeApp } from 'firebase/app';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FirebaseApp, FirebaseOptions, getApp, getApps, initializeApp } from 'firebase/app';
+import {
+  Auth,
+  getAuth,
+  getReactNativePersistence,
+  initializeAuth,
+} from 'firebase/auth';
 import { Firestore, getFirestore } from 'firebase/firestore';
 
 const firebaseConfig: FirebaseOptions = {
@@ -31,8 +38,40 @@ function validateFirebaseConfig(): FirebaseOptions {
   return firebaseConfig;
 }
 
+function getFirebaseApp(): FirebaseApp {
+  return getApps().length > 0 ? getApp() : initializeApp(validateFirebaseConfig());
+}
+
+let firebaseAuth: Auth | null = null;
+
+export function getFirebaseAuth(): Auth {
+  if (firebaseAuth) {
+    return firebaseAuth;
+  }
+
+  const app = getFirebaseApp();
+  try {
+    firebaseAuth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch (error) {
+    // Fast refresh can preserve Firebase's app while reloading this module.
+    // In that case Auth is already configured and can be reused safely.
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'auth/already-initialized'
+    ) {
+      firebaseAuth = getAuth(app);
+    } else {
+      throw error;
+    }
+  }
+
+  return firebaseAuth;
+}
+
 export function getFirebaseFirestore(): Firestore {
-  const config = validateFirebaseConfig();
-  const app = getApps().length > 0 ? getApp() : initializeApp(config);
-  return getFirestore(app);
+  return getFirestore(getFirebaseApp());
 }

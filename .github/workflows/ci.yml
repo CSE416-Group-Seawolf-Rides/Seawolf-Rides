@@ -100,6 +100,9 @@ jobs:
       - name: Run unit tests
         run: npm run test
 
+      - name: Test Firebase Authentication
+        run: npm run test:firebase-auth
+
       - name: Test Firestore security rules
         run: npm run test:firestore-rules
 
