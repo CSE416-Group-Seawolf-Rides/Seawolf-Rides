@@ -97,6 +97,7 @@ After the initial `mobile/npm ci`, common commands can be run from the repositor
 | `npm run lint` | Run Expo's ESLint configuration |
 | `npm run typecheck` | Run TypeScript with `noEmit` |
 | `npm run test` | Run the Node.js automated tests |
+| `npm run test:firestore-rules` | Run owner-access Firestore rules tests in the local emulator |
 | `npm run build` | Export a local Android JavaScript bundle as a non-publishing CI check |
 
 The corresponding scripts also work from `mobile/` (`npm run start`, `npm run lint`, and so on). The build script is an Expo export check, not an EAS cloud build or signed app-store build.
@@ -133,6 +134,18 @@ EXPO_PUBLIC_FIREBASE_APP_ID=
 ```
 
 Firebase's `EXPO_PUBLIC_*` values are public client configuration embedded in the application bundle; they are not private server secrets. Do not commit `mobile/.env`. Private API secrets, administrative credentials, and unrestricted server-side keys must remain outside the mobile application and will be designed with the future trusted backend.
+
+### M3 persistence foundation
+
+The versioned Firestore rules keep each authenticated user's profile and primary
+commute owner-only at `users/{uid}` and `users/{uid}/commutes/primary`. The typed
+repository in `mobile/src/persistence/` validates data at the application boundary.
+Run `npm run test:firestore-rules` to verify owner access, cross-user denial, and a
+profile/commute round trip against the local Firestore emulator.
+
+The current authentication flow is still simulated, so the UI does not write this
+data to production Firestore yet. Connect the repository only after Firebase
+Authentication supplies a real UID; do not open the rules for unauthenticated writes.
 
 ## Documentation
 

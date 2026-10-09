@@ -26,6 +26,7 @@
     "react-native-svg": "15.15.4"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
     "@types/react": "~19.2.2",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.2",
@@ -41,6 +42,7 @@
     "lint": "expo lint .",
     "typecheck": "tsc --noEmit",
     "test": "node --import ./scripts/node-test/register-ts-resolver.mjs --test",
+    "test:firestore-rules": "npx --yes firebase-tools@15.33.0 emulators:exec --config ../firebase.json --only firestore --project demo-seawolf-rides \"node --import ./scripts/node-test/register-ts-resolver.mjs --test integration/firestore-rules.integration.mjs\"",
     "build": "expo export --platform android --output-dir dist"
   },
   "private": true
