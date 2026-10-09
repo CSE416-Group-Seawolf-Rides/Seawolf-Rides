@@ -429,6 +429,15 @@ export interface Trip extends TripDate {
   offer?: DriverOffer;
   riders?: IncomingRequest[];
   seats?: number;
+  // Optional exact points agreed by participants. Current fixtures contain only
+  // descriptive pickup text, so the Map must not synthesize these coordinates.
+  routingPoints?: {
+    confirmed: true;
+    start: { coordinate: { latitude: number; longitude: number }; label: string };
+    /** Confirmed pickup/drop-off order between the ride start and final destination. */
+    stops?: { coordinate: { latitude: number; longitude: number }; label: string }[];
+    destination: { coordinate: { latitude: number; longitude: number }; label: string };
+  };
 }
 
 // A day the user needs a ride but has no driver yet.

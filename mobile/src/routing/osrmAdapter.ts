@@ -3,6 +3,8 @@ import {
   type RoadRoute,
   type RouteCoordinate,
   type RouteRequestOptions,
+  type RouteLeg,
+  type RouteStep,
   type RoutingAdapter,
   type RoutingResult,
   type SnappedWaypoint,
@@ -38,6 +40,23 @@ interface OsrmRoute {
   distance?: unknown;
   duration?: unknown;
   geometry?: unknown;
+  legs?: unknown;
+}
+
+interface OsrmLeg {
+  distance?: unknown;
+  duration?: unknown;
+  summary?: unknown;
+  steps?: unknown;
+}
+
+interface OsrmStep {
+  distance?: unknown;
+  duration?: unknown;
+  geometry?: unknown;
+  maneuver?: unknown;
+  name?: unknown;
+  ref?: unknown;
 }
 
 interface OsrmResponse {
@@ -110,6 +129,78 @@ function parseWaypoints(
   return parsed.some((waypoint) => waypoint === null) ? null : (parsed as SnappedWaypoint[]);
 }
 
+function optionalBearing(value: unknown): number | null | undefined {
+  if (value === undefined) return null;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value < 360
+    ? value
+    : undefined;
+}
+
+function parseStep(value: unknown): RouteStep | null {
+  if (!value || typeof value !== 'object') return null;
+  const step = value as OsrmStep;
+  if (
+    !finiteNonnegative(step.distance) ||
+    !finiteNonnegative(step.duration) ||
+    typeof step.name !== 'string' ||
+    (step.ref !== undefined && typeof step.ref !== 'string') ||
+    !step.maneuver || typeof step.maneuver !== 'object'
+  ) return null;
+  const maneuver = step.maneuver as Record<string, unknown>;
+  const geometry = parseGeometry(step.geometry);
+  const location = parsePair(maneuver.location);
+  const bearingBefore = optionalBearing(maneuver.bearing_before);
+  const bearingAfter = optionalBearing(maneuver.bearing_after);
+  const exit = maneuver.exit === undefined
+    ? null
+    : Number.isInteger(maneuver.exit) && (maneuver.exit as number) > 0
+      ? maneuver.exit as number
+      : undefined;
+  if (
+    !geometry || !location || typeof maneuver.type !== 'string' || maneuver.type.length === 0 ||
+    (maneuver.modifier !== undefined && typeof maneuver.modifier !== 'string') ||
+    bearingBefore === undefined || bearingAfter === undefined || exit === undefined
+  ) return null;
+  return {
+    distanceMeters: step.distance,
+    durationSeconds: step.duration,
+    geometry,
+    maneuver: {
+      type: maneuver.type,
+      modifier: typeof maneuver.modifier === 'string' ? maneuver.modifier : null,
+      location,
+      bearingBefore,
+      bearingAfter,
+      exit,
+    },
+    name: step.name,
+    reference: step.ref ?? '',
+  };
+}
+
+function parseLegs(value: unknown, expectedCount: number): RouteLeg[] | null {
+  if (!Array.isArray(value) || value.length !== expectedCount) return null;
+  const legs = value.map((raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const leg = raw as OsrmLeg;
+    if (
+      !finiteNonnegative(leg.distance) ||
+      !finiteNonnegative(leg.duration) ||
+      typeof leg.summary !== 'string' ||
+      !Array.isArray(leg.steps) || leg.steps.length === 0
+    ) return null;
+    const steps = leg.steps.map(parseStep);
+    if (steps.some((step) => step === null)) return null;
+    return {
+      distanceMeters: leg.distance,
+      durationSeconds: leg.duration,
+      summary: leg.summary,
+      steps: steps as RouteStep[],
+    };
+  });
+  return legs.some((leg) => leg === null) ? null : legs as RouteLeg[];
+}
+
 function mapSuccessfulResponse(
   body: OsrmResponse,
   inputs: readonly RouteCoordinate[],
@@ -121,11 +212,13 @@ function mapSuccessfulResponse(
   const rawRoute = body.routes[0] as OsrmRoute;
   const geometry = parseGeometry(rawRoute?.geometry);
   const snappedWaypoints = parseWaypoints(body.waypoints, inputs);
+  const legs = parseLegs(rawRoute?.legs, inputs.length - 1);
   if (
     !finiteNonnegative(rawRoute?.distance) ||
     !finiteNonnegative(rawRoute?.duration) ||
     !geometry ||
-    !snappedWaypoints
+    !snappedWaypoints ||
+    !legs
   ) {
     return failure('MALFORMED_RESPONSE', 'OSRM returned malformed route data.', true);
   }
@@ -136,6 +229,7 @@ function mapSuccessfulResponse(
     durationSeconds: rawRoute.duration,
     provider: { id: 'osrm', name: 'OSRM', baseUrl },
     snappedWaypoints,
+    legs,
   };
   return { status: 'SUCCESS', route };
 }
@@ -167,7 +261,7 @@ export function createOsrmRoutingAdapter(options: OsrmAdapterOptions = {}): Rout
       const coordinatePath = coordinates
         .map(({ latitude, longitude }) => `${longitude},${latitude}`)
         .join(';');
-      const url = `${baseUrl}/route/v1/driving/${coordinatePath}?overview=full&geometries=geojson&steps=false`;
+      const url = `${baseUrl}/route/v1/driving/${coordinatePath}?overview=full&geometries=geojson&steps=true`;
       const controller = new AbortController();
       let timedOut = false;
       const cancelForCaller = () => controller.abort();

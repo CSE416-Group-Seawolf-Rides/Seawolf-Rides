@@ -15,6 +15,14 @@ interface RouteMapProps {
   start: RouteCoordinate | null;
 }
 
+interface RoadRouteLayersProps {
+  destination: RouteCoordinate | null;
+  destinationTitle?: string;
+  route: RoadRoute | null;
+  start: RouteCoordinate | null;
+  startTitle?: string;
+}
+
 const STONY_BROOK_REGION = {
   latitude: 40.9128,
   longitude: -73.1235,
@@ -55,30 +63,42 @@ export function RouteMap({
         style={StyleSheet.absoluteFill}
         toolbarEnabled={false}
       >
-        {route && (
-          <Polyline
-            coordinates={route.geometry}
-            lineCap="round"
-            lineJoin="round"
-            strokeColor={colors.accent}
-            strokeWidth={5}
-          />
-        )}
-        {start && <Marker coordinate={start} pinColor={colors.success} title="Selected start" />}
-        {destination && (
-          <Marker coordinate={destination} pinColor={colors.error} title="Selected destination" />
-        )}
-        {route?.snappedWaypoints.map((waypoint, index) => (
-          <Marker
-            coordinate={waypoint.snapped}
-            description={`${waypoint.distanceMeters.toFixed(1)} m from the selected point`}
-            key={`snapped-${index}`}
-            pinColor={colors.warning}
-            title={`Snapped ${index === 0 ? 'start' : index === route.snappedWaypoints.length - 1 ? 'destination' : `waypoint ${index + 1}`}`}
-          />
-        ))}
+        <RoadRouteLayers destination={destination} route={route} start={start} />
       </MapView>
     </View>
+  );
+}
+
+export function RoadRouteLayers({
+  destination,
+  destinationTitle = 'Selected destination',
+  route,
+  start,
+  startTitle = 'Selected start',
+}: RoadRouteLayersProps) {
+  return (
+    <>
+      {route && (
+        <Polyline
+          coordinates={route.geometry}
+          lineCap="round"
+          lineJoin="round"
+          strokeColor={colors.accent}
+          strokeWidth={5}
+        />
+      )}
+      {start && <Marker coordinate={start} pinColor={colors.success} title={startTitle} />}
+      {destination && <Marker coordinate={destination} pinColor={colors.error} title={destinationTitle} />}
+      {route?.snappedWaypoints.map((waypoint, index) => (
+        <Marker
+          coordinate={waypoint.snapped}
+          description={`${waypoint.distanceMeters.toFixed(1)} m from the selected point`}
+          key={`snapped-${index}`}
+          pinColor={colors.warning}
+          title={`Snapped ${index === 0 ? 'start' : index === route.snappedWaypoints.length - 1 ? 'destination' : `waypoint ${index + 1}`}`}
+        />
+      ))}
+    </>
   );
 }
 

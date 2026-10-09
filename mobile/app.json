@@ -8,9 +8,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.seawolfrides.mobile"
     },
     "android": {
+      "package": "com.seawolfrides.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -29,10 +31,21 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Seawolf Rides uses your location to show your position on the map and set your approximate starting area. Your exact location is never saved or shared."
+          "locationWhenInUsePermission": "Seawolf Rides uses your location while the app is open to select a route start and provide navigation. Your exact location is not saved as your home location."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24
+          },
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ]
     ]
   }
 }

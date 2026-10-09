@@ -27,6 +27,30 @@ function successfulBody() {
             [-73.1305, 40.9131],
           ],
         },
+        legs: [
+          {
+            distance: 2350.4,
+            duration: 362.8,
+            summary: 'Stony Brook Road, Circle Road',
+            steps: [
+              {
+                distance: 900,
+                duration: 120,
+                name: 'Stony Brook Road',
+                ref: 'NY 25A',
+                geometry: { type: 'LineString', coordinates: [[-73.1285, 40.9204], [-73.129, 40.917]] },
+                maneuver: { type: 'depart', bearing_before: 0, bearing_after: 180, location: [-73.1285, 40.9204] },
+              },
+              {
+                distance: 1450.4,
+                duration: 242.8,
+                name: 'Circle Road',
+                geometry: { type: 'LineString', coordinates: [[-73.129, 40.917], [-73.1305, 40.9131]] },
+                maneuver: { type: 'turn', modifier: 'right', bearing_before: 180, bearing_after: 220, location: [-73.129, 40.917] },
+              },
+            ],
+          },
+        ],
       },
     ],
     waypoints: [
@@ -58,6 +82,7 @@ test('maps a successful OSRM response and preserves snapped waypoints', async ()
   assert.equal(result.status, 'SUCCESS');
   assert.match(requestedUrl, /-73\.12844,40\.92047;-73\.1304816,40\.9130574/);
   assert.match(requestedUrl, /geometries=geojson/);
+  assert.match(requestedUrl, /steps=true/);
   assert.equal(result.route.distanceMeters, 2350.4);
   assert.equal(result.route.durationSeconds, 362.8);
   assert.equal(result.route.provider.id, 'osrm');
@@ -68,6 +93,12 @@ test('maps a successful OSRM response and preserves snapped waypoints', async ()
     distanceMeters: 8.2,
     name: 'Stony Brook Road',
   });
+  assert.equal(result.route.legs[0].summary, 'Stony Brook Road, Circle Road');
+  assert.deepEqual(result.route.legs[0].steps[1].maneuver, {
+    type: 'turn', modifier: 'right', location: { latitude: 40.917, longitude: -73.129 },
+    bearingBefore: 180, bearingAfter: 220, exit: null,
+  });
+  assert.equal(result.route.legs[0].steps[1].name, 'Circle Road');
 });
 
 test('rejects too few or invalid ordered waypoints before calling the provider', async () => {
@@ -120,6 +151,8 @@ test('rejects malformed successful responses instead of drawing fallback geometr
     {},
     { ...successfulBody(), routes: [{ distance: 1, duration: 2, geometry: 'polyline' }] },
     { ...successfulBody(), waypoints: [] },
+    { ...successfulBody(), routes: [{ ...successfulBody().routes[0], legs: [] }] },
+    { ...successfulBody(), routes: [{ ...successfulBody().routes[0], legs: [{ ...successfulBody().routes[0].legs[0], steps: [{ geometry: null }] }] }] },
     { ...successfulBody(), routes: [{ ...successfulBody().routes[0], duration: Number.NaN }] },
   ];
   for (const body of cases) {

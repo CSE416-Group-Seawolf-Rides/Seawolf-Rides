@@ -16,6 +16,32 @@ export interface SnappedWaypoint {
   name: string;
 }
 
+export interface RouteManeuver {
+  /** OSRM may add maneuver identifiers; consumers must provide a generic fallback. */
+  type: string;
+  modifier: string | null;
+  location: RouteCoordinate;
+  bearingBefore: number | null;
+  bearingAfter: number | null;
+  exit: number | null;
+}
+
+export interface RouteStep {
+  distanceMeters: number;
+  durationSeconds: number;
+  geometry: RouteCoordinate[];
+  maneuver: RouteManeuver;
+  name: string;
+  reference: string;
+}
+
+export interface RouteLeg {
+  distanceMeters: number;
+  durationSeconds: number;
+  summary: string;
+  steps: RouteStep[];
+}
+
 export interface RoadRoute {
   /** Ordered road geometry in the same direction as the requested coordinates. */
   geometry: RouteCoordinate[];
@@ -23,6 +49,8 @@ export interface RoadRoute {
   durationSeconds: number;
   provider: RoutingProviderIdentity;
   snappedWaypoints: SnappedWaypoint[];
+  /** Ordered legs between each supplied waypoint, including typed guidance steps. */
+  legs: RouteLeg[];
 }
 
 export type RoutingFailureCode =
