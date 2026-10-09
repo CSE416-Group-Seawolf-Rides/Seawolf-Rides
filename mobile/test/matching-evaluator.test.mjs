@@ -4,62 +4,19 @@ import test from 'node:test';
 import { evaluatePair } from '../src/matching/evaluatePair.ts';
 import {
   availableStaticRoute,
+  createWorkedExampleInput,
   missingStaticRoute,
   unreachableStaticRoute,
-  workedExampleTravelEstimates,
+  workedExampleEpochSeconds,
 } from '../src/matching/fixtureTravel.ts';
 
-const at = (localTime) => Date.parse(`2026-10-12T${localTime}:00-04:00`) / 1000;
+const at = (localTime) => {
+  const [hour, minute] = localTime.split(':').map(Number);
+  return workedExampleEpochSeconds(hour, minute);
+};
 
 function baseInput() {
-  return {
-    driver: {
-      userId: 'driver-1',
-      occurrence: { localDate: '2026-10-12', direction: 'TO_CAMPUS' },
-      departureWindow: { earliest: at('08:00'), latest: at('08:15') },
-      campusArrivalWindow: { earliest: at('08:35'), latest: at('08:50') },
-      preferredDeparture: at('08:03'),
-      seatsRemaining: 2,
-      maxExtraDurationSeconds: 10 * 60,
-      maxExtraDurationRatio: 0.3,
-    },
-    rider: {
-      userId: 'rider-1',
-      occurrence: { localDate: '2026-10-12', direction: 'TO_CAMPUS' },
-      pickupWindow: { earliest: at('08:12'), latest: at('08:25') },
-      destinationArrivalWindow: { earliest: at('08:30'), latest: at('08:45') },
-      seatsRequested: 1,
-      accessWalkSeconds: 4 * 60,
-      egressWalkSeconds: 5 * 60,
-      maxAccessWalkSeconds: 8 * 60,
-      maxEgressWalkSeconds: 8 * 60,
-      maxExtraInVehicleSeconds: 5 * 60,
-    },
-    anchors: {
-      driverStart: {
-        coordinate: { latitude: 40.8687, longitude: -73.0773 },
-        accuracy: 'SELECTED_POINT',
-      },
-      riderPickup: {
-        coordinate: { latitude: 40.879, longitude: -73.09 },
-        accuracy: 'SELECTED_POINT',
-      },
-      campusDropoff: {
-        coordinate: { latitude: 40.9097, longitude: -73.127 },
-        accuracy: 'SELECTED_POINT',
-      },
-    },
-    facts: {
-      driverSkipped: false,
-      riderSkipped: false,
-      driverRoleConflict: false,
-      riderRoleConflict: false,
-      driverCommitmentConflict: false,
-      riderCommitmentConflict: false,
-    },
-    pickupServiceSeconds: 2 * 60,
-    travel: structuredClone(workedExampleTravelEstimates),
-  };
+  return createWorkedExampleInput();
 }
 
 test('evaluates the matching-plan worked example with an exact schedule', () => {

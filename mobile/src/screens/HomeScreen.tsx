@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '../components/Card';
+import { AppButton } from '../components/AppButton';
 import { Screen } from '../components/Screen';
 import { SetUpCommuteCard } from '../components/SetUpCommuteCard';
 import { CommuteSchedule, Weekday } from '../commute/commuteModel';
@@ -55,6 +56,8 @@ interface HomeScreenProps {
   onOpenTrip?: () => void;
   onMessageTrip?: () => void;
   onSetUpCommute: () => void;
+  onOpenMatchingDemo?: () => void;
+  onOpenRoutePlanner?: () => void;
 }
 
 // Home answers "what's next?" and "what needs me?" and stays about one screen tall:
@@ -84,6 +87,8 @@ export function HomeScreen({
   onOpenTrip,
   onMessageTrip,
   onSetUpCommute,
+  onOpenMatchingDemo,
+  onOpenRoutePlanner,
 }: HomeScreenProps) {
   const [chosenDay, setChosenDay] = useState<Weekday | null>(null);
   const [requesting, setRequesting] = useState<{ match: DriverMatch; day?: Weekday } | null>(null);
@@ -209,6 +214,40 @@ export function HomeScreen({
             statusFor={() => undefined}
           />
         </View>
+      )}
+
+      {__DEV__ && onOpenMatchingDemo && (
+        <Card style={styles.developerCard}>
+          <View style={styles.developerHeader}>
+            <Ionicons color={colors.accent} name="flask-outline" size={24} />
+            <View style={styles.developerCopy}>
+              <Text accessibilityRole="header" style={styles.developerTitle}>
+                Matching Demo
+              </Text>
+              <Text style={styles.developerBody}>
+                Run the pure feasibility evaluator with supplied fixture travel times.
+              </Text>
+            </View>
+          </View>
+          <AppButton label="Open Matching Demo" onPress={onOpenMatchingDemo} variant="secondary" />
+        </Card>
+      )}
+
+      {__DEV__ && onOpenRoutePlanner && (
+        <Card style={styles.developerCard}>
+          <View style={styles.developerHeader}>
+            <Ionicons color={colors.accent} name="navigate-outline" size={24} />
+            <View style={styles.developerCopy}>
+              <Text accessibilityRole="header" style={styles.developerTitle}>
+                Route Planner
+              </Text>
+              <Text style={styles.developerBody}>
+                Select two public test points and inspect an OSRM driving route.
+              </Text>
+            </View>
+          </View>
+          <AppButton label="Open Route Planner" onPress={onOpenRoutePlanner} variant="secondary" />
+        </Card>
       )}
 
       <Text style={styles.demoNote}>
@@ -379,6 +418,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  developerCard: {
+    gap: spacing.md,
+  },
+  developerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  developerCopy: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  developerTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  developerBody: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
   },
   demoNote: {
     color: colors.textMuted,

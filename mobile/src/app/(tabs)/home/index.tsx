@@ -63,6 +63,8 @@ export default function HomeRoute() {
       greeting={`${greeting}, ${profile?.firstName ?? 'there'}`}
       nextTrip={nextTrip}
       onMessageTrip={chatId ? () => router.navigate(`/inbox/${chatId}`, { withAnchor: true }) : undefined}
+      onOpenMatchingDemo={__DEV__ ? () => router.push('/home/matching-demo') : undefined}
+      onOpenRoutePlanner={__DEV__ ? () => router.push('/home/route-planner') : undefined}
       onOpenOffer={(offerId) => router.push(`/home/driver/${offerId}`)}
       onOpenTrip={nextTrip ? () => router.navigate(`/rides/${nextTrip.id}`, { withAnchor: true }) : undefined}
       onPressDay={(day) => {
