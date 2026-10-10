@@ -1,0 +1,95 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isVerifiedStonyBrookUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('.*@stonybrook[.]edu$');
+    }
+
+    function owns(userId) {
+      return isVerifiedStonyBrookUser() && request.auth.uid == userId;
+    }
+
+    function validProfile() {
+      return request.resource.data.keys().hasOnly([
+          'schemaVersion',
+          'firstName',
+          'role',
+          'updatedAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.firstName is string
+        && request.resource.data.firstName.size() > 0
+        && request.resource.data.firstName.size() <= 80
+        && request.resource.data.role in ['driver', 'rider', 'both']
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validPrivacyArea() {
+      return request.resource.data.startArea is map
+        && request.resource.data.startArea.keys().hasOnly(['center', 'radiusMiles', 'label'])
+        && request.resource.data.startArea.center is map
+        && request.resource.data.startArea.center.keys().hasOnly(['latitude', 'longitude'])
+        && request.resource.data.startArea.center.latitude is number
+        && request.resource.data.startArea.center.latitude >= -90
+        && request.resource.data.startArea.center.latitude <= 90
+        && request.resource.data.startArea.center.longitude is number
+        && request.resource.data.startArea.center.longitude >= -180
+        && request.resource.data.startArea.center.longitude <= 180
+        && request.resource.data.startArea.radiusMiles == 2
+        && request.resource.data.startArea.label is string
+        && request.resource.data.startArea.label.size() > 0
+        && request.resource.data.startArea.label.size() <= 120;
+    }
+
+    function validCommute(userId) {
+      return request.resource.data.keys().hasOnly([
+          'schemaVersion',
+          'ownerId',
+          'startArea',
+          'campusLot',
+          'days',
+          'seats',
+          'updatedAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.ownerId == userId
+        && validPrivacyArea()
+        && request.resource.data.campusLot in [
+          'westSide',
+          'eastSide',
+          'tabler',
+          'roth',
+          'lot40',
+          'other'
+        ]
+        && request.resource.data.days is list
+        && request.resource.data.days.size() > 0
+        && request.resource.data.days.size() <= 7
+        && (!request.resource.data.keys().hasAny(['seats'])
+          || (request.resource.data.seats is int
+            && request.resource.data.seats >= 1
+            && request.resource.data.seats <= 6))
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    // Temporary M2 heartbeat. It remains read-only and exposes no user document.
+    match /commutes/{commuteId} {
+      allow read: if commuteId == 'sample-commute-001';
+      allow write: if false;
+    }
+
+    match /users/{userId} {
+      allow read, delete: if owns(userId);
+      allow create, update: if owns(userId) && validProfile();
+
+      match /commutes/{commuteId} {
+        allow read, delete: if owns(userId);
+        allow create, update: if owns(userId) && validCommute(userId);
+      }
+    }
+  }
+}

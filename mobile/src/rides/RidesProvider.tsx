@@ -11,7 +11,6 @@ import {
 
 import { useSession } from '../auth/SessionProvider';
 import type { Weekday } from '../commute/commuteModel';
-import { demoIncoming, demoOutgoing } from '../prototypeData/demoAccount';
 import { riderRequestFixtures } from './rideFixtures';
 import {
   IncomingRequest,
@@ -42,16 +41,10 @@ const DEMO_DRIVER_RESPONSE_MS = 5000;
 
 // Frontend-only M2 state. Lives inside the signed-in tabs, so sign-out clears it.
 export function RidesProvider({ children }: PropsWithChildren) {
-  const { user, commute } = useSession();
-  // Returning (demo) users start mid-week; brand-new accounts start from scratch.
-  const returning = user !== null && !user.isNewUser;
-  const [outgoing, setOutgoing] = useState<OutgoingRequest[]>(() =>
-    returning ? demoOutgoing : [],
-  );
+  const { commute } = useSession();
+  const [outgoing, setOutgoing] = useState<OutgoingRequest[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>(() =>
-    returning
-      ? demoIncoming(riderRequestFixtures)
-      : riderRequestFixtures.map((request) => ({ ...request, status: 'pending' })),
+    riderRequestFixtures.map((request) => ({ ...request, status: 'pending' })),
   );
   const [skipped, setSkipped] = useState<string[]>([]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());

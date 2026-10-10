@@ -20,7 +20,7 @@ These are requirements, not claims of implemented functionality. Stripe cost sha
 
 ## Technology Stack
 
-The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.25, and TypeScript 6.0.3. Node.js 24.21.0 and npm are standardized for local development and CI. The M2 prototype uses the Firebase JavaScript SDK to read one restricted sample commute from Firestore; authentication, the final backend boundary, and a routing provider remain unresolved. Matching will begin with deterministic, independently testable rules rather than machine learning.
+The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.27, and TypeScript 6.0.3. Node.js 24.21.0 and npm are standardized for local development and CI. Firebase Authentication now provides verified Stony Brook identities, while Cloud Firestore stores each user's profile and primary commute. Matching and routing remain separate team work.
 
 ## Repository Structure
 
@@ -97,6 +97,8 @@ After the initial `mobile/npm ci`, common commands can be run from the repositor
 | `npm run lint` | Run Expo's ESLint configuration |
 | `npm run typecheck` | Run TypeScript with `noEmit` |
 | `npm run test` | Run the Node.js automated tests |
+| `npm run test:firebase-auth` | Run registration, verification, sign-in, and password-reset tests in the local Auth emulator |
+| `npm run test:firestore-rules` | Run owner-access Firestore rules tests in the local emulator |
 | `npm run build` | Export a local Android JavaScript bundle as a non-publishing CI check |
 
 The corresponding scripts also work from `mobile/` (`npm run start`, `npm run lint`, and so on). The build script is an Expo export check, not an EAS cloud build or signed app-store build.
@@ -115,7 +117,7 @@ Run `npm ci` whenever `mobile/package-lock.json` changes. To add an Expo or Reac
 
 ### Environment variables
 
-The M2 Firestore prototype requires six Firebase public client configuration values. From the repository root, create the ignored local file:
+Firebase Authentication and Firestore require six public client configuration values. From the repository root, create the ignored local file:
 
 ```bash
 cp mobile/.env.example mobile/.env
@@ -134,6 +136,27 @@ EXPO_PUBLIC_FIREBASE_APP_ID=
 
 Firebase's `EXPO_PUBLIC_*` values are public client configuration embedded in the application bundle; they are not private server secrets. Do not commit `mobile/.env`. Private API secrets, administrative credentials, and unrestricted server-side keys must remain outside the mobile application and will be designed with the future trusted backend.
 
+### Firebase Authentication and persistence
+
+In Firebase Console, initialize Authentication and enable the **Email/Password**
+provider before running the app. New users must register with an
+`@stonybrook.edu` address and follow Firebase's verification email before they can
+enter the application.
+
+Firebase Auth sessions use device storage and survive normal app relaunches. After
+sign-in, the app loads `users/{uid}` and `users/{uid}/commutes/primary`; onboarding
+and later commute edits write back to those paths. The versioned Firestore rules
+require the matching UID, a verified email claim, and the exact
+`@stonybrook.edu` domain. Run `npm run test:firestore-rules` to verify verified-owner
+access, unverified/outside-domain rejection, cross-user denial, and persistence
+round trips in the local emulator.
+
+Deploy the versioned rules before testing production writes:
+
+```bash
+npx firebase-tools deploy --only firestore:rules,firestore:indexes
+```
+
 ## Documentation
 
 - [M1 proposal and requirements](docs/requirements.md)
@@ -145,11 +168,11 @@ Firebase's `EXPO_PUBLIC_*` values are public client configuration embedded in th
 
 The project is in M2 (design and setup). The Expo app demonstrates the intended sign-in, onboarding, Home, Rides, Inbox, and Account experience and includes a tested Firestore repository for `commutes/sample-commute-001` (the read is no longer shown in the app's UI). The prototype has launched successfully on a physical iPhone using Expo Go, and GitHub Actions has completed successfully on `main` using `npm ci`, lint, type-check, tests, and the Expo export/build check.
 
-### M2 Prototype Scope
+### Current Scope
 
-- **Real:** `mobile/src/commutes/sampleCommuteRepository.ts` reads the restricted sample commute from Firestore using local public Firebase client configuration. It is covered by tests but no longer surfaced on a screen.
-- **Simulated locally:** sign-in (signing in, rather than registering, loads a demo returning commuter with a week already in progress), onboarding answers and the saved commute, driver matches and rider requests, ride request responses (drivers auto-accept after a few seconds in the demo), dated upcoming trips and skipped days, pickup spots, past-trip history, conversations, and locally appended messages are typed frontend fixtures or component state.
-- **Not implemented:** real authentication, real matching, routing, live traffic, persisted ride requests or chat, payments, and the M3 backend workflow.
+- **Real:** verified Firebase email/password registration and sign-in, password reset, persistent device sessions, owner-only Firestore profiles and primary commutes, and the restricted M2 sample read.
+- **Simulated locally:** driver offers, rider requests, request responses, dated trips, pickup spots, and conversations remain typed frontend fixtures or component state until their later milestone implementation.
+- **Not implemented here:** Google sign-in, matching/routing integration, live traffic, persisted ride requests or chat, payments, and the trusted matching backend.
 
 ## Team
 

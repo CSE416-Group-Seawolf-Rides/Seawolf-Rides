@@ -87,6 +87,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Set up Java for Firebase emulators
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -99,6 +105,12 @@ jobs:
 
       - name: Run unit tests
         run: npm run test
+
+      - name: Test Firebase Authentication
+        run: npm run test:firebase-auth
+
+      - name: Test Firestore security rules
+        run: npm run test:firestore-rules
 
   build:
     name: Build (Expo export)

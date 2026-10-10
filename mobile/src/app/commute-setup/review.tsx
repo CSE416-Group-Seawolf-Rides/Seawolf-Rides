@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { Alert } from 'react-native';
 
 import { useSession } from '../../auth/SessionProvider';
 import { buildCommuteSchedule } from '../../commute/commuteModel';
@@ -17,9 +18,13 @@ export default function CommuteSetupReviewRoute() {
   return (
     <ReviewStep
       onEdit={(step) => router.navigate(step === 'start' ? '/commute-setup' : `/commute-setup/${step}`)}
-      onSave={() => {
-        saveCommute(buildCommuteSchedule(draft, role));
-        close();
+      onSave={async () => {
+        try {
+          await saveCommute(buildCommuteSchedule(draft, role));
+          close();
+        } catch {
+          Alert.alert('Couldn’t save your commute', 'Check your connection and try again.');
+        }
       }}
       progress={getCommuteSetupProgress(role, 'review')}
       role={role}
