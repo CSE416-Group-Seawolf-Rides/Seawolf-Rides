@@ -5,6 +5,7 @@ import { Alert } from 'react-native';
 import { useSession } from '../../../auth/SessionProvider';
 import { buildCommuteSchedule, commuteToDraft } from '../../../commute/commuteModel';
 import { useCommuteRole } from '../../../commute/useCommuteRole';
+import { SavePendingError, saveErrorMessage } from '../../../persistence/saveCoordinator';
 import { AccountScreen } from '../../../screens/AccountScreen';
 
 export default function AccountRoute() {
@@ -31,8 +32,11 @@ export default function AccountRoute() {
             { firstName: profile?.firstName ?? '', role: nextRole },
             nextCommute,
           );
-        } catch {
-          Alert.alert('Couldn’t update your role', 'Check your connection and try again.');
+        } catch (error) {
+          Alert.alert(
+            error instanceof SavePendingError ? 'Save still pending' : 'Couldn’t update your role',
+            saveErrorMessage(error, 'Check your connection and try again.'),
+          );
         }
       }}
       onEditCommute={() => router.push('/commute-setup')}

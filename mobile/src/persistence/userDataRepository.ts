@@ -64,7 +64,6 @@ export async function saveUserData(
     batch.set(
       primaryCommuteDocument(database, userId),
       { ...toCommuteDocument(userId, commute), updatedAt: serverTimestamp() },
-      { merge: true },
     );
   }
   await batch.commit();
@@ -79,7 +78,6 @@ export async function savePrimaryCommute(
   batch.set(
     primaryCommuteDocument(database, userId),
     { ...toCommuteDocument(userId, commute), updatedAt: serverTimestamp() },
-    { merge: true },
   );
   await batch.commit();
 }

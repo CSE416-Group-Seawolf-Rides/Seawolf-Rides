@@ -151,6 +151,13 @@ require the matching UID, a verified email claim, and the exact
 access, unverified/outside-domain rejection, cross-user denial, and persistence
 round trips in the local emulator.
 
+Saves wait up to ten seconds for server confirmation before showing a recoverable
+"Save still pending" message. Onboarding keeps your answers and enables the button
+again. Retrying the same change waits on the original write; another change is
+blocked until that write succeeds or fails. When confirmation arrives, the active
+session updates even if the wait timed out. Keep the app open and reconnect to
+finish a pending save; unconfirmed writes are not guaranteed to survive a relaunch.
+
 Deploy the versioned rules before testing production writes:
 
 ```bash
