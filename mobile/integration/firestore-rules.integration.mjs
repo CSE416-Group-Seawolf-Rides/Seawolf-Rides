@@ -7,10 +7,11 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
+import { Timestamp, disableNetwork, doc, enableNetwork, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
 
-import { toPrivacyArea } from '../src/commute/commuteModel.ts';
-import { loadUserData, saveUserData } from '../src/persistence/userDataRepository.ts';
+import { buildCommuteSchedule, toPrivacyArea } from '../src/commute/commuteModel.ts';
+import { loadUserData, savePrimaryCommute, saveUserData } from '../src/persistence/userDataRepository.ts';
+import { SaveCoordinator, SavePendingError } from '../src/persistence/saveCoordinator.ts';
 
 const projectId = 'demo-seawolf-rides';
 let environment;
@@ -136,6 +137,88 @@ test('the persistence repository round-trips an owner profile and primary commut
     profile: domainProfile,
     commute: domainCommute,
   });
+});
+
+test('changing from driver to rider removes stored seats and reloads the updated role and commute', async () => {
+  const owner = authenticatedUser('wolfie');
+  const draft = {
+    startArea: toPrivacyArea({ latitude: 40.8646, longitude: -73.0818 }, 'Centereach area'),
+    campusLot: 'tabler',
+    days: [{ day: 'mon', mode: 'drive', arriveBy: 540, leaveAt: 1020 }],
+    seats: 6,
+  };
+  await saveUserData(owner, 'wolfie', { firstName: 'Wolfie', role: 'driver' }, buildCommuteSchedule(draft, 'driver'));
+
+  const riderProfile = { firstName: 'Wolfie', role: 'rider' };
+  const riderCommute = buildCommuteSchedule(draft, 'rider');
+  await saveUserData(owner, 'wolfie', riderProfile, riderCommute);
+
+  // Read through a fresh client as well as directly from the saved document.
+  assert.deepEqual(await loadUserData(authenticatedUser('wolfie'), 'wolfie'), {
+    profile: riderProfile,
+    commute: {
+      startArea: riderCommute.startArea,
+      campusLot: riderCommute.campusLot,
+      days: riderCommute.days,
+    },
+  });
+  const snapshot = await getDoc(doc(owner, 'users/wolfie/commutes/primary'));
+  assert.equal(Object.hasOwn(snapshot.data(), 'seats'), false);
+});
+
+test('saving an edited commute removes omitted seats without changing the profile', async () => {
+  const owner = authenticatedUser('wolfie');
+  const domainProfile = { firstName: 'Wolfie', role: 'both' };
+  const driverCommute = {
+    startArea: toPrivacyArea({ latitude: 40.8646, longitude: -73.0818 }, 'Centereach area'),
+    campusLot: 'tabler',
+    days: [{ day: 'mon', mode: 'drive', arriveBy: 540, leaveAt: 1020 }],
+    seats: 6,
+  };
+  await saveUserData(owner, 'wolfie', domainProfile, driverCommute);
+
+  const { seats: _seats, ...withoutSeats } = driverCommute;
+  const edited = { ...withoutSeats, days: [{ ...driverCommute.days[0], mode: 'ride' }] };
+  await savePrimaryCommute(owner, 'wolfie', edited);
+
+  assert.deepEqual(await loadUserData(authenticatedUser('wolfie'), 'wolfie'), {
+    profile: domainProfile,
+    commute: edited,
+  });
+  const snapshot = await getDoc(doc(owner, 'users/wolfie/commutes/primary'));
+  assert.equal(Object.hasOwn(snapshot.data(), 'seats'), false);
+});
+
+test('an offline save times out for the UI and applies once after reconnecting', async () => {
+  const owner = authenticatedUser('wolfie');
+  const coordinator = new SaveCoordinator(100);
+  const domainProfile = { firstName: 'Wolfie', role: 'rider' };
+  let completion;
+  let applied = 0;
+
+  await disableNetwork(owner);
+  try {
+    await assert.rejects(coordinator.run('profile', () => {
+      completion = saveUserData(owner, 'wolfie', domainProfile, null).then(() => {
+        applied += 1;
+      });
+      return completion;
+    }), SavePendingError);
+
+    assert.equal(applied, 0);
+    const cached = await getDocFromCache(doc(owner, 'users/wolfie'));
+    assert.equal(cached.metadata.hasPendingWrites, true);
+
+    await enableNetwork(owner);
+    await completion;
+    assert.equal(applied, 1);
+    assert.deepEqual(await loadUserData(authenticatedUser('wolfie'), 'wolfie'), {
+      profile: domainProfile,
+      commute: null,
+    });
+  } finally {
+    await owner.terminate();
+  }
 });
 
 test('the M2 sample stays publicly readable while other top-level commutes are denied', async () => {

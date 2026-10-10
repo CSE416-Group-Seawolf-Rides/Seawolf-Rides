@@ -13,6 +13,7 @@ import {
 import { CommuteSchedule } from '../commute/commuteModel';
 import { getFirebaseAuth, getFirebaseFirestore } from '../firebase/firebase';
 import { OnboardingProfile } from '../onboarding/onboardingModel';
+import { SaveCoordinator } from '../persistence/saveCoordinator';
 import {
   loadUserData,
   savePrimaryCommute,
@@ -47,9 +48,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<SessionStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const loadVersion = useRef(0);
+  const saves = useRef(new SaveCoordinator());
 
   const loadFirebaseUser = useCallback(async () => {
     const version = ++loadVersion.current;
+    saves.current = new SaveCoordinator();
     const firebaseUser = getFirebaseAuth().currentUser;
     setStatus('loading');
     setError(null);
@@ -114,9 +117,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
       if (!user) {
         throw new Error('Sign in before saving an account.');
       }
-      await saveUserData(getFirebaseFirestore(), user.id, nextProfile, nextCommute);
-      setProfile(nextProfile);
-      setCommute(nextCommute);
+      const version = loadVersion.current;
+      await saves.current.run(
+        JSON.stringify(['account', user.id, nextProfile, nextCommute]),
+        async () => {
+          await saveUserData(getFirebaseFirestore(), user.id, nextProfile, nextCommute);
+          if (version === loadVersion.current && getFirebaseAuth().currentUser?.uid === user.id) {
+            setProfile(nextProfile);
+            setCommute(nextCommute);
+          }
+        },
+      );
     },
     [commute, user],
   );
@@ -129,7 +140,14 @@ export function SessionProvider({ children }: PropsWithChildren) {
       // During first-time onboarding, hold the commute until the profile is
       // finalized so both documents can be committed together.
       if (profile) {
-        await savePrimaryCommute(getFirebaseFirestore(), user.id, nextCommute);
+        const version = loadVersion.current;
+        await saves.current.run(JSON.stringify(['commute', user.id, nextCommute]), async () => {
+          await savePrimaryCommute(getFirebaseFirestore(), user.id, nextCommute);
+          if (version === loadVersion.current && getFirebaseAuth().currentUser?.uid === user.id) {
+            setCommute(nextCommute);
+          }
+        });
+        return;
       }
       setCommute(nextCommute);
     },
