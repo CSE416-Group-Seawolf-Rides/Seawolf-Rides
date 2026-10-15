@@ -30,6 +30,9 @@ export function IncomingRequestCard({
   const fullDayName = fullDay && weekdays.find((weekday) => weekday.value === fullDay)?.name;
   const conflictDayName =
     conflictDay && weekdays.find((weekday) => weekday.value === conflictDay)?.name;
+  const proposalTime = (epoch: number) => new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: '2-digit', timeZone: request.proposal?.occurrence.timeZone,
+  }).format(new Date(epoch * 1000));
 
   return (
     <View style={styles.card}>
@@ -40,14 +43,17 @@ export function IncomingRequestCard({
           <Text style={styles.meta}>{request.startAreaLabel}</Text>
         </View>
         <View style={styles.detour}>
-          <Text style={styles.detourValue}>+{request.addedMinutes} min</Text>
+          <Text style={styles.detourValue}>+{request.proposal ? Math.round(request.proposal.routingEstimates.metrics.driverExtraDurationSeconds / 60) : request.addedMinutes} min</Text>
           <Text style={styles.detourLabel}>to your drive</Text>
         </View>
       </View>
 
       <Text style={styles.times}>
-        Needs to arrive by {formatTime(request.arriveBy)} · {lotTitle(request.campusLot)}
+        {request.proposal
+          ? `Estimated pickup ${proposalTime(request.proposal.routingEstimates.plan.pickup)} · campus ${proposalTime(request.proposal.routingEstimates.plan.vehicleCampusArrival)} at ${request.proposal.agreed.campusDropoff.label}`
+          : `Needs to arrive by ${formatTime(request.arriveBy)} · ${lotTitle(request.campusLot)}`}
       </Text>
+      <Text style={styles.compatibility}>{request.proposal ? `${request.proposal.occurrence.localDate} · dated TO CAMPUS proposal · ${request.proposal.agreed.requestedSeats} seat${request.proposal.agreed.requestedSeats === 1 ? '' : 's'}` : 'Legacy recurring request · no dated evaluated proposal'}</Text>
       <DayPills days={request.days} highlighted={sharedDays} />
       {request.note && <Text style={styles.note}>“{request.note}”</Text>}
 
@@ -134,6 +140,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     fontWeight: '600',
+  },
+  compatibility: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   note: {
     color: colors.textMuted,

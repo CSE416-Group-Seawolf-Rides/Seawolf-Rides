@@ -22,6 +22,7 @@ interface TripDetailScreenProps {
   onStopRiding: () => void;
   onOpenDriver: () => void;
   onMessage?: () => void;
+  onViewPickupRoute?: () => void;
 }
 
 export function TripDetailScreen({
@@ -33,12 +34,17 @@ export function TripDetailScreen({
   onStopRiding,
   onOpenDriver,
   onMessage,
+  onViewPickupRoute,
 }: TripDetailScreenProps) {
   const [confirming, setConfirming] = useState(false);
   const riding = trip.kind === 'ride';
   const driver = trip.offer?.driverName ?? 'your driver';
   const riders = trip.riders ?? [];
   const riderNames = riders.map((rider) => rider.riderName).join(' and ');
+  const proposal = trip.proposal;
+  const proposalTime = (epoch: number, timeZone: string) => new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: '2-digit', timeZone,
+  }).format(new Date(epoch * 1000));
 
   return (
     <Screen
@@ -67,8 +73,8 @@ export function TripDetailScreen({
         <>
           {!trip.skipped && trip.pickupTime !== undefined && (
             <PickupSpotCard
-              note={`Suggested by ${driver}. Need a different spot? Sort it out in chat.`}
-              spot={trip.offer.pickupSpot}
+              note={proposal ? 'Confirmed in the accepted dated proposal.' : `Suggested by ${driver}. Need a different spot? Sort it out in chat.`}
+              spot={proposal?.agreed.pickup.label ?? trip.offer.pickupSpot}
               time={trip.pickupTime !== undefined ? `~${formatTime(trip.pickupTime)}` : undefined}
             />
           )}
@@ -88,6 +94,9 @@ export function TripDetailScreen({
           </Pressable>
 
           <Card style={styles.details}>
+            {proposal && <DetailRow label="Proposal" value={`${proposal.occurrence.localDate} · TO CAMPUS only`} />}
+            {!proposal && <DetailRow label="Request type" value="Legacy recurring · not a dated evaluation" />}
+            {proposal && <DetailRow label="Seats requested" value={String(proposal.agreed.requestedSeats)} />}
             {trip.pickupTime !== undefined && (
               <DetailRow label="Pickup" value={`Around ${formatTime(trip.pickupTime)}`} />
             )}
@@ -97,6 +106,7 @@ export function TripDetailScreen({
                 value={`${formatTime(trip.arriveBy)} · ${lotTitle(trip.campusLot)}`}
               />
             )}
+            {proposal && <DetailRow label="Evaluated times" value={`Pickup ${proposalTime(proposal.routingEstimates.plan.pickup, proposal.occurrence.timeZone)} · campus ${proposalTime(proposal.routingEstimates.plan.vehicleCampusArrival, proposal.occurrence.timeZone)}`} />}
             {trip.leaveAt !== null && (
               <DetailRow label="Ride home" value={`Leaves campus ${formatTime(trip.leaveAt)}`} />
             )}
@@ -116,7 +126,7 @@ export function TripDetailScreen({
             {trip.leaveAt !== null && (
               <DetailRow label="Leave campus" value={formatTime(trip.leaveAt)} />
             )}
-            <DetailRow label="Seats" value={`${riders.length} of ${trip.seats ?? riders.length} filled`} />
+            <DetailRow label="Seats" value={`${riders.reduce((total, rider) => total + (rider.proposal?.agreed.requestedSeats ?? 1), 0)} of ${trip.seats ?? riders.length} filled`} />
           </Card>
 
           <Text accessibilityRole="header" style={styles.sectionTitle}>
@@ -128,11 +138,11 @@ export function TripDetailScreen({
                 <Avatar name={rider.riderName} />
                 <View style={styles.personCopy}>
                   <Text style={styles.personName}>{rider.riderName}</Text>
-                  <Text style={styles.personMeta}>Needs to arrive by {formatTime(rider.arriveBy)}</Text>
+                  <Text style={styles.personMeta}>{rider.proposal ? `${rider.proposal.occurrence.localDate} · ${rider.proposal.agreed.requestedSeats} seat${rider.proposal.agreed.requestedSeats === 1 ? '' : 's'}` : `Legacy recurring · needs to arrive by ${formatTime(rider.arriveBy)}`}</Text>
                 </View>
-                <Text style={styles.added}>+{rider.addedMinutes} min</Text>
+                <Text style={styles.added}>+{rider.proposal ? Math.round(rider.proposal.routingEstimates.metrics.driverExtraDurationSeconds / 60) : rider.addedMinutes} min</Text>
               </View>
-              {!trip.skipped && <Text style={styles.riderSpot}>{rider.pickupSpot}</Text>}
+              {!trip.skipped && <Text style={styles.riderSpot}>{rider.proposal?.agreed.pickup.label ?? rider.pickupSpot}</Text>}
             </Card>
           ))}
         </>
@@ -140,6 +150,7 @@ export function TripDetailScreen({
 
       {!trip.skipped && (
         <View style={styles.actions}>
+          {onViewPickupRoute && <AppButton label="View pickup route" onPress={onViewPickupRoute} />}
           {onMessage && <AppButton label={`Message ${driver}`} onPress={onMessage} />}
           <AppButton label="Can’t make it" onPress={() => setConfirming(true)} variant="secondary" />
         </View>

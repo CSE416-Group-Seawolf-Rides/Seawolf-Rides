@@ -1,5 +1,6 @@
 import type { CampusLotId, CommuteSchedule, DayMode, DaySchedule, Weekday } from '../commute/commuteModel';
 import { weekdays } from '../commute/commuteModel';
+import type { DatedRideProposalV1 } from './datedRideProposal';
 
 // A driver's recurring commute that riders can request a seat on.
 export interface DriverOffer {
@@ -30,6 +31,17 @@ export interface RiderRequest {
   addedMinutes: number;
   // Where the rider will wait. Revealed to the driver only after they accept.
   pickupSpot: string;
+  /** Exact point shared only after acceptance. Never derive this from startAreaLabel. */
+  confirmedPickup?: {
+    coordinate: { latitude: number; longitude: number };
+    label: string;
+    fixtureSource?: string;
+  };
+  /** Rider is already waiting at the confirmed point during this explicit window. */
+  pickupWindow?: { earliest: number; latest: number };
+  pickupServiceSeconds?: number;
+  /** Present only for occurrence-specific requests created by the evaluated matching flow. */
+  proposal?: DatedRideProposalV1;
   note?: string;
 }
 
@@ -40,6 +52,8 @@ export interface OutgoingRequest {
   offerId: string;
   days: Weekday[];
   status: RequestStatus;
+  /** Absent means this is an explicitly legacy recurring request. */
+  proposal?: DatedRideProposalV1;
 }
 
 export interface IncomingRequest extends RiderRequest {
@@ -166,6 +180,32 @@ export function requestSummary(
   return { status, days, acceptedDays, pendingDays, declinedDays };
 }
 
+export function requestSummaryForOccurrence(
+  outgoing: OutgoingRequest[],
+  offerId: string,
+  localDate: string,
+): RequestSummary | undefined {
+  const dated = outgoing.filter((request) => (
+    request.offerId === offerId
+    && request.proposal?.occurrence.localDate === localDate
+    && request.proposal.occurrence.direction === 'TO_CAMPUS'
+  ));
+  if (dated.length === 0) return undefined;
+  const day = dated[0].days[0];
+  if (!day) return undefined;
+  const status: RequestStatus = dated.some((request) => request.status === 'accepted')
+    ? 'accepted'
+    : dated.some((request) => request.status === 'pending') ? 'pending' : 'declined';
+  const forStatus = (value: RequestStatus) => dated.some((request) => request.status === value) ? [day] : [];
+  return {
+    status,
+    days: [day],
+    acceptedDays: forStatus('accepted'),
+    pendingDays: forStatus('pending'),
+    declinedDays: forStatus('declined'),
+  };
+}
+
 // Shared riding days with this driver that aren't already requested from anyone.
 export function requestableDays(
   commute: CommuteSchedule,
@@ -275,8 +315,24 @@ export function sharedDrivingDays(commute: CommuteSchedule, request: RiderReques
 }
 
 export function seatsTaken(day: Weekday, incoming: IncomingRequest[]): number {
-  return incoming.filter((request) => request.status === 'accepted' && request.days.includes(day))
-    .length;
+  return incoming
+    .filter((request) => request.status === 'accepted' && request.days.includes(day))
+    .reduce((total, request) => total + requestSeats(request), 0);
+}
+
+export function requestSeats(request: IncomingRequest | OutgoingRequest): number {
+  return request.proposal?.agreed.requestedSeats ?? 1;
+}
+
+export function requestOccursOn(
+  request: IncomingRequest | OutgoingRequest,
+  localDate: string,
+  day: Weekday,
+): boolean {
+  return request.proposal
+    ? request.proposal.occurrence.direction === 'TO_CAMPUS'
+      && request.proposal.occurrence.localDate === localDate
+    : request.days.includes(day);
 }
 
 export interface IncomingRequestView {
@@ -328,7 +384,7 @@ export function canAccept(
   }
   const seats = commute.seats ?? 0;
   const fullDay = sharedDrivingDays(commute, request).find(
-    (day) => seatsTaken(day, incoming) >= seats,
+    (day) => seatsTaken(day, incoming) + requestSeats(request) > seats,
   );
   return fullDay ? { ok: false, fullDay } : { ok: true };
 }
@@ -429,13 +485,16 @@ export interface Trip extends TripDate {
   offer?: DriverOffer;
   riders?: IncomingRequest[];
   seats?: number;
+  requestedSeats?: number;
+  /** Exact evaluated agreement for a dated rider request. Legacy trips omit it. */
+  proposal?: DatedRideProposalV1;
   // Optional exact points agreed by participants. Current fixtures contain only
   // descriptive pickup text, so the Map must not synthesize these coordinates.
   routingPoints?: {
     confirmed: true;
     start: { coordinate: { latitude: number; longitude: number }; label: string };
     /** Confirmed pickup/drop-off order between the ride start and final destination. */
-    stops?: { coordinate: { latitude: number; longitude: number }; label: string }[];
+    stops?: { coordinate: { latitude: number; longitude: number }; label: string; riderRequestId?: string }[];
     destination: { coordinate: { latitude: number; longitude: number }; label: string };
   };
 }
@@ -538,22 +597,38 @@ export function getUpcoming(
     const trip = { skipped: skipped.includes(id), leaveAt: plan.leaveAt };
 
     if (isRidingMode(plan.mode)) {
-      const accepted = outgoing.find((r) => r.status === 'accepted' && r.days.includes(day));
+      const accepted = outgoing.find(
+        (request) => request.status === 'accepted' && requestOccursOn(request, id, day),
+      );
       const offer =
         accepted &&
         offers.find(
-          (candidate) => candidate.id === accepted.offerId && offerServesPlan(candidate, plan),
+          (candidate) => candidate.id === accepted.offerId
+            && (accepted.proposal ? true : offerServesPlan(candidate, plan)),
         );
       if (offer) {
+        const proposal = accepted.proposal;
         const item: Trip = {
           ...base,
           ...trip,
           kind: 'ride',
-          arriveBy: plan.arriveBy === null ? null : offer.arriveBy,
-          leaveAt: plan.leaveAt === null ? null : offer.leaveAt,
-          campusLot: offer.campusLot,
-          pickupTime: plan.arriveBy === null ? undefined : offer.pickupTime,
+          arriveBy: proposal
+            ? epochMinute(proposal.routingEstimates.plan.vehicleCampusArrival, proposal.occurrence.timeZone)
+            : plan.arriveBy === null ? null : offer.arriveBy,
+          leaveAt: proposal ? null : plan.leaveAt === null ? null : offer.leaveAt,
+          campusLot: proposal?.agreed.campusDropoff.campusLot ?? offer.campusLot,
+          pickupTime: proposal
+            ? epochMinute(proposal.routingEstimates.plan.pickup, proposal.occurrence.timeZone)
+            : plan.arriveBy === null ? undefined : offer.pickupTime,
           offer,
+          proposal,
+          requestedSeats: proposal?.agreed.requestedSeats,
+          routingPoints: proposal ? {
+            confirmed: true,
+            start: { coordinate: { ...proposal.agreed.driverStart.coordinate }, label: proposal.agreed.driverStart.label },
+            stops: [{ coordinate: { ...proposal.agreed.pickup.coordinate }, label: proposal.agreed.pickup.label, riderRequestId: proposal.proposalId }],
+            destination: { coordinate: { ...proposal.agreed.campusDropoff.coordinate }, label: proposal.agreed.campusDropoff.label },
+          } : undefined,
         };
         const endTime = item.leaveAt ?? item.arriveBy;
         if (offset !== 0 || endTime === null || endTime > minutesNow) {
@@ -564,7 +639,9 @@ export function getUpcoming(
     }
 
     if (isDrivingMode(plan.mode)) {
-      const riders = incoming.filter((r) => r.status === 'accepted' && r.days.includes(day));
+      const riders = incoming.filter(
+        (request) => request.status === 'accepted' && requestOccursOn(request, id, day),
+      );
       if (riders.length > 0) {
         const item: Trip = {
           ...base,
@@ -590,7 +667,7 @@ export function getUpcoming(
         kind: 'open',
         arriveBy: plan.arriveBy,
         leaveAt: plan.leaveAt,
-        pending: outgoing.some((r) => r.status === 'pending' && r.days.includes(day)),
+        pending: outgoing.some((request) => request.status === 'pending' && requestOccursOn(request, id, day)),
       };
       const endTime = item.leaveAt ?? item.arriveBy;
       if (offset !== 0 || endTime === null || endTime > minutesNow) {
@@ -600,6 +677,18 @@ export function getUpcoming(
   }
 
   return items;
+}
+
+function epochMinute(epochSeconds: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(epochSeconds * 1000));
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+  return hour * 60 + minute;
 }
 
 export function getNextTrip(

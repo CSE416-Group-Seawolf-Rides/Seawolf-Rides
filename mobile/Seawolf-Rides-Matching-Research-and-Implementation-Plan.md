@@ -676,6 +676,39 @@ For the demonstration, make candidate fixtures deliberately different: one easy 
 
 The M3 feature is complete when it shows a road-based baseline and via-rider route, proves a feasible schedule for each recommended candidate, works in both search directions, explains why one rider ranks ahead of another, and refuses a combined route that violates existing commitments. A polished map plus a proximity score alone does not satisfy that behavior.
 
+### First normal-app integration boundary
+
+The first normal-app slice is deliberately narrower than the full M3 target. A
+rider opens one concrete dated `TO_CAMPUS` occurrence from Home, explicitly
+chooses a public meeting point, and supplies pickup/arrival windows, seats,
+walking assumptions and limits, and an in-vehicle limit. `America/New_York` is
+the explicit recurrence timezone. The saved two-mile privacy-area center is
+never promoted to a routing anchor.
+
+The existing frontend `DriverOffer` records are still synthetic and lack the
+routing and flexibility fields required by `evaluatePair`. Checked-in synthetic
+routing profiles temporarily provide selected public driver starts, explicit
+departure/arrival windows, detour limits, service time, and dated skip/conflict
+facts. These coordinates are routing inputs only and are not published in
+recommendation cards or markers. The normal flow uses live directed OSRM
+driver-start → campus and driver-start → selected pickup → campus estimates;
+provider failures remain unknown and never fall back to fixture travel times.
+
+Only evaluator-feasible candidates receive ranks. Capacity and recurring-day
+filters run before routing, then ranking uses added driver duration, feasible
+departure width, and stable candidate ID. Existing request creation remains a
+separate step and is unchanged.
+
+Concrete blockers for real-user matching remain:
+
+- no persisted candidate repository or authenticated candidate-trip records;
+- no persisted exact, consented public routing anchors or matching preferences;
+- no driver UI for departure/arrival flexibility and detour limits;
+- no server-side authorization boundary keeping precise coordinates out of
+  recommendation payloads;
+- no production routing SLA/cache and no transactional seat revalidation;
+- no `FROM_CAMPUS` evaluator or combined multi-rider insertion in this slice.
+
 ## 19. Sources and reading order
 
 Suggested reading order: S2 for meeting-point/time-window reasoning; S19–S21 for TypeScript architecture; S9 for routing data; S5–S6 for insertion; S7/S16/S17 when considering global assignment. S1 gives broader terminology and S4 explains tolerance tradeoffs.

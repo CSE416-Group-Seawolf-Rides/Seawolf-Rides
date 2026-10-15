@@ -22,7 +22,10 @@ import { createPhotonGeocodingAdapter } from '../geocoding/photonAdapter';
 import type { GeocodingResult } from '../geocoding/types';
 import { getCampusDestinationMapLocation } from '../map/campusDestinations';
 import type { RiderMapCandidate } from '../map/riderMapModel';
+import { queensTestDriverRoutingProfile } from '../matching/driverRecommendationFixtures';
+import { parseClockMinutes } from '../matching/driverRecommendations';
 import {
+  buildConfirmedPickupNavigationRequest,
   buildRouteNavigationRequest,
   type RouteNavigationRequest,
 } from '../navigation/routeNavigationRequest';
@@ -46,13 +49,23 @@ import {
   type LocalRouteSession,
 } from '../routing/routeSession';
 import { routePresets } from '../routing/routePresets';
+import {
+  buildTripPickupManifest,
+  calculateTripPickupRoute,
+  evaluateTripPickupSchedule,
+  LatestTripPickupRouteRequest,
+  type TripPickupRouteResult,
+} from '../routing/tripPickupRoute';
 import type { RoadRoute, RoutingResult } from '../routing/types';
 import { colors, radii, spacing } from '../theme';
 
 interface MapScreenProps {
   commute: CommuteSchedule | null;
   currentTrip: Trip | null;
+  pickupRouteTrip?: Trip | null;
+  onClearPickupRoute?: () => void;
   onOpenCarpoolMatchingDemo?: () => void;
+  onOpenDriverTest?: () => void;
   onOpenMatchingDiagnostics?: () => void;
   onOpenRoutePlanner?: () => void;
   onStartBasicNavigation: (request: RouteNavigationRequest) => void;
@@ -83,6 +96,11 @@ function formatDuration(seconds: number): string {
   return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
 }
 
+function formatEpochTime(epochSeconds: number | undefined): string {
+  if (epochSeconds === undefined) return 'unavailable';
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }).format(new Date(epochSeconds * 1000));
+}
+
 function routingFailureMessage(result: Exclude<RoutingResult, { status: 'SUCCESS' }>): string {
   switch (result.code) {
     case 'NO_ROUTE': return 'The provider reported no driving route for these points.';
@@ -96,7 +114,7 @@ function routingFailureMessage(result: Exclude<RoutingResult, { status: 'SUCCESS
   }
 }
 
-export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onOpenMatchingDiagnostics, onOpenRoutePlanner, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
+export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, onClearPickupRoute, onOpenCarpoolMatchingDemo, onOpenDriverTest, onOpenMatchingDiagnostics, onOpenRoutePlanner, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const expandedMapRef = useRef<MapView>(null);
@@ -105,18 +123,29 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
   const routeAdapter = useMemo(() => createOsrmRoutingAdapter(), []);
   const geocodingAdapter = useMemo(() => createPhotonGeocodingAdapter(), []);
   const latestRoute = useRef(new LatestRouteRequest());
+  const latestPickupRoute = useRef(new LatestTripPickupRouteRequest());
   const latestSearch = useRef(new LatestGeocodingSearch());
   const locationRequestGeneration = useRef(0);
   const navigationLaunchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rideContext = useMemo(() => getRideRouteContext(currentTrip), [currentTrip]);
-  const initialCampus = commute ? getCampusDestinationMapLocation(commute.campusLot) : null;
+  const initialCampus = pickupRouteTrip?.routingPoints?.destination
+    ? {
+        id: `trip-${pickupRouteTrip.id}-destination`,
+        title: pickupRouteTrip.routingPoints.destination.label,
+        subtitle: 'Agreed trip destination',
+        coordinate: pickupRouteTrip.routingPoints.destination.coordinate,
+      }
+    : pickupRouteTrip ? getCampusDestinationMapLocation(pickupRouteTrip.campusLot) : commute ? getCampusDestinationMapLocation(commute.campusLot) : null;
+  const pickupManifest = useMemo(() => pickupRouteTrip ? buildTripPickupManifest(pickupRouteTrip) : null, [pickupRouteTrip]);
 
   const [selection, setSelection] = useState<EndpointSelection>('start');
   const [start, setStart] = useState<RouteEndpoint | null>(() =>
     rideContext.status === 'LOCKED' ? rideContext.start : null,
   );
   const [destination, setDestination] = useState<RouteEndpoint | null>(() =>
-    rideContext.status === 'LOCKED'
+    pickupRouteTrip && initialCampus
+      ? { ...createRouteEndpoint(initialCampus.coordinate, initialCampus.title, 'PRESET'), locked: true }
+      : rideContext.status === 'LOCKED'
       ? rideContext.destination
       : initialCampus
         ? createRouteEndpoint(initialCampus.coordinate, initialCampus.title, 'PRESET')
@@ -132,7 +161,7 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
         ? 'Confirm a separate standalone route before choosing exact points.'
         : 'Select endpoints, then get a road route.',
   );
-  const [standaloneConfirmed, setStandaloneConfirmed] = useState(rideContext.status !== 'UNCONFIRMED');
+  const [standaloneConfirmed, setStandaloneConfirmed] = useState(pickupRouteTrip !== null || rideContext.status !== 'UNCONFIRMED');
   const [locationLoading, setLocationLoading] = useState(false);
   const [navigationLaunching, setNavigationLaunching] = useState(false);
   const [developerToolsExpanded, setDeveloperToolsExpanded] = useState(false);
@@ -145,27 +174,59 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
   const [mapExpanded, setMapExpanded] = useState(false);
   const [expandedInitialCamera, setExpandedInitialCamera] = useState<Camera | null>(null);
   const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
+  const [pickupRouteResult, setPickupRouteResult] = useState<TripPickupRouteResult | null>(null);
+  const [pickupOrderConfirmed, setPickupOrderConfirmed] = useState(false);
+  const [plannedDeparture, setPlannedDeparture] = useState(() => {
+    const proposal = pickupRouteTrip?.proposal;
+    if (!proposal) return '';
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: proposal.occurrence.timeZone,
+    }).format(new Date(proposal.routingEstimates.plan.departure * 1000));
+  });
+  const [pickupRouteError, setPickupRouteError] = useState<string | null>(null);
 
   const active = session.status === 'ACTIVE';
   const displayedRoute: RoadRoute | null = active
     ? session.route
-    : routeResult?.status === 'SUCCESS'
+    : pickupRouteResult?.route ?? (routeResult?.status === 'SUCCESS'
       ? routeResult.route
-      : null;
+      : null);
   const displayedStart = active ? session.start : start;
   const displayedDestination = active ? session.destination : destination;
   const selectedEndpoint = selection === 'start' ? start : destination;
   const selectedEndpointEditable = canEditEndpoint(selectedEndpoint) && !active && standaloneConfirmed;
   const startEndpointEditable = canEditEndpoint(start) && !active && standaloneConfirmed;
+  const queensStartDisabledReason = active
+    ? 'End the active route before changing its start.'
+    : start?.locked
+      ? 'This confirmed ride has a locked start point.'
+      : null;
   const navigationAvailability = getRuntimeGoogleNavigationAvailability();
-  const navigationRequest = buildRouteNavigationRequest(
+  const standardNavigationRequest = buildRouteNavigationRequest(
     destination ? { label: destination.label, coordinate: destination.coordinate } : null,
     rideContext,
     currentTrip,
   );
+  const departureMinutes = plannedDeparture.trim() === '' ? null : parseClockMinutes(plannedDeparture);
+  const pickupSchedule = pickupRouteTrip && pickupRouteResult
+    ? evaluateTripPickupSchedule({ trip: pickupRouteTrip, result: pickupRouteResult, departureMinutes })
+    : null;
+  const pickupOrderReady = pickupRouteResult?.orderKind === 'AGREED' || pickupOrderConfirmed;
+  const displayedPickupStops = pickupRouteResult?.orderedStops ?? pickupManifest?.stops ?? [];
+  const navigationRequest = pickupRouteTrip && pickupManifest
+    ? buildConfirmedPickupNavigationRequest({
+        tripId: pickupRouteTrip.id,
+        campus: pickupManifest.campus,
+        orderedPickups: pickupRouteResult?.orderedStops.map((stop) => ({ label: `${stop.riderName} pickup`, coordinate: stop.coordinate })) ?? [],
+        acceptedRiderCount: pickupManifest.acceptedRiderIds.length,
+        orderConfirmed: pickupOrderReady,
+        scheduleStatus: pickupSchedule?.status ?? 'INCOMPLETE',
+      })
+    : standardNavigationRequest;
 
   useEffect(() => () => {
     latestRoute.current.cancel();
+    latestPickupRoute.current.cancel();
     latestSearch.current.cancel();
     if (navigationLaunchTimer.current) clearTimeout(navigationLaunchTimer.current);
   }, []);
@@ -197,8 +258,12 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
 
   const invalidateRoute = (message: string) => {
     latestRoute.current.cancel();
+    latestPickupRoute.current.cancel();
     setRouteLoading(false);
     setRouteResult(null);
+    setPickupRouteResult(null);
+    setPickupOrderConfirmed(false);
+    setPickupRouteError(null);
     setNotice(message);
   };
 
@@ -303,6 +368,31 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
     }
   };
 
+  const useQueensTestStart = () => {
+    if (active || start?.locked) return;
+    locationRequestGeneration.current += 1;
+    setLocationLoading(false);
+    setCurrentLocationState('IDLE');
+    latestSearch.current.cancel();
+    invalidateRoute('Jamaica, Queens test start selected. Get a new preview route.');
+    setStandaloneConfirmed(true);
+    setStart(createRouteEndpoint(
+      queensTestDriverRoutingProfile.driverStart,
+      'Jamaica, Queens — test start',
+      'PRESET',
+    ));
+    setSelection('destination');
+    setQuery('');
+    setSearchResults([]);
+    setSearchError(null);
+    setSearching(false);
+    mapRef.current?.animateToRegion({
+      ...queensTestDriverRoutingProfile.driverStart,
+      latitudeDelta: 0.08,
+      longitudeDelta: 0.08,
+    }, 300);
+  };
+
   const currentLocationButtonLabel = currentLocationState === 'LOADING'
     ? 'Getting current location…'
     : currentLocationState === 'DENIED' || currentLocationState === 'UNAVAILABLE' || currentLocationState === 'ERROR'
@@ -343,6 +433,29 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
 
   const getRoute = async () => {
     if (!start || !destination || active) return;
+    if (pickupRouteTrip && pickupManifest) {
+      if (pickupManifest.missingPickupRiders.length > 0) {
+        setPickupRouteError(pickupManifest.missingPickupRiders.map((rider) => `Confirm pickup location for ${rider.name} before routing.`).join(' '));
+        return;
+      }
+      setRouteLoading(true);
+      setPickupRouteResult(null);
+      setPickupOrderConfirmed(false);
+      setPickupRouteError(null);
+      setNotice('Comparing directed pickup orders with live OSRM routes…');
+      try {
+        const response = await latestPickupRoute.current.run((signal) => calculateTripPickupRoute({ adapter: routeAdapter, manifest: pickupManifest, origin: start.coordinate, signal }));
+        if (response.status === 'STALE') return;
+        setPickupRouteResult(response.result);
+        setNotice(response.result.orderKind === 'PROPOSED' ? `Road route available. Compared ${response.result.alternativesCompared} directed orders; confirm the proposal before navigation.` : 'Road route available in the agreed pickup order.');
+      } catch (caught) {
+        setPickupRouteError(caught instanceof Error ? caught.message : 'The pickup route could not be calculated.');
+        setNotice('Pickup route unavailable. Correct the issue or retry.');
+      } finally {
+        setRouteLoading(false);
+      }
+      return;
+    }
     setRouteLoading(true);
     setRouteResult(null);
     setNotice('Requesting a driving route…');
@@ -354,6 +467,7 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
   };
 
   const startRide = () => {
+    if (pickupRouteTrip && navigationRequest.status !== 'READY') return;
     latestSearch.current.cancel();
     setQuery('');
     setSearchResults([]);
@@ -408,7 +522,12 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
         start={displayedStart?.coordinate ?? null}
         startTitle={displayedStart?.label}
       />
-      {riders.map((rider) => {
+      {pickupRouteTrip && displayedPickupStops.map((stop, index) => (
+        <Marker accessibilityLabel={`Pickup ${index + 1}, ${stop.riderName}`} coordinate={stop.coordinate} description={stop.label} key={stop.riderId} title={`${index + 1}. ${stop.riderName}`}>
+          <View style={styles.pickupMarker}><Text style={styles.pickupMarkerText}>{index + 1}</Text></View>
+        </Marker>
+      ))}
+      {!pickupRouteTrip && riders.map((rider) => {
         const selected = rider.id === selectedRiderId;
         return (
           <Fragment key={rider.id}>
@@ -453,7 +572,7 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
                   <AppButton label="Carpool Matching Demo" onPress={onOpenCarpoolMatchingDemo} />
                 </View>
               )}
-              {__DEV__ && (onOpenMatchingDiagnostics || onOpenRoutePlanner) && (
+              {__DEV__ && (onOpenDriverTest || onOpenMatchingDiagnostics || onOpenRoutePlanner) && (
                 <View style={styles.developerTools}>
                   <Pressable accessibilityRole="button" accessibilityState={{ expanded: developerToolsExpanded }} onPress={() => setDeveloperToolsExpanded((expanded) => !expanded)} style={styles.developerToolsHeader}>
                     <Text style={styles.developerToolsTitle}>Developer tools</Text>
@@ -461,13 +580,24 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
                   </Pressable>
                   {developerToolsExpanded && (
                     <View style={styles.developerToolsBody}>
+                      {onOpenDriverTest && <AppButton label="Test as driver" onPress={onOpenDriverTest} variant="secondary" />}
                       {onOpenMatchingDiagnostics && <AppButton label="Matching evaluator diagnostics" onPress={onOpenMatchingDiagnostics} variant="secondary" />}
                       {onOpenRoutePlanner && <AppButton label="Route planner" onPress={onOpenRoutePlanner} variant="secondary" />}
                     </View>
                   )}
                 </View>
               )}
-              {rideContext.status !== 'NONE' && (
+              {pickupRouteTrip && pickupManifest && (
+                <View style={styles.tripRouteCard}>
+                  <View style={styles.rideNoticeHeader}><Ionicons color={colors.accent} name="people-outline" size={18} /><Text style={styles.rideNoticeTitle}>Pickup route · {pickupRouteTrip.dateLabel}</Text></View>
+                  <Text style={styles.smallText}>TO CAMPUS · {pickupManifest.campus.label} · {pickupRouteTrip.proposal ? `${pickupRouteTrip.proposal.agreed.requestedSeats} requested seat${pickupRouteTrip.proposal.agreed.requestedSeats === 1 ? '' : 's'}` : `${pickupManifest.acceptedRiderIds.length} accepted rider${pickupManifest.acceptedRiderIds.length === 1 ? '' : 's'}`}</Text>
+                  <Text style={styles.smallText}>{pickupRouteTrip.proposal ? `${pickupRouteTrip.offer?.driverName ?? 'Driver'} · ${pickupRouteTrip.proposal.agreed.pickup.label}` : (pickupRouteTrip.riders ?? []).map((rider) => rider.riderName).join(', ')}</Text>
+                  <Text style={styles.privacyNote}>{pickupRouteTrip.proposal ? 'This route uses the exact pickup and destination preserved in the accepted dated proposal.' : 'These precise points are accepted-request data. Candidate privacy areas are not used.'}</Text>
+                  {pickupManifest.missingPickupRiders.map((rider) => <Text key={rider.id} style={styles.navigationWarning}>Confirm pickup location for {rider.name} before routing.</Text>)}
+                  {onClearPickupRoute && <AppButton label="Plan a standalone route" onPress={onClearPickupRoute} variant="secondary" />}
+                </View>
+              )}
+              {!pickupRouteTrip && rideContext.status !== 'NONE' && (
                 <View style={styles.rideNotice}>
                   <View style={styles.rideNoticeHeader}><Ionicons color={colors.accent} name="car-outline" size={18} /><Text style={styles.rideNoticeTitle}>{rideContext.rideLabel}</Text></View>
                   {rideContext.status === 'LOCKED' ? (
@@ -482,15 +612,25 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
               )}
 
               <EndpointSummary endpoint={displayedStart} label="Start" selected={selection === 'start'} onPress={() => !active && chooseSelection('start')} />
+              {__DEV__ && (
+                <View style={styles.queensStartAction}>
+                  <Pressable accessibilityHint={queensStartDisabledReason ?? 'Uses Jamaica LIRR as the route start without requesting location permission'} accessibilityRole="button" disabled={queensStartDisabledReason !== null} onPress={useQueensTestStart} style={({ pressed }) => [styles.sourceButton, pressed && styles.pressed, queensStartDisabledReason !== null && styles.disabled]}>
+                    <Ionicons color={colors.accent} name="location-outline" size={17} />
+                    <Text style={styles.sourceButtonText}>Use Queens start</Text>
+                  </Pressable>
+                  {queensStartDisabledReason && <Text accessibilityLiveRegion="polite" style={styles.disabledReason}>{queensStartDisabledReason}</Text>}
+                </View>
+              )}
               <EndpointSummary endpoint={displayedDestination} label="Destination" selected={selection === 'destination'} onPress={() => !active && chooseSelection('destination')} />
+              {pickupRouteTrip && <TextInput accessibilityLabel="Planned departure time" autoCapitalize="none" autoCorrect={false} keyboardType="numbers-and-punctuation" onChangeText={setPlannedDeparture} placeholder="Planned departure (HH:MM)" placeholderTextColor={colors.textMuted} style={styles.searchInput} value={plannedDeparture} />}
 
               {!active && standaloneConfirmed && (
                 <>
                   <View style={styles.sourceActions}>
-                    <Pressable accessibilityHint="Uses a fresh foreground GPS fix as the route start" accessibilityRole="button" disabled={!startEndpointEditable || locationLoading} onPress={useCurrentLocation} style={({ pressed }) => [styles.sourceButton, styles.currentLocationButton, pressed && styles.pressed, (!startEndpointEditable || locationLoading) && styles.disabled]}>
+                    {!__DEV__ && <Pressable accessibilityHint="Uses a fresh foreground GPS fix as the route start" accessibilityRole="button" disabled={!startEndpointEditable || locationLoading} onPress={useCurrentLocation} style={({ pressed }) => [styles.sourceButton, styles.currentLocationButton, pressed && styles.pressed, (!startEndpointEditable || locationLoading) && styles.disabled]}>
                       {locationLoading ? <ActivityIndicator color={colors.accent} size="small" /> : <Ionicons color={colors.accent} name="locate-outline" size={17} />}
                       <Text style={styles.sourceButtonText}>{currentLocationButtonLabel}</Text>
-                    </Pressable>
+                    </Pressable>}
                     <Pressable accessibilityRole="button" disabled={!start || !destination || start.locked || destination.locked} onPress={swapEndpoints} style={({ pressed }) => [styles.sourceButton, pressed && styles.pressed, (!start || !destination || start.locked || destination.locked) && styles.disabled]}>
                       <Ionicons color={colors.accent} name="swap-vertical" size={17} /><Text style={styles.sourceButtonText}>Swap</Text>
                     </Pressable>
@@ -516,14 +656,26 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
                       ))}
                     </View>
                   </ScrollView>
-                  <AppButton disabled={!start || !destination || routeLoading} label={routeResult?.status === 'FAILURE' ? 'Retry route' : 'Get route'} onPress={getRoute} />
+                  <AppButton disabled={!start || !destination || routeLoading} label={pickupRouteTrip ? (pickupRouteError ? 'Retry pickup route' : 'Calculate pickup route') : routeResult?.status === 'FAILURE' ? 'Retry route' : 'Get route'} onPress={getRoute} />
                 </>
               )}
 
               {routeLoading && <ActivityIndicator color={colors.accent} />}
+              {pickupRouteError && <Text accessibilityLiveRegion="assertive" style={styles.errorText}>{pickupRouteError}</Text>}
               <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text>
               {displayedRoute && (
                 <><Text style={styles.previewLabel}>Preview route</Text><View style={styles.metrics}><Text style={styles.metric}>{formatDistance(displayedRoute.distanceMeters)}</Text><Text style={styles.metric}>{formatDuration(displayedRoute.durationSeconds)}</Text><Text style={styles.metric}>{displayedRoute.provider.name}</Text></View></>
+              )}
+              {pickupRouteTrip && pickupRouteResult && (
+                <View style={styles.pickupRouteSummary}>
+                  <Text style={styles.rideNoticeTitle}>{pickupRouteResult.orderKind === 'PROPOSED' ? 'Proposed pickup order' : 'Confirmed pickup order'}</Text>
+                  {pickupRouteResult.orderedStops.map((stop, index) => <View key={stop.riderId} style={styles.pickupOrderRow}><View style={styles.pickupNumber}><Text style={styles.pickupNumberText}>{index + 1}</Text></View><View style={styles.panelHeaderCopy}><Text style={styles.resultLabel}>{stop.riderName}</Text><Text style={styles.resultContext}>{stop.label}{pickupSchedule && pickupSchedule.status !== 'INCOMPLETE' ? ` · est. ${formatEpochTime(pickupSchedule.pickupEpochs[stop.riderId])}` : ''}</Text></View></View>)}
+                  <Text style={styles.smallText}>Road driving: {formatDuration(pickupRouteResult.route.durationSeconds)} · {formatDistance(pickupRouteResult.route.distanceMeters)}</Text>
+                  <Text style={styles.smallText}>Pickup service: {formatDuration(pickupRouteResult.orderedStops.reduce((total, stop) => total + (stop.serviceSeconds ?? 0), 0))} total, applied once per stop.</Text>
+                  {pickupRouteResult.orderKind === 'PROPOSED' && !pickupOrderConfirmed && <><Text style={styles.privacyNote}>Shortest live road-driving duration among {pickupRouteResult.alternativesCompared} directed orders. This does not prove schedule feasibility.</Text><AppButton label="Confirm proposed pickup order" onPress={() => setPickupOrderConfirmed(true)} variant="secondary" /></>}
+                  {pickupOrderReady && <Text style={styles.confirmedOrder}>Pickup order confirmed for this screen session.</Text>}
+                  {!pickupSchedule || pickupSchedule.status === 'INCOMPLETE' ? <Text style={styles.scheduleIncomplete}>Schedule incomplete: {pickupSchedule?.messages.join(' ') ?? 'Calculate the road route and enter a planned departure.'}</Text> : pickupSchedule.status === 'CONFLICT' ? <Text style={styles.scheduleConflict}>Schedule conflict: {pickupSchedule.messages.join(' ')}</Text> : <Text style={styles.scheduleVerified}>Schedule verified for this fixed order · campus {formatEpochTime(pickupSchedule.campusEpoch)}.</Text>}
+                </View>
               )}
               {!active && standaloneConfirmed && navigationRequest.status === 'READY' && navigationAvailability.status === 'READY' && (
                 <AppButton disabled={routeLoading || locationLoading || navigationLaunching} label={navigationLaunching ? 'Opening navigation…' : 'Start navigation'} onPress={startGoogleNavigation} />
@@ -538,7 +690,7 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
                   <Text style={styles.smallText}>{navigationAvailability.message}</Text>
                 </View>
               )}
-              {displayedRoute && !active && <AppButton disabled={routeLoading} label="Start preview route session" onPress={startRide} variant="secondary" />}
+              {displayedRoute && !active && <AppButton disabled={routeLoading || (pickupRouteTrip !== null && navigationRequest.status !== 'READY')} label="Start preview route session" onPress={startRide} variant="secondary" />}
               {active && (
                 <><Text style={styles.activeNote}>Route guidance only. No live ETA, automatic rerouting, or turn-by-turn navigation.</Text><AppButton label="End route" onPress={endRide} variant="secondary" /></>
               )}
@@ -601,9 +753,11 @@ const styles = StyleSheet.create({
   rideNotice: { backgroundColor: colors.accentSoft, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, rideNoticeHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, rideNoticeTitle: { color: colors.text, flex: 1, fontSize: 13, fontWeight: '800' }, smallText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   developerTools: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' }, developerToolsHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 48, paddingHorizontal: spacing.md }, developerToolsTitle: { color: colors.text, fontSize: 13, fontWeight: '800' }, developerToolsBody: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.sm, padding: spacing.md },
   endpoint: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 56, padding: spacing.sm }, endpointSelected: { borderColor: colors.accent, borderWidth: 2 }, endpointCopy: { flex: 1 }, endpointLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }, endpointValue: { color: colors.text, fontSize: 13, fontWeight: '700' }, endpointSource: { color: colors.textMuted, fontSize: 10, marginTop: 1 },
-  sourceActions: { flexDirection: 'row', gap: spacing.sm }, sourceButton: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 40, paddingHorizontal: spacing.sm }, currentLocationButton: { flex: 2 }, sourceButtonText: { color: colors.accent, fontSize: 13, fontWeight: '800' }, pressed: { backgroundColor: colors.accentSoft }, disabled: { opacity: 0.45 },
+  queensStartAction: { gap: spacing.xs }, disabledReason: { color: colors.warning, fontSize: 11, lineHeight: 16, paddingHorizontal: spacing.xs }, sourceActions: { flexDirection: 'row', gap: spacing.sm }, sourceButton: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.sm }, currentLocationButton: { flex: 2 }, sourceButtonText: { color: colors.accent, fontSize: 13, fontWeight: '800' }, pressed: { backgroundColor: colors.accentSoft }, disabled: { opacity: 0.45 },
   searchInput: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 44, paddingHorizontal: spacing.md }, searchResult: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, paddingVertical: spacing.sm }, resultLabel: { color: colors.text, fontSize: 13, fontWeight: '800' }, resultContext: { color: colors.textMuted, fontSize: 11, lineHeight: 15 }, errorText: { color: colors.error, fontSize: 12, lineHeight: 17 }, attribution: { color: colors.textMuted, fontSize: 10 },
   presets: { flexDirection: 'row', gap: spacing.sm }, preset: { borderColor: colors.border, borderRadius: radii.pill, borderWidth: 1, justifyContent: 'center', minHeight: 36, paddingHorizontal: spacing.md }, presetText: { color: colors.text, fontSize: 12, fontWeight: '700' }, notice: { color: colors.textMuted, fontSize: 12, lineHeight: 17 }, previewLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }, metrics: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, flexDirection: 'row', justifyContent: 'space-between', padding: spacing.sm }, metric: { color: colors.text, fontSize: 12, fontWeight: '800' }, navigationSetup: { backgroundColor: colors.warningSoft, borderRadius: radii.md, gap: spacing.xs, padding: spacing.sm }, navigationSetupTitle: { color: colors.warning, fontSize: 12, fontWeight: '800' }, navigationWarning: { color: colors.error, fontSize: 12, lineHeight: 17 }, activeNote: { color: colors.warning, fontSize: 12, lineHeight: 17 }, snapNote: { color: colors.textMuted, fontSize: 11, lineHeight: 15 },
   riderMarker: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.accent, borderRadius: radii.pill, borderWidth: 2, elevation: 2, height: 34, justifyContent: 'center', width: 34 },
   selectedRiderMarker: { backgroundColor: colors.accent, borderColor: colors.surface, height: 42, width: 42 },
+  pickupMarker: { alignItems: 'center', backgroundColor: colors.accent, borderColor: colors.surface, borderRadius: radii.pill, borderWidth: 2, height: 38, justifyContent: 'center', width: 38 }, pickupMarkerText: { color: colors.surface, fontSize: 15, fontWeight: '900' },
+  tripRouteCard: { backgroundColor: colors.accentSoft, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, privacyNote: { color: colors.textMuted, fontSize: 11, lineHeight: 16 }, pickupRouteSummary: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, pickupOrderRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, pickupNumber: { alignItems: 'center', backgroundColor: colors.accent, borderRadius: radii.pill, height: 26, justifyContent: 'center', width: 26 }, pickupNumberText: { color: colors.surface, fontSize: 12, fontWeight: '900' }, confirmedOrder: { color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 17 }, scheduleIncomplete: { backgroundColor: colors.warningSoft, borderRadius: radii.sm, color: colors.warning, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleConflict: { backgroundColor: colors.errorSoft, borderRadius: radii.sm, color: colors.error, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleVerified: { backgroundColor: colors.successSoft, borderRadius: radii.sm, color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 18, padding: spacing.sm },
 });

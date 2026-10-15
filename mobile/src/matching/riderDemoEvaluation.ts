@@ -8,7 +8,7 @@ import type {
   StaticRouteEstimate,
   UnknownReasonCode,
 } from './types';
-import type { RoadRoute, RoutingAdapter, RoutingFailureCode, RoutingResult } from '../routing/types';
+import type { RoadRoute, RouteCoordinate, RoutingAdapter, RoutingFailureCode, RoutingResult } from '../routing/types';
 
 export type RiderDemoMode = 'LIVE_OSRM' | 'FIXTURE';
 
@@ -48,6 +48,8 @@ export interface RiderDemoEvaluationResult {
 interface EvaluateRiderDemoOptions {
   adapter: RoutingAdapter;
   candidates: readonly RiderDemoCandidate[];
+  campus?: RouteCoordinate;
+  driverStart?: RouteCoordinate;
   mode: RiderDemoMode;
   signal?: AbortSignal;
   concurrency?: number;
@@ -150,11 +152,13 @@ async function evaluateRoutedCandidate(
   adapter: RoutingAdapter,
   candidate: RiderDemoCandidate,
   baseline: StaticRouteEstimate,
+  driverStart: RouteCoordinate,
+  campus: RouteCoordinate,
   maxSnapMeters: number,
   signal?: AbortSignal,
 ): Promise<EvaluatedRiderDemoCandidate> {
   const result = await adapter.route(
-    [riderDemoDriver.start, candidate.pickup, riderDemoDriver.campus],
+    [driverStart, candidate.pickup, campus],
     { signal },
   );
   if (result.status === 'FAILURE') return candidateFailure(candidate, baseline, result);
@@ -282,8 +286,10 @@ export async function evaluateRiderDemo(
   options: EvaluateRiderDemoOptions,
 ): Promise<RiderDemoEvaluationResult> {
   const maxSnapMeters = options.maxSnapMeters ?? DEFAULT_RIDER_DEMO_MAX_SNAP_METERS;
+  const driverStart = options.driverStart ?? riderDemoDriver.start;
+  const campus = options.campus ?? riderDemoDriver.campus;
   const baselineResult = await options.adapter.route(
-    [riderDemoDriver.start, riderDemoDriver.campus],
+    [driverStart, campus],
     { signal: options.signal },
   );
   const baseline =
@@ -301,6 +307,8 @@ export async function evaluateRiderDemo(
             options.adapter,
             candidate,
             baseline,
+            driverStart,
+            campus,
             maxSnapMeters,
             options.signal,
           ),

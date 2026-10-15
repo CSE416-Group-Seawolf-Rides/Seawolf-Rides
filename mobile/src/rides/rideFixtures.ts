@@ -161,6 +161,15 @@ export const riderRequestFixtures: RiderRequest[] = [
     leaveAt: 16 * 60,
     addedMinutes: 11,
     pickupSpot: 'Ronkonkoma LIRR station, north lot',
+    // MTA LIRR GTFS stop 179 (RON), retrieved 2026-10-15. This synthetic
+    // confirmed pin intentionally identifies the station, not an inferred home.
+    confirmedPickup: {
+      coordinate: { latitude: 40.80808613, longitude: -73.10594023 },
+      label: 'Ronkonkoma LIRR station public pickup',
+      fixtureSource: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip',
+    },
+    pickupWindow: { earliest: 8 * 60, latest: 8 * 60 + 35 },
+    pickupServiceSeconds: 2 * 60,
   },
   {
     id: 'chris',
@@ -172,6 +181,14 @@ export const riderRequestFixtures: RiderRequest[] = [
     leaveAt: 17 * 60 + 30,
     addedMinutes: 3,
     pickupSpot: 'Stony Brook LIRR station',
+    // MTA LIRR GTFS stop 14 (BK), retrieved 2026-10-15.
+    confirmedPickup: {
+      coordinate: { latitude: 40.92032252, longitude: -73.12854943 },
+      label: 'Stony Brook LIRR station public pickup',
+      fixtureSource: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip',
+    },
+    pickupWindow: { earliest: 8 * 60 + 30, latest: 9 * 60 + 5 },
+    pickupServiceSeconds: 2 * 60,
   },
   {
     id: 'sam',
@@ -194,6 +211,16 @@ export const riderRequestFixtures: RiderRequest[] = [
     leaveAt: 16 * 60 + 30,
     addedMinutes: 14,
     pickupSpot: 'Holbrook Country Club Plaza',
+    // Explicit synthetic pin at the mapped Holbrook Country Club building
+    // centroid (OpenStreetMap way 468631235), retrieved through Photon
+    // 2026-10-15. It is not represented as a guessed plaza entrance.
+    confirmedPickup: {
+      coordinate: { latitude: 40.7980319, longitude: -73.0657497 },
+      label: 'Holbrook Country Club mapped building pickup pin',
+      fixtureSource: 'https://www.openstreetmap.org/way/468631235',
+    },
+    pickupWindow: { earliest: 8 * 60 + 5, latest: 8 * 60 + 40 },
+    pickupServiceSeconds: 2 * 60,
     note: 'Happy to chip in for gas.',
   },
 ];

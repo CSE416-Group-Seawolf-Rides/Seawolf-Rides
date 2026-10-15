@@ -17,7 +17,21 @@ export interface RouteNavigationRequest {
 
 export type NavigationRequestResult =
   | { status: 'READY'; request: RouteNavigationRequest }
-  | { status: 'BLOCKED'; code: 'DESTINATION_REQUIRED' | 'PICKUPS_UNCONFIRMED'; message: string };
+  | { status: 'BLOCKED'; code: 'DESTINATION_REQUIRED' | 'PICKUPS_UNCONFIRMED' | 'PICKUP_ORDER_UNCONFIRMED' | 'PICKUP_SCHEDULE_UNVERIFIED'; message: string };
+
+export function buildConfirmedPickupNavigationRequest(options: {
+  tripId: string;
+  campus: RouteNavigationWaypoint;
+  orderedPickups: RouteNavigationWaypoint[];
+  acceptedRiderCount: number;
+  orderConfirmed: boolean;
+  scheduleStatus: 'INCOMPLETE' | 'CONFLICT' | 'VERIFIED';
+}): NavigationRequestResult {
+  if (options.orderedPickups.length !== options.acceptedRiderCount) return { status: 'BLOCKED', code: 'PICKUPS_UNCONFIRMED', message: 'Confirm every accepted rider pickup before starting navigation.' };
+  if (!options.orderConfirmed) return { status: 'BLOCKED', code: 'PICKUP_ORDER_UNCONFIRMED', message: 'Confirm the proposed pickup order before starting navigation.' };
+  if (options.scheduleStatus !== 'VERIFIED') return { status: 'BLOCKED', code: 'PICKUP_SCHEDULE_UNVERIFIED', message: options.scheduleStatus === 'CONFLICT' ? 'Resolve pickup schedule conflicts before starting navigation.' : 'Complete the pickup schedule before starting navigation.' };
+  return { status: 'READY', request: { destinationLabel: options.campus.label, mode: 'CONFIRMED_RIDE', rideId: options.tripId, waypoints: [...options.orderedPickups, options.campus] } };
+}
 
 export function buildRouteNavigationRequest(
   destination: RouteNavigationWaypoint | null,

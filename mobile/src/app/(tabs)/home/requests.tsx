@@ -14,12 +14,12 @@ export default function ReviewRequestsRoute() {
     <ReviewRequestsScreen
       onDone={() => router.back()}
       onRespond={(requestId, status) => {
+        const result = respondToRequest(requestId, status);
         Haptics.notificationAsync(
-          status === 'accepted'
+          result === 'ACCEPTED'
             ? Haptics.NotificationFeedbackType.Success
             : Haptics.NotificationFeedbackType.Warning,
         );
-        respondToRequest(requestId, status);
       }}
       pending={incomingForCommute(commute, incoming, outgoing).filter(
         (view) => view.request.status === 'pending',

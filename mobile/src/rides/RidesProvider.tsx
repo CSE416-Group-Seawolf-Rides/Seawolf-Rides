@@ -12,7 +12,8 @@ import {
 import { useSession } from '../auth/SessionProvider';
 import type { Weekday } from '../commute/commuteModel';
 import { demoIncoming, demoOutgoing } from '../prototypeData/demoAccount';
-import { riderRequestFixtures } from './rideFixtures';
+import { validateDatedRideProposal, type DatedRideProposalV1 } from './datedRideProposal';
+import { driverOfferFixtures, riderRequestFixtures } from './rideFixtures';
 import {
   IncomingRequest,
   OutgoingRequest,
@@ -20,14 +21,21 @@ import {
   reconcileSkippedDays,
   sharedDrivingDays,
 } from './rideModel';
+import {
+  createDatedOutgoingRequest,
+  transitionDatedOutgoingRequest,
+  transitionIncomingRequest,
+  type RequestTransitionCode,
+} from './requestTransitions';
 
 interface Rides {
   outgoing: OutgoingRequest[];
   incoming: IncomingRequest[];
   sendRequest: (offerId: string, days: Weekday[]) => void;
+  sendDatedRequest: (proposal: DatedRideProposalV1) => RequestTransitionCode;
   cancelRequest: (offerId: string) => void;
   withdrawRequest: (requestId: string) => void;
-  respondToRequest: (requestId: string, status: 'accepted' | 'declined') => void;
+  respondToRequest: (requestId: string, status: 'accepted' | 'declined') => RequestTransitionCode;
   // Trip ids (local dates) the user can't make. The recurring match stays in place.
   skipped: string[];
   skipTrip: (tripId: string) => void;
@@ -58,6 +66,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
   const commuteRef = useRef(commute);
   const outgoingRef = useRef(outgoing);
   const incomingRef = useRef(incoming);
+  const skippedRef = useRef(skipped);
 
   useEffect(() => {
     commuteRef.current = commute;
@@ -70,6 +79,10 @@ export function RidesProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     incomingRef.current = incoming;
   }, [incoming]);
+
+  useEffect(() => {
+    skippedRef.current = skipped;
+  }, [skipped]);
 
   useEffect(() => {
     const pending = timers.current;
@@ -153,6 +166,43 @@ export function RidesProvider({ children }: PropsWithChildren) {
           }, DEMO_DRIVER_RESPONSE_MS),
         );
       },
+      sendDatedRequest: (proposal) => {
+        const nowEpochSeconds = Math.floor(Date.now() / 1000);
+        const offer = driverOfferFixtures.find((candidate) => candidate.id === proposal.participants.offerId);
+        const validation = validateDatedRideProposal(proposal, nowEpochSeconds);
+        if (!validation.ok) return validation.code === 'OUTDATED_PROPOSAL' ? 'OUTDATED_PROPOSAL' : 'INVALID_PROPOSAL';
+        if (!offer) return 'OFFER_CHANGED';
+        const duplicate = outgoingRef.current.some((request) => (
+          request.status !== 'declined'
+          && request.proposal?.occurrence.localDate === proposal.occurrence.localDate
+          && request.proposal.participants.riderId === proposal.participants.riderId
+        ));
+        if (duplicate) return 'DUPLICATE_COMMITMENT';
+        const id = `request-${proposal.proposalId}-${Date.now()}`;
+        const request = createDatedOutgoingRequest(proposal, id);
+        const next = [...outgoingRef.current, request];
+        outgoingRef.current = next;
+        setOutgoing(next);
+        timers.current.set(id, setTimeout(() => {
+          timers.current.delete(id);
+          const transition = transitionDatedOutgoingRequest({
+            requests: outgoingRef.current,
+            requestId: id,
+            status: 'accepted',
+            offers: driverOfferFixtures,
+            nowEpochSeconds: Math.floor(Date.now() / 1000),
+            riderCommute: commuteRef.current,
+            incoming: incomingRef.current,
+            skippedDates: skippedRef.current,
+          });
+          if (transition.ok) {
+            outgoingRef.current = transition.requests;
+            setOutgoing(transition.requests);
+          }
+          Haptics.notificationAsync(transition.ok ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning);
+        }, DEMO_DRIVER_RESPONSE_MS));
+        return 'CREATED';
+      },
       // Withdraws every request with this driver (a pending ask or the whole carpool).
       cancelRequest: (offerId) => {
         setOutgoing((current) => {
@@ -171,25 +221,21 @@ export function RidesProvider({ children }: PropsWithChildren) {
         timers.current.delete(requestId);
         setOutgoing((current) => current.filter((request) => request.id !== requestId));
       },
-      respondToRequest: (requestId, status) =>
-        setIncoming((current) =>
-          current.map((request) => {
-            if (request.id !== requestId) {
-              return request;
-            }
-            const hasRidingConflict =
-              status === 'accepted' &&
-              commute !== null &&
-              sharedDrivingDays(commute, request).some((day) =>
-                outgoingRef.current.some(
-                  (outgoingRequest) =>
-                    outgoingRequest.status === 'accepted' &&
-                    outgoingRequest.days.includes(day),
-                ),
-              );
-            return hasRidingConflict ? request : { ...request, status };
-          }),
-        ),
+      respondToRequest: (requestId, status) => {
+        const transition = transitionIncomingRequest({
+          commute: commuteRef.current,
+          requests: incomingRef.current,
+          outgoing: outgoingRef.current,
+          requestId,
+          status,
+          nowEpochSeconds: Math.floor(Date.now() / 1000),
+        });
+        if (transition.ok) {
+          incomingRef.current = transition.requests;
+          setIncoming(transition.requests);
+        }
+        return transition.code;
+      },
       skipped,
       skipTrip: (tripId) =>
         setSkipped((current) => (current.includes(tripId) ? current : [...current, tripId])),

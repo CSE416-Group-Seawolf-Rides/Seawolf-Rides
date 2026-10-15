@@ -51,6 +51,7 @@ export default function TripDetailRoute() {
         }
       }}
       onUndoSkip={() => undoSkip(trip.id)}
+      onViewPickupRoute={((trip.kind === 'drive' && trip.arriveBy !== null) || trip.proposal) ? () => router.push({ pathname: '/map', params: { tripId: trip.id, date: trip.id, direction: 'TO_CAMPUS' } }) : undefined}
       trip={trip}
     />
   );

@@ -10,7 +10,6 @@ import {
   getWeekOverview,
   incomingForCommute,
   matchDrivers,
-  matchDriversForDay,
   requestableDays,
   requestSummary,
   ridingDays,
@@ -39,9 +38,11 @@ export default function HomeRoute() {
           ? [
               {
                 day: item.day,
+                localDate: item.id,
                 label: item.whenLabel,
                 pending: item.pending,
-                matches: matchDriversForDay(commute, driverOfferFixtures, item.day),
+                matches: [],
+                requiresEvaluation: true,
               },
             ]
           : [],
@@ -68,13 +69,13 @@ export default function HomeRoute() {
       onPressDay={(day) => {
         const item = thisWeekItems.find((candidate) => candidate.day === day);
         if (item?.kind === 'open') {
-          router.push(`/home/day/${day}`);
+          router.push({ pathname: '/home/day/[day]', params: { day, date: item.id } });
         } else if (item) {
           router.navigate(`/rides/${item.id}`, { withAnchor: true });
         }
       }}
       onReviewRequests={() => router.push('/home/requests')}
-      onSeeAllDrivers={(day) => router.push(`/home/day/${day}`)}
+      onSeeAllDrivers={(day, localDate) => router.push({ pathname: '/home/day/[day]', params: { day, date: localDate } })}
       onSendRequest={sendRequest}
       onSetUpCommute={() => router.push('/commute-setup')}
       openDays={openDays}
