@@ -80,6 +80,10 @@ export interface EvaluateDriverRecommendationsOptions {
   signal?: AbortSignal;
   concurrency?: number;
   maxSnapMeters?: number;
+  /** Overrides the fixture-derived driver identity for a real/local signed-in driver. */
+  driverId?: string;
+  /** Test seam; production callers use the current clock. */
+  evaluatedAtEpochSeconds?: number;
 }
 
 const missingEstimate: StaticRouteEstimate = { status: 'MISSING' };
@@ -162,7 +166,7 @@ function buildInput(options: EvaluateDriverRecommendationsOptions, setup: Comple
   const epochWindow = (window: MinuteWindow) => ({ earliest: localMinuteToEpochSeconds(options.localDate, window.earliest, options.timeZone), latest: localMinuteToEpochSeconds(options.localDate, window.latest, options.timeZone) });
   return {
     driver: {
-      userId: `synthetic-driver-${offer.id}`,
+      userId: options.driverId ?? `synthetic-driver-${offer.id}`,
       occurrence,
       departureWindow: epochWindow(profile.departureWindowMinutes),
       campusArrivalWindow: epochWindow(profile.campusArrivalWindowMinutes),
@@ -253,7 +257,7 @@ export async function evaluateDriverRecommendations(options: EvaluateDriverRecom
     const routingFailure = baselineResult.status === 'FAILURE' ? baselineResult : sharedResult.status === 'FAILURE' ? sharedResult : null;
     if (!routingMessage && baselineResult.status === 'FAILURE') routingMessage = baselineResult.message;
     const evaluation = evaluatePair(input);
-    const evaluatedAtEpochSeconds = Math.floor(Date.now() / 1000);
+    const evaluatedAtEpochSeconds = options.evaluatedAtEpochSeconds ?? Math.floor(Date.now() / 1000);
     const proposal = evaluation.status === 'FEASIBLE'
       ? sealDatedRideProposal({
           schema: 'seawolf-rides/dated-to-campus-proposal',

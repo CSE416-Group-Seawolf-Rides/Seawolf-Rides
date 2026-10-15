@@ -84,8 +84,11 @@ export function buildTripPickupManifest(trip: Trip): TripPickupManifest | null {
     };
   }
   if (trip.kind !== 'drive' || trip.arriveBy === null) return null;
-  const campus = getCampusDestinationMapLocation(trip.campusLot);
   const accepted = uniqueAcceptedRiders(trip.riders ?? []);
+  const proposalCampus = accepted.find((rider) => rider.proposal)?.proposal?.agreed.campusDropoff;
+  const campus = proposalCampus
+    ? { title: proposalCampus.label, coordinate: proposalCampus.coordinate }
+    : getCampusDestinationMapLocation(trip.campusLot);
   const stops: TripPickupStop[] = [];
   const missingPickupRiders: { id: string; name: string }[] = [];
   for (const rider of accepted) {

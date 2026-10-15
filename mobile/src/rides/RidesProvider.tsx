@@ -12,11 +12,14 @@ import {
 import { useSession } from '../auth/SessionProvider';
 import type { Weekday } from '../commute/commuteModel';
 import { demoIncoming, demoOutgoing } from '../prototypeData/demoAccount';
+import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
 import { validateDatedRideProposal, type DatedRideProposalV1 } from './datedRideProposal';
+import { applyFridayDriverTestLoad, buildFridayDriverTest, isFridayDriverTestRequest, resetFridayDriverTestState } from './fridayDriverTest';
 import { driverOfferFixtures, riderRequestFixtures } from './rideFixtures';
 import {
   IncomingRequest,
   OutgoingRequest,
+  type DriverOccurrenceOverride,
   reconcileRideState,
   reconcileSkippedDays,
   sharedDrivingDays,
@@ -36,6 +39,10 @@ interface Rides {
   cancelRequest: (offerId: string) => void;
   withdrawRequest: (requestId: string) => void;
   respondToRequest: (requestId: string, status: 'accepted' | 'declined') => RequestTransitionCode;
+  driverOccurrences: DriverOccurrenceOverride[];
+  fridayDriverTest: { status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR'; message: string | null };
+  loadFridayDriverTest: () => Promise<void>;
+  resetFridayDriverTest: () => void;
   // Trip ids (local dates) the user can't make. The recurring match stays in place.
   skipped: string[];
   skipTrip: (tripId: string) => void;
@@ -62,11 +69,16 @@ export function RidesProvider({ children }: PropsWithChildren) {
       : riderRequestFixtures.map((request) => ({ ...request, status: 'pending' })),
   );
   const [skipped, setSkipped] = useState<string[]>([]);
+  const [driverOccurrences, setDriverOccurrences] = useState<DriverOccurrenceOverride[]>([]);
+  const [fridayDriverTest, setFridayDriverTest] = useState<Rides['fridayDriverTest']>({ status: 'IDLE', message: null });
+  const routeAdapter = useMemo(() => createOsrmRoutingAdapter(), []);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const commuteRef = useRef(commute);
   const outgoingRef = useRef(outgoing);
   const incomingRef = useRef(incoming);
   const skippedRef = useRef(skipped);
+  const driverOccurrencesRef = useRef(driverOccurrences);
+  const fridayLoadController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     commuteRef.current = commute;
@@ -85,8 +97,15 @@ export function RidesProvider({ children }: PropsWithChildren) {
   }, [skipped]);
 
   useEffect(() => {
+    driverOccurrencesRef.current = driverOccurrences;
+  }, [driverOccurrences]);
+
+  useEffect(() => {
     const pending = timers.current;
-    return () => pending.forEach((timer) => clearTimeout(timer));
+    return () => {
+      pending.forEach((timer) => clearTimeout(timer));
+      fridayLoadController.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -104,7 +123,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
         });
       return next;
     });
-    setIncoming((current) => reconcileRideState(commute, [], current).incoming);
+    setIncoming((current) => reconcileRideState(commute, [], current, driverOccurrencesRef.current).incoming);
     setSkipped((current) => reconcileSkippedDays(commute, current));
   }, [commute]);
 
@@ -229,6 +248,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
           requestId,
           status,
           nowEpochSeconds: Math.floor(Date.now() / 1000),
+          driverOccurrences: driverOccurrencesRef.current,
         });
         if (transition.ok) {
           incomingRef.current = transition.requests;
@@ -236,12 +256,53 @@ export function RidesProvider({ children }: PropsWithChildren) {
         }
         return transition.code;
       },
+      driverOccurrences,
+      fridayDriverTest,
+      loadFridayDriverTest: async () => {
+        if (!__DEV__ || !user || fridayLoadController.current) return;
+        if (incomingRef.current.some(isFridayDriverTestRequest)) {
+          setFridayDriverTest({ status: 'LOADED', message: 'Friday driver test is already loaded.' });
+          return;
+        }
+        const controller = new AbortController();
+        fridayLoadController.current = controller;
+        setFridayDriverTest({ status: 'LOADING', message: 'Using live OSRM to evaluate Ava, Ben, and Chloe…' });
+        try {
+          const result = await buildFridayDriverTest({ adapter: routeAdapter, driverId: user.id, signal: controller.signal });
+          if (controller.signal.aborted) return;
+          if (result.status === 'FAILURE') {
+            setFridayDriverTest({ status: 'ERROR', message: result.message });
+            return;
+          }
+          const next = applyFridayDriverTestLoad(incomingRef.current, driverOccurrencesRef.current, result);
+          incomingRef.current = next.incoming;
+          setIncoming(next.incoming);
+          driverOccurrencesRef.current = next.occurrences;
+          setDriverOccurrences(next.occurrences);
+          setFridayDriverTest({ status: 'LOADED', message: '3 synthetic dated requests loaded for Friday, October 16.' });
+        } catch (caught) {
+          if (!controller.signal.aborted) setFridayDriverTest({ status: 'ERROR', message: caught instanceof Error ? caught.message : 'Friday driver test could not be loaded.' });
+        } finally {
+          if (fridayLoadController.current === controller) fridayLoadController.current = null;
+        }
+      },
+      resetFridayDriverTest: () => {
+        if (!__DEV__) return;
+        fridayLoadController.current?.abort();
+        fridayLoadController.current = null;
+        const next = resetFridayDriverTestState(incomingRef.current, driverOccurrencesRef.current);
+        incomingRef.current = next.incoming;
+        setIncoming(next.incoming);
+        driverOccurrencesRef.current = next.occurrences;
+        setDriverOccurrences(next.occurrences);
+        setFridayDriverTest({ status: 'IDLE', message: null });
+      },
       skipped,
       skipTrip: (tripId) =>
         setSkipped((current) => (current.includes(tripId) ? current : [...current, tripId])),
       undoSkip: (tripId) => setSkipped((current) => current.filter((id) => id !== tripId)),
     }),
-    [commute, outgoing, incoming, skipped],
+    [commute, driverOccurrences, fridayDriverTest, incoming, outgoing, routeAdapter, skipped, user],
   );
 
   return <RidesContext.Provider value={rides}>{children}</RidesContext.Provider>;

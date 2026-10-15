@@ -16,16 +16,18 @@ import { TripDetailScreen } from '../../../screens/TripDetailScreen';
 export default function TripDetailRoute() {
   const { rideId } = useLocalSearchParams<{ rideId: string }>();
   const { commute } = useSession();
-  const { outgoing, incoming, skipped, skipTrip, undoSkip, cancelRequest } = useRides();
+  const { outgoing, incoming, skipped, skipTrip, undoSkip, cancelRequest, driverOccurrences } = useRides();
   const { now } = useHomeClock();
 
   const trip = getUpcoming(
     commute,
     outgoing,
-    incomingForCommute(commute, incoming, outgoing).map((view) => view.request),
+    incomingForCommute(commute, incoming, outgoing, driverOccurrences).map((view) => view.request),
     driverOfferFixtures,
     now,
     skipped,
+    14,
+    driverOccurrences,
   )
     .filter(isTrip)
     .find((candidate) => candidate.id === rideId);

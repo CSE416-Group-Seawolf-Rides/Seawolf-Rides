@@ -9,10 +9,10 @@ import { HistorySummary, RidesScreen } from '../../../screens/RidesScreen';
 
 export default function RidesRoute() {
   const { user, commute } = useSession();
-  const { outgoing, incoming, skipped, withdrawRequest } = useRides();
+  const { outgoing, incoming, skipped, withdrawRequest, driverOccurrences } = useRides();
   const { now } = useHomeClock();
 
-  const incomingViews = incomingForCommute(commute, incoming, outgoing);
+  const incomingViews = incomingForCommute(commute, incoming, outgoing, driverOccurrences);
   const upcoming = getUpcoming(
     commute,
     outgoing,
@@ -20,6 +20,8 @@ export default function RidesRoute() {
     driverOfferFixtures,
     now,
     skipped,
+    14,
+    driverOccurrences,
   );
 
   // Only the demo (returning) account has history; new accounts start with none.

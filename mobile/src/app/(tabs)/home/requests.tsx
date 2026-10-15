@@ -8,7 +8,7 @@ import { ReviewRequestsScreen } from '../../../screens/ReviewRequestsScreen';
 
 export default function ReviewRequestsRoute() {
   const { commute } = useSession();
-  const { outgoing, incoming, respondToRequest } = useRides();
+  const { outgoing, incoming, respondToRequest, driverOccurrences } = useRides();
 
   return (
     <ReviewRequestsScreen
@@ -21,7 +21,7 @@ export default function ReviewRequestsRoute() {
             : Haptics.NotificationFeedbackType.Warning,
         );
       }}
-      pending={incomingForCommute(commute, incoming, outgoing).filter(
+      pending={incomingForCommute(commute, incoming, outgoing, driverOccurrences).filter(
         (view) => view.request.status === 'pending',
       )}
     />

@@ -1,6 +1,6 @@
 import type { CommuteSchedule, Weekday } from '../commute/commuteModel';
 import { validateDatedRideProposal, type DatedRideProposalV1 } from './datedRideProposal';
-import type { DriverOffer, IncomingRequest, OutgoingRequest, RequestStatus } from './rideModel';
+import type { DriverOccurrenceOverride, DriverOffer, IncomingRequest, OutgoingRequest, RequestStatus } from './rideModel';
 import { requestOccursOn, requestSeats, sharedDrivingDays } from './rideModel';
 
 export type RequestTransitionCode =
@@ -122,6 +122,7 @@ export function transitionIncomingRequest(options: {
   requestId: string;
   status: Extract<RequestStatus, 'accepted' | 'declined'>;
   nowEpochSeconds: number;
+  driverOccurrences?: readonly DriverOccurrenceOverride[];
 }): RequestTransition<IncomingRequest> {
   const current = options.requests.find((request) => request.id === options.requestId);
   if (!current) return unchanged(options.requests, 'REQUEST_NOT_FOUND');
@@ -150,16 +151,25 @@ export function transitionIncomingRequest(options: {
   const proposal = current.proposal;
   const weekday = weekdayForDate(proposal.occurrence.localDate);
   const plan = weekday && options.commute.days.find((day) => day.day === weekday);
+  const driverOccurrence = options.driverOccurrences?.find((occurrence) => (
+    occurrence.localDate === proposal.occurrence.localDate
+    && occurrence.direction === proposal.occurrence.direction
+    && occurrence.driverId === proposal.participants.driverId
+    && occurrence.campusLot === proposal.agreed.campusDropoff.campusLot
+  ));
   if (!weekday || current.days.length !== 1 || current.days[0] !== weekday || proposal.occurrence.direction !== 'TO_CAMPUS') {
     return unchanged(options.requests, 'WRONG_OCCURRENCE');
   }
-  if (!plan || plan.mode === 'ride' || plan.arriveBy === null || options.commute.campusLot !== proposal.agreed.campusDropoff.campusLot) {
+  if (!driverOccurrence && (!plan || plan.mode === 'ride' || plan.arriveBy === null || options.commute.campusLot !== proposal.agreed.campusDropoff.campusLot)) {
     return unchanged(options.requests, 'SCHEDULE_CONFLICT');
   }
   const acceptedOnOccurrence = options.requests.filter((request) => (
     request.id !== current.id
     && request.status === 'accepted'
-    && requestOccursOn(request, proposal.occurrence.localDate, weekday)
+    && (driverOccurrence
+      ? request.proposal?.occurrence.localDate === proposal.occurrence.localDate
+        && request.proposal.occurrence.direction === proposal.occurrence.direction
+      : requestOccursOn(request, proposal.occurrence.localDate, weekday))
   ));
   if (acceptedOnOccurrence.some((request) => request.proposal?.participants.riderId === proposal.participants.riderId)) {
     return unchanged(options.requests, 'DUPLICATE_COMMITMENT');
@@ -167,7 +177,7 @@ export function transitionIncomingRequest(options: {
   if (options.outgoing.some((request) => request.status === 'accepted' && requestOccursOn(request, proposal.occurrence.localDate, weekday))) {
     return unchanged(options.requests, 'SCHEDULE_CONFLICT');
   }
-  const capacity = options.commute.seats ?? 0;
+  const capacity = driverOccurrence?.passengerCapacity ?? options.commute.seats ?? 0;
   const seatsCommitted = acceptedOnOccurrence.reduce((total, request) => total + requestSeats(request), 0);
   if (seatsCommitted + proposal.agreed.requestedSeats > capacity) return unchanged(options.requests, 'NO_REMAINING_CAPACITY');
   return changed(options.requests, current.id, 'accepted', 'ACCEPTED');

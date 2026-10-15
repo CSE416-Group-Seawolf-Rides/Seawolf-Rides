@@ -68,6 +68,9 @@ interface MapScreenProps {
   onOpenDriverTest?: () => void;
   onOpenMatchingDiagnostics?: () => void;
   onOpenRoutePlanner?: () => void;
+  fridayDriverTest?: { status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR'; message: string | null };
+  onLoadFridayDriverTest?: () => Promise<void>;
+  onResetFridayDriverTest?: () => void;
   onStartBasicNavigation: (request: RouteNavigationRequest) => void;
   onStartNavigation: (request: RouteNavigationRequest) => void;
   riders: RiderMapCandidate[];
@@ -114,7 +117,7 @@ function routingFailureMessage(result: Exclude<RoutingResult, { status: 'SUCCESS
   }
 }
 
-export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, onClearPickupRoute, onOpenCarpoolMatchingDemo, onOpenDriverTest, onOpenMatchingDiagnostics, onOpenRoutePlanner, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
+export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, fridayDriverTest, onClearPickupRoute, onLoadFridayDriverTest, onOpenCarpoolMatchingDemo, onOpenDriverTest, onOpenMatchingDiagnostics, onOpenRoutePlanner, onResetFridayDriverTest, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const expandedMapRef = useRef<MapView>(null);
@@ -177,7 +180,7 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, onClea
   const [pickupRouteResult, setPickupRouteResult] = useState<TripPickupRouteResult | null>(null);
   const [pickupOrderConfirmed, setPickupOrderConfirmed] = useState(false);
   const [plannedDeparture, setPlannedDeparture] = useState(() => {
-    const proposal = pickupRouteTrip?.proposal;
+    const proposal = pickupRouteTrip?.proposal ?? pickupRouteTrip?.riders?.find((rider) => rider.proposal)?.proposal;
     if (!proposal) return '';
     return new Intl.DateTimeFormat('en-US', {
       hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: proposal.occurrence.timeZone,
@@ -572,7 +575,7 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, onClea
                   <AppButton label="Carpool Matching Demo" onPress={onOpenCarpoolMatchingDemo} />
                 </View>
               )}
-              {__DEV__ && (onOpenDriverTest || onOpenMatchingDiagnostics || onOpenRoutePlanner) && (
+              {__DEV__ && (onLoadFridayDriverTest || onOpenDriverTest || onOpenMatchingDiagnostics || onOpenRoutePlanner) && (
                 <View style={styles.developerTools}>
                   <Pressable accessibilityRole="button" accessibilityState={{ expanded: developerToolsExpanded }} onPress={() => setDeveloperToolsExpanded((expanded) => !expanded)} style={styles.developerToolsHeader}>
                     <Text style={styles.developerToolsTitle}>Developer tools</Text>
@@ -580,6 +583,16 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, onClea
                   </Pressable>
                   {developerToolsExpanded && (
                     <View style={styles.developerToolsBody}>
+                      {onLoadFridayDriverTest && fridayDriverTest && (
+                        <View style={styles.fridayTestTool}>
+                          <Text style={styles.developerToolsTitle}>Friday dated driver test</Text>
+                          <Text style={styles.smallText}>Oct 16, 2026 · Jamaica → Tabler · Ava 1 seat, Ben 2 seats, Chloe 1 seat · live OSRM</Text>
+                          {fridayDriverTest.message && <Text accessibilityLiveRegion={fridayDriverTest.status === 'ERROR' ? 'assertive' : 'polite'} style={fridayDriverTest.status === 'ERROR' ? styles.errorText : styles.smallText}>{fridayDriverTest.message}</Text>}
+                          {fridayDriverTest.status === 'LOADED' && onResetFridayDriverTest
+                            ? <AppButton label="Reset Friday driver test" onPress={onResetFridayDriverTest} variant="secondary" />
+                            : <AppButton disabled={fridayDriverTest.status === 'LOADING'} label={fridayDriverTest.status === 'LOADING' ? 'Loading Friday driver test…' : fridayDriverTest.status === 'ERROR' ? 'Retry Friday driver test' : 'Load Friday driver test'} onPress={() => void onLoadFridayDriverTest()} variant="secondary" />}
+                        </View>
+                      )}
                       {onOpenDriverTest && <AppButton label="Test as driver" onPress={onOpenDriverTest} variant="secondary" />}
                       {onOpenMatchingDiagnostics && <AppButton label="Matching evaluator diagnostics" onPress={onOpenMatchingDiagnostics} variant="secondary" />}
                       {onOpenRoutePlanner && <AppButton label="Route planner" onPress={onOpenRoutePlanner} variant="secondary" />}
@@ -752,6 +765,7 @@ const styles = StyleSheet.create({
   panelScroll: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }, panelBody: { gap: spacing.sm, padding: spacing.md },
   rideNotice: { backgroundColor: colors.accentSoft, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, rideNoticeHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, rideNoticeTitle: { color: colors.text, flex: 1, fontSize: 13, fontWeight: '800' }, smallText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   developerTools: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' }, developerToolsHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 48, paddingHorizontal: spacing.md }, developerToolsTitle: { color: colors.text, fontSize: 13, fontWeight: '800' }, developerToolsBody: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.sm, padding: spacing.md },
+  fridayTestTool: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md },
   endpoint: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 56, padding: spacing.sm }, endpointSelected: { borderColor: colors.accent, borderWidth: 2 }, endpointCopy: { flex: 1 }, endpointLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }, endpointValue: { color: colors.text, fontSize: 13, fontWeight: '700' }, endpointSource: { color: colors.textMuted, fontSize: 10, marginTop: 1 },
   queensStartAction: { gap: spacing.xs }, disabledReason: { color: colors.warning, fontSize: 11, lineHeight: 16, paddingHorizontal: spacing.xs }, sourceActions: { flexDirection: 'row', gap: spacing.sm }, sourceButton: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.sm }, currentLocationButton: { flex: 2 }, sourceButtonText: { color: colors.accent, fontSize: 13, fontWeight: '800' }, pressed: { backgroundColor: colors.accentSoft }, disabled: { opacity: 0.45 },
   searchInput: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 44, paddingHorizontal: spacing.md }, searchResult: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, paddingVertical: spacing.sm }, resultLabel: { color: colors.text, fontSize: 13, fontWeight: '800' }, resultContext: { color: colors.textMuted, fontSize: 11, lineHeight: 15 }, errorText: { color: colors.error, fontSize: 12, lineHeight: 17 }, attribution: { color: colors.textMuted, fontSize: 10 },

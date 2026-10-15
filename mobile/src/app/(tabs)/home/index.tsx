@@ -22,16 +22,16 @@ import { HomeScreen, OpenDayView } from '../../../screens/HomeScreen';
 export default function HomeRoute() {
   const { profile, commute } = useSession();
   const role = useCommuteRole();
-  const { outgoing, incoming, skipped, sendRequest } = useRides();
+  const { outgoing, incoming, skipped, sendRequest, driverOccurrences } = useRides();
   const { now, greeting, dateLabel, dates, today } = useHomeClock();
 
-  const incomingViews = incomingForCommute(commute, incoming, outgoing);
+  const incomingViews = incomingForCommute(commute, incoming, outgoing, driverOccurrences);
   const relevantIncoming = incomingViews.map((view) => view.request);
-  const nextTrip = getNextTrip(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped);
+  const nextTrip = getNextTrip(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped, driverOccurrences);
   const chatId = nextTrip?.offer?.chatId;
 
   // The coming seven days: what's booked and which days still need a driver.
-  const upcoming = getUpcoming(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped, 7);
+  const upcoming = getUpcoming(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped, 7, driverOccurrences);
   const openDays: OpenDayView[] = commute
     ? upcoming.flatMap((item) =>
         item.kind === 'open'
@@ -79,7 +79,7 @@ export default function HomeRoute() {
       onSendRequest={sendRequest}
       onSetUpCommute={() => router.push('/commute-setup')}
       openDays={openDays}
-      overview={getWeekOverview(commute, outgoing, relevantIncoming, skippedDays)}
+      overview={getWeekOverview(commute, outgoing, relevantIncoming, skippedDays, driverOccurrences)}
       pendingRequests={incomingViews.filter((view) => view.request.status === 'pending')}
       previewMatches={matchDrivers(null, driverOfferFixtures)}
       requestableDaysFor={(offerId) => {

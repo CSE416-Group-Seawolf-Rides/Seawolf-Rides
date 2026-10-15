@@ -13,13 +13,13 @@ import { MapScreen } from '../../../screens/MapScreen';
 export default function MapRoute() {
   const { tripId, date, direction } = useLocalSearchParams<{ tripId?: string; date?: string; direction?: string }>();
   const { commute } = useSession();
-  const { outgoing, incoming, skipped } = useRides();
+  const { outgoing, incoming, skipped, driverOccurrences, fridayDriverTest, loadFridayDriverTest, resetFridayDriverTest } = useRides();
   const { now } = useHomeClock();
   const riders = getDemoRiderCandidates();
-  const relevantIncoming = incomingForCommute(commute, incoming, outgoing).map((view) => view.request);
-  const nextTrip = getNextTrip(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped);
+  const relevantIncoming = incomingForCommute(commute, incoming, outgoing, driverOccurrences).map((view) => view.request);
+  const nextTrip = getNextTrip(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped, driverOccurrences);
   const selectedTrip = resolveTripPickupSelection(
-    getUpcoming(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped).filter(isTrip),
+    getUpcoming(commute, outgoing, relevantIncoming, driverOfferFixtures, now, skipped, 14, driverOccurrences).filter(isTrip),
     { tripId, date, direction },
   );
   const currentTrip = selectedTrip ?? (nextTrip?.whenLabel === 'Today' ? nextTrip : null);
@@ -36,5 +36,5 @@ export default function MapRoute() {
     router.push({ pathname: '/map/basic-navigation', params: { request: encodeRouteNavigationRequest(request) } });
   };
 
-  return <MapScreen commute={commute} currentTrip={currentTrip} key={mapStateKey} onClearPickupRoute={selectedTrip ? () => router.replace('/map') : undefined} onOpenCarpoolMatchingDemo={__DEV__ ? () => router.push('/map/find-riders-demo') : undefined} onOpenDriverTest={__DEV__ ? () => router.push('/map/driver-test') : undefined} onOpenMatchingDiagnostics={__DEV__ ? () => router.push('/home/matching-demo') : undefined} onOpenRoutePlanner={__DEV__ ? () => router.push('/home/route-planner') : undefined} onStartBasicNavigation={startBasicNavigation} onStartNavigation={startNavigation} pickupRouteTrip={selectedTrip} riders={riders} />;
+  return <MapScreen commute={commute} currentTrip={currentTrip} fridayDriverTest={__DEV__ ? fridayDriverTest : undefined} key={mapStateKey} onClearPickupRoute={selectedTrip ? () => router.replace('/map') : undefined} onLoadFridayDriverTest={__DEV__ ? loadFridayDriverTest : undefined} onOpenCarpoolMatchingDemo={__DEV__ ? () => router.push('/map/find-riders-demo') : undefined} onOpenDriverTest={__DEV__ ? () => router.push('/map/driver-test') : undefined} onOpenMatchingDiagnostics={__DEV__ ? () => router.push('/home/matching-demo') : undefined} onOpenRoutePlanner={__DEV__ ? () => router.push('/home/route-planner') : undefined} onResetFridayDriverTest={__DEV__ ? resetFridayDriverTest : undefined} onStartBasicNavigation={startBasicNavigation} onStartNavigation={startNavigation} pickupRouteTrip={selectedTrip} riders={riders} />;
 }
