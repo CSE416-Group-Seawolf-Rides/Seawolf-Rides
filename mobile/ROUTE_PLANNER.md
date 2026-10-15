@@ -32,6 +32,69 @@ generic continue instruction instead of rejecting otherwise usable guidance.
 The planner holds points and results only in component state. It does not read
 the saved commute privacy area, request GPS permission, or persist locations.
 
+## Carpool Matching Demo
+
+The Map tab has one development-only **Carpool Matching Demo** entry point.
+Earlier matching and route-planner diagnostics remain under the collapsed
+**Developer tools** section on Map; Home has no duplicate demo cards. The
+presentation compares six synthetic riders against one synthetic `TO_CAMPUS`
+driver trip. Every rider is an independent pickup alternative; the demo never
+evaluates a combined multi-rider route, changes normal Home matching, reserves
+a seat, or sends a request.
+
+The presenter first chooses and loads one of two deterministic cases, then
+explicitly finds matches:
+
+- **Compare pickups** keeps the original schedules. Alex and Blair are
+  feasible, with Alex ranked first; Casey fails timing, Drew fails the detour
+  limit, and Erin and Finn need more information.
+- **Schedule changes the recommendation** changes only Alex's pickup window
+  from 8:08–8:25 AM to 8:25–8:28 AM. The shared evaluator then rejects Alex for
+  timing and ranks Blair first. Driver inputs, pickup coordinates, fixed travel
+  estimates, and limits are unchanged.
+
+In the first case, the deterministic evaluator selects an 8:05 AM departure
+for Alex, reaches the pickup at 8:13 AM, completes boarding at 8:15 AM, reaches
+campus at 8:39 AM, and applies the four-minute egress assumption for an 8:43 AM
+rider destination arrival. These times are the values shown by the screen and
+asserted by tests.
+
+Two explicit routing modes use the same orchestration, evaluator, ranking, and
+screen:
+
+- **Demo data — fixed travel estimates** is the default. It uses deterministic
+  duration, distance, and leg fixtures for repeatable demonstrations and tests.
+  Its checked-in geometry is only a stop-order illustration and is prominently
+  labeled **Schematic — not a road route**; it does not establish real driving
+  distance.
+- **Live OSRM mode** sends one reusable driver start → campus baseline request,
+  then bounded-concurrency start → pickup → campus requests. It never silently
+  falls back to fixtures. Current static road data can change an intended
+  scenario's result.
+
+Both modes map the route's directed legs into the existing `evaluatePair`
+contract, rounding provider fractional SI values to integer seconds and meters.
+The evaluator adds the two-minute pickup
+service time exactly once. Access walking is a labeled fixture assumption and
+is not added to the schedule because each pickup window already means the rider
+is ready at the pickup point.
+
+Confirmed demo pickups must be close to the routing provider's snapped pickup.
+`EXPO_PUBLIC_RIDER_DEMO_MAX_SNAP_METERS` configures the maximum accepted snap
+distance and defaults to 75 meters. A larger snap is reported as unconfirmed
+routing (`UNKNOWN` / `LOCATION_UNCONFIRMED`); its provider route is not drawn.
+Approximate pickups and the deliberate missing-estimate scenario do not make
+route requests. Explicit `NoRoute`, missing/provider failures, malformed legs,
+and cancellation remain distinguishable.
+
+Only `FEASIBLE` alternatives receive ranks. The deterministic policy is lowest
+added driver duration, lowest total fixture walking, widest feasible departure
+interval, then stable candidate ID. The demo does not invent a compatibility
+percentage. Evaluation runs only after an explicit button press, can be
+cancelled or refreshed, aborts superseded work, and ignores stale responses.
+Changing presentation cases also cancels pending work and clears the prior
+riders, routes, selection, and results until the new case is loaded.
+
 ## Map search and route sessions
 
 The Map tab uses a replaceable Photon adapter in `src/geocoding`. Configure its

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, type MapPressEvent } from 'react-native-maps';
 
 import { colors, radii } from '../../theme';
@@ -21,6 +21,27 @@ interface RoadRouteLayersProps {
   route: RoadRoute | null;
   start: RouteCoordinate | null;
   startTitle?: string;
+}
+
+export interface RiderComparisonMarker {
+  id: string;
+  coordinate: RouteCoordinate;
+  title: string;
+  subtitle: string;
+  confirmed: boolean;
+}
+
+interface RiderComparisonMapProps {
+  baselineRoute: RoadRoute | null;
+  campus: RouteCoordinate;
+  campusTitle: string;
+  driverStart: RouteCoordinate;
+  driverTitle: string;
+  fitKey: number;
+  onSelectCandidate: (candidateId: string) => void;
+  riders: readonly RiderComparisonMarker[];
+  selectedCandidateId: string | null;
+  selectedRoute: RoadRoute | null;
 }
 
 const STONY_BROOK_REGION = {
@@ -102,6 +123,98 @@ export function RoadRouteLayers({
   );
 }
 
+/** Shared map renderer for the independent-alternative rider comparison demo. */
+export function RiderComparisonMap({
+  baselineRoute,
+  campus,
+  campusTitle,
+  driverStart,
+  driverTitle,
+  fitKey,
+  onSelectCandidate,
+  riders,
+  selectedCandidateId,
+  selectedRoute,
+}: RiderComparisonMapProps) {
+  const mapRef = useRef<MapView>(null);
+
+  useEffect(() => {
+    if (fitKey === 0) return;
+    mapRef.current?.fitToCoordinates(
+      [driverStart, campus, ...riders.map((rider) => rider.coordinate)],
+      {
+        animated: true,
+        edgePadding: { top: 52, right: 42, bottom: 52, left: 42 },
+      },
+    );
+  }, [campus, driverStart, fitKey, riders]);
+
+  return (
+    <View accessibilityLabel="Demo rider route comparison map" style={styles.comparisonFrame}>
+      <MapView
+        initialRegion={STONY_BROOK_REGION}
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        toolbarEnabled={false}
+      >
+        {baselineRoute && (
+          <Polyline
+            coordinates={baselineRoute.geometry}
+            lineCap="round"
+            lineJoin="round"
+            strokeColor={colors.textMuted}
+            strokeWidth={4}
+          />
+        )}
+        {selectedRoute && (
+          <Polyline
+            coordinates={selectedRoute.geometry}
+            lineCap="round"
+            lineJoin="round"
+            strokeColor={colors.accent}
+            strokeWidth={6}
+          />
+        )}
+        <Marker coordinate={driverStart} title={driverTitle}>
+          <View style={[styles.endpointMarker, styles.driverMarker]}>
+            <Text style={styles.endpointMarkerText}>Driver start</Text>
+          </View>
+        </Marker>
+        <Marker coordinate={campus} title={campusTitle}>
+          <View style={[styles.endpointMarker, styles.campusMarker]}>
+            <Text style={styles.endpointMarkerText}>Campus</Text>
+          </View>
+        </Marker>
+        {riders.map((rider) => {
+          const selected = rider.id === selectedCandidateId;
+          return (
+            <Marker
+              accessibilityLabel={`${rider.title}, ${rider.confirmed ? 'confirmed demo pickup' : 'unconfirmed demo pickup'}`}
+              coordinate={rider.coordinate}
+              description={rider.subtitle}
+              key={rider.id}
+              onPress={() => onSelectCandidate(rider.id)}
+              title={rider.title}
+            >
+              <View
+                style={[
+                  styles.candidateMarker,
+                  !rider.confirmed && styles.unconfirmedMarker,
+                  selected && styles.selectedCandidateMarker,
+                ]}
+              >
+                <Text style={[styles.candidateMarkerText, selected && styles.selectedMarkerText]}>
+                  {rider.title}
+                </Text>
+              </View>
+            </Marker>
+          );
+        })}
+      </MapView>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   frame: {
     borderColor: colors.border,
@@ -109,5 +222,60 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 340,
     overflow: 'hidden',
+  },
+  comparisonFrame: {
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    height: 360,
+    overflow: 'hidden',
+  },
+  endpointMarker: {
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    minHeight: 36,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+  },
+  driverMarker: {
+    backgroundColor: colors.success,
+    borderColor: colors.surface,
+  },
+  campusMarker: {
+    backgroundColor: colors.error,
+    borderColor: colors.surface,
+  },
+  endpointMarkerText: {
+    color: colors.surface,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  candidateMarker: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.accent,
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    minHeight: 34,
+    minWidth: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  candidateMarkerText: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  selectedCandidateMarker: {
+    backgroundColor: colors.accent,
+    borderColor: colors.surface,
+    minHeight: 42,
+  },
+  selectedMarkerText: {
+    color: colors.surface,
+  },
+  unconfirmedMarker: {
+    borderColor: colors.warning,
+    borderStyle: 'dashed',
   },
 });

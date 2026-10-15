@@ -28,5 +28,5 @@ export default function MapRoute() {
     router.push({ pathname: '/map/basic-navigation', params: { request: encodeRouteNavigationRequest(request) } });
   };
 
-  return <MapScreen commute={commute} currentTrip={currentTrip} key={mapStateKey} onStartBasicNavigation={startBasicNavigation} onStartNavigation={startNavigation} riders={riders} />;
+  return <MapScreen commute={commute} currentTrip={currentTrip} key={mapStateKey} onOpenCarpoolMatchingDemo={__DEV__ ? () => router.push('/map/find-riders-demo') : undefined} onOpenMatchingDiagnostics={__DEV__ ? () => router.push('/home/matching-demo') : undefined} onOpenRoutePlanner={__DEV__ ? () => router.push('/home/route-planner') : undefined} onStartBasicNavigation={startBasicNavigation} onStartNavigation={startNavigation} riders={riders} />;
 }

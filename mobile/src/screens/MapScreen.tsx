@@ -51,6 +51,9 @@ import { colors, radii, spacing } from '../theme';
 interface MapScreenProps {
   commute: CommuteSchedule | null;
   currentTrip: Trip | null;
+  onOpenCarpoolMatchingDemo?: () => void;
+  onOpenMatchingDiagnostics?: () => void;
+  onOpenRoutePlanner?: () => void;
   onStartBasicNavigation: (request: RouteNavigationRequest) => void;
   onStartNavigation: (request: RouteNavigationRequest) => void;
   riders: RiderMapCandidate[];
@@ -92,7 +95,7 @@ function routingFailureMessage(result: Exclude<RoutingResult, { status: 'SUCCESS
   }
 }
 
-export function MapScreen({ commute, currentTrip, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
+export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onOpenMatchingDiagnostics, onOpenRoutePlanner, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const routeAdapter = useMemo(() => createOsrmRoutingAdapter(), []);
@@ -128,6 +131,7 @@ export function MapScreen({ commute, currentTrip, onStartBasicNavigation, onStar
   const [standaloneConfirmed, setStandaloneConfirmed] = useState(rideContext.status !== 'UNCONFIRMED');
   const [locationLoading, setLocationLoading] = useState(false);
   const [navigationLaunching, setNavigationLaunching] = useState(false);
+  const [developerToolsExpanded, setDeveloperToolsExpanded] = useState(false);
   const [currentLocationState, setCurrentLocationState] = useState<CurrentLocationState>('IDLE');
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -389,6 +393,30 @@ export function MapScreen({ commute, currentTrip, onStartBasicNavigation, onStar
 
           {panelExpanded && (
             <ScrollView contentContainerStyle={styles.panelBody} keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={false} style={styles.panelScroll}>
+              {__DEV__ && onOpenCarpoolMatchingDemo && (
+                <View style={styles.rideNotice}>
+                  <View style={styles.rideNoticeHeader}>
+                    <Ionicons color={colors.accent} name="people-outline" size={18} />
+                    <Text style={styles.rideNoticeTitle}>Carpool Matching Demo</Text>
+                  </View>
+                  <Text style={styles.smallText}>Present two matching cases with six independent synthetic rider alternatives.</Text>
+                  <AppButton label="Carpool Matching Demo" onPress={onOpenCarpoolMatchingDemo} />
+                </View>
+              )}
+              {__DEV__ && (onOpenMatchingDiagnostics || onOpenRoutePlanner) && (
+                <View style={styles.developerTools}>
+                  <Pressable accessibilityRole="button" accessibilityState={{ expanded: developerToolsExpanded }} onPress={() => setDeveloperToolsExpanded((expanded) => !expanded)} style={styles.developerToolsHeader}>
+                    <Text style={styles.developerToolsTitle}>Developer tools</Text>
+                    <Ionicons color={colors.textMuted} name={developerToolsExpanded ? 'chevron-up' : 'chevron-down'} size={18} />
+                  </Pressable>
+                  {developerToolsExpanded && (
+                    <View style={styles.developerToolsBody}>
+                      {onOpenMatchingDiagnostics && <AppButton label="Matching evaluator diagnostics" onPress={onOpenMatchingDiagnostics} variant="secondary" />}
+                      {onOpenRoutePlanner && <AppButton label="Route planner" onPress={onOpenRoutePlanner} variant="secondary" />}
+                    </View>
+                  )}
+                </View>
+              )}
               {rideContext.status !== 'NONE' && (
                 <View style={styles.rideNotice}>
                   <View style={styles.rideNoticeHeader}><Ionicons color={colors.accent} name="car-outline" size={18} /><Text style={styles.rideNoticeTitle}>{rideContext.rideLabel}</Text></View>
@@ -494,6 +522,7 @@ const styles = StyleSheet.create({
   panelHeaderCopy: { flex: 1 }, panelTitle: { color: colors.text, fontSize: 17, fontWeight: '800' }, panelSubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   panelScroll: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }, panelBody: { gap: spacing.sm, padding: spacing.md },
   rideNotice: { backgroundColor: colors.accentSoft, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, rideNoticeHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, rideNoticeTitle: { color: colors.text, flex: 1, fontSize: 13, fontWeight: '800' }, smallText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  developerTools: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' }, developerToolsHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 48, paddingHorizontal: spacing.md }, developerToolsTitle: { color: colors.text, fontSize: 13, fontWeight: '800' }, developerToolsBody: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.sm, padding: spacing.md },
   endpoint: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 56, padding: spacing.sm }, endpointSelected: { borderColor: colors.accent, borderWidth: 2 }, endpointCopy: { flex: 1 }, endpointLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }, endpointValue: { color: colors.text, fontSize: 13, fontWeight: '700' }, endpointSource: { color: colors.textMuted, fontSize: 10, marginTop: 1 },
   sourceActions: { flexDirection: 'row', gap: spacing.sm }, sourceButton: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 40, paddingHorizontal: spacing.sm }, currentLocationButton: { flex: 2 }, sourceButtonText: { color: colors.accent, fontSize: 13, fontWeight: '800' }, pressed: { backgroundColor: colors.accentSoft }, disabled: { opacity: 0.45 },
   searchInput: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 44, paddingHorizontal: spacing.md }, searchResult: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, paddingVertical: spacing.sm }, resultLabel: { color: colors.text, fontSize: 13, fontWeight: '800' }, resultContext: { color: colors.textMuted, fontSize: 11, lineHeight: 15 }, errorText: { color: colors.error, fontSize: 12, lineHeight: 17 }, attribution: { color: colors.textMuted, fontSize: 10 },
