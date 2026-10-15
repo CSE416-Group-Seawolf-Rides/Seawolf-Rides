@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import MapView, { Circle, Marker, type MapPressEvent } from 'react-native-maps';
+import MapView, { Circle, Marker, type Camera, type MapPressEvent } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { CommuteSchedule } from '../commute/commuteModel';
@@ -98,6 +99,9 @@ function routingFailureMessage(result: Exclude<RoutingResult, { status: 'SUCCESS
 export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onOpenMatchingDiagnostics, onOpenRoutePlanner, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  const expandedMapRef = useRef<MapView>(null);
+  const savedMapCamera = useRef<Camera | null>(null);
+  const mapExpansionTransition = useRef(false);
   const routeAdapter = useMemo(() => createOsrmRoutingAdapter(), []);
   const geocodingAdapter = useMemo(() => createPhotonGeocodingAdapter(), []);
   const latestRoute = useRef(new LatestRouteRequest());
@@ -138,6 +142,9 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
   const [searchResults, setSearchResults] = useState<GeocodingResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [session, setSession] = useState<LocalRouteSession>(idleRouteSession);
+  const [mapExpanded, setMapExpanded] = useState(false);
+  const [expandedInitialCamera, setExpandedInitialCamera] = useState<Camera | null>(null);
+  const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
 
   const active = session.status === 'ACTIVE';
   const displayedRoute: RoadRoute | null = active
@@ -361,27 +368,70 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
     setNotice('Local route session ended. No carpool trip was completed.');
   };
 
+  const expandMap = async () => {
+    if (mapExpanded || mapExpansionTransition.current) return;
+    mapExpansionTransition.current = true;
+    try {
+      savedMapCamera.current = await mapRef.current?.getCamera() ?? savedMapCamera.current;
+    } catch {
+      // Fall back to the last known camera (or the initial region) if the native
+      // map is briefly unavailable while its screen is transitioning.
+    }
+    setExpandedInitialCamera(savedMapCamera.current);
+    setMapExpanded(true);
+    mapExpansionTransition.current = false;
+  };
+
+  const closeExpandedMap = async () => {
+    if (!mapExpanded || mapExpansionTransition.current) return;
+    mapExpansionTransition.current = true;
+    try {
+      savedMapCamera.current = await expandedMapRef.current?.getCamera() ?? savedMapCamera.current;
+    } catch {
+      // Preserve the camera captured while opening if the modal map has already
+      // begun its native dismissal.
+    }
+    const camera = savedMapCamera.current;
+    setMapExpanded(false);
+    requestAnimationFrame(() => {
+      if (camera) mapRef.current?.animateCamera(camera, { duration: 0 });
+      mapExpansionTransition.current = false;
+    });
+  };
+
+  const renderMapLayers = () => (
+    <>
+      <RoadRouteLayers
+        destination={displayedDestination?.coordinate ?? null}
+        destinationTitle={displayedDestination?.label}
+        route={displayedRoute}
+        start={displayedStart?.coordinate ?? null}
+        startTitle={displayedStart?.label}
+      />
+      {riders.map((rider) => {
+        const selected = rider.id === selectedRiderId;
+        return (
+          <Fragment key={rider.id}>
+            <Circle center={rider.approximateArea.center} fillColor="rgba(153, 0, 0, 0.14)" radius={rider.approximateArea.radiusMiles * METERS_PER_MILE} strokeColor={colors.accent} strokeWidth={selected ? 4 : 2} />
+            <Marker accessibilityLabel={`${rider.name}, approximate area`} coordinate={rider.approximateArea.center} description="Approximate area" onPress={() => setSelectedRiderId(rider.id)} title={rider.name}>
+              <View style={[styles.riderMarker, selected && styles.selectedRiderMarker]}><Ionicons color={selected ? colors.surface : colors.accent} name="person" size={18} /></View>
+            </Marker>
+          </Fragment>
+        );
+      })}
+    </>
+  );
+
   return (
     <View style={styles.container}>
       <MapView initialRegion={STONY_BROOK_REGION} onPress={handleMapPress} ref={mapRef} style={styles.map}>
-        <RoadRouteLayers
-          destination={displayedDestination?.coordinate ?? null}
-          destinationTitle={displayedDestination?.label}
-          route={displayedRoute}
-          start={displayedStart?.coordinate ?? null}
-          startTitle={displayedStart?.label}
-        />
-        {riders.map((rider) => (
-          <Fragment key={rider.id}>
-            <Circle center={rider.approximateArea.center} fillColor="rgba(153, 0, 0, 0.14)" radius={rider.approximateArea.radiusMiles * METERS_PER_MILE} strokeColor={colors.accent} strokeWidth={2} />
-            <Marker accessibilityLabel={`${rider.name}, approximate area`} coordinate={rider.approximateArea.center} description="Approximate area" title={rider.name}>
-              <View style={styles.riderMarker}><Ionicons color={colors.accent} name="person" size={18} /></View>
-            </Marker>
-          </Fragment>
-        ))}
+        {renderMapLayers()}
       </MapView>
 
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        <Pressable accessibilityLabel="Expand map" accessibilityRole="button" onPress={() => void expandMap()} style={({ pressed }) => [styles.mapExpandButton, { bottom: insets.bottom + spacing.md }, pressed && styles.mapControlPressed]}>
+          <Ionicons color={colors.text} name="expand-outline" size={23} />
+        </Pressable>
         <View style={[styles.panel, { top: insets.top + spacing.sm }]}>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: panelExpanded }} onPress={() => setPanelExpanded((expanded) => !expanded)} style={styles.panelHeader}>
             <View style={styles.panelHeaderCopy}>
@@ -497,6 +547,27 @@ export function MapScreen({ commute, currentTrip, onOpenCarpoolMatchingDemo, onO
           )}
         </View>
       </View>
+
+      {mapExpanded && (
+        <Modal animationType="fade" hardwareAccelerated onRequestClose={() => void closeExpandedMap()} presentationStyle="fullScreen" visible>
+          <View style={styles.expandedMapContainer}>
+            <MapView initialCamera={expandedInitialCamera ?? undefined} initialRegion={expandedInitialCamera ? undefined : STONY_BROOK_REGION} onPress={handleMapPress} ref={expandedMapRef} style={styles.map}>
+              {renderMapLayers()}
+            </MapView>
+            <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+              <Pressable accessibilityLabel="Minimize map" accessibilityRole="button" onPress={() => void closeExpandedMap()} style={({ pressed }) => [styles.mapMinimizeButton, { top: insets.top + spacing.md, right: insets.right + spacing.md }, pressed && styles.mapControlPressed]}>
+                <Ionicons color={colors.text} name="contract-outline" size={23} />
+              </Pressable>
+              {selectedRiderId && (
+                <View pointerEvents="none" style={[styles.selectedRiderLabel, { top: insets.top + spacing.md }]}>
+                  <Ionicons color={colors.accent} name="person" size={16} />
+                  <Text numberOfLines={1} style={styles.selectedRiderLabelText}>{riders.find((rider) => rider.id === selectedRiderId)?.name}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -517,6 +588,12 @@ function EndpointSummary({ endpoint, label, onPress, selected }: { endpoint: Rou
 
 const styles = StyleSheet.create({
   container: { flex: 1 }, map: { flex: 1 },
+  expandedMapContainer: { backgroundColor: colors.background, flex: 1 },
+  mapExpandButton: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.pill, borderWidth: 1, elevation: 5, height: 48, justifyContent: 'center', position: 'absolute', right: spacing.md, shadowColor: '#17212b', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5, width: 48, zIndex: 5 },
+  mapMinimizeButton: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.pill, borderWidth: 1, elevation: 5, height: 48, justifyContent: 'center', position: 'absolute', shadowColor: '#17212b', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5, width: 48 },
+  mapControlPressed: { opacity: 0.72 },
+  selectedRiderLabel: { alignItems: 'center', alignSelf: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.pill, borderWidth: 1, elevation: 4, flexDirection: 'row', gap: spacing.xs, left: spacing.xl, maxWidth: '60%', minHeight: 42, paddingHorizontal: spacing.md, position: 'absolute' },
+  selectedRiderLabelText: { color: colors.text, flexShrink: 1, fontSize: 13, fontWeight: '800' },
   panel: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.lg, borderWidth: 1, elevation: 4, left: spacing.md, maxHeight: '76%', position: 'absolute', right: spacing.md, shadowColor: '#17212b', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12 },
   panelHeader: { alignItems: 'center', flexDirection: 'row', minHeight: 54, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   panelHeaderCopy: { flex: 1 }, panelTitle: { color: colors.text, fontSize: 17, fontWeight: '800' }, panelSubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
@@ -528,4 +605,5 @@ const styles = StyleSheet.create({
   searchInput: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 44, paddingHorizontal: spacing.md }, searchResult: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, paddingVertical: spacing.sm }, resultLabel: { color: colors.text, fontSize: 13, fontWeight: '800' }, resultContext: { color: colors.textMuted, fontSize: 11, lineHeight: 15 }, errorText: { color: colors.error, fontSize: 12, lineHeight: 17 }, attribution: { color: colors.textMuted, fontSize: 10 },
   presets: { flexDirection: 'row', gap: spacing.sm }, preset: { borderColor: colors.border, borderRadius: radii.pill, borderWidth: 1, justifyContent: 'center', minHeight: 36, paddingHorizontal: spacing.md }, presetText: { color: colors.text, fontSize: 12, fontWeight: '700' }, notice: { color: colors.textMuted, fontSize: 12, lineHeight: 17 }, previewLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }, metrics: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, flexDirection: 'row', justifyContent: 'space-between', padding: spacing.sm }, metric: { color: colors.text, fontSize: 12, fontWeight: '800' }, navigationSetup: { backgroundColor: colors.warningSoft, borderRadius: radii.md, gap: spacing.xs, padding: spacing.sm }, navigationSetupTitle: { color: colors.warning, fontSize: 12, fontWeight: '800' }, navigationWarning: { color: colors.error, fontSize: 12, lineHeight: 17 }, activeNote: { color: colors.warning, fontSize: 12, lineHeight: 17 }, snapNote: { color: colors.textMuted, fontSize: 11, lineHeight: 15 },
   riderMarker: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.accent, borderRadius: radii.pill, borderWidth: 2, elevation: 2, height: 34, justifyContent: 'center', width: 34 },
+  selectedRiderMarker: { backgroundColor: colors.accent, borderColor: colors.surface, height: 42, width: 42 },
 });
