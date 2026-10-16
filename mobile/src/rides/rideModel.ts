@@ -5,6 +5,8 @@ import type { DatedRideProposalV1 } from './datedRideProposal';
 // A driver's recurring commute that riders can request a seat on.
 export interface DriverOffer {
   id: string;
+  /** Stable person identity. Offer IDs remain separate and may change per offer. */
+  participantId?: string;
   driverName: string;
   startAreaLabel: string;
   campusLot: CampusLotId;
@@ -22,6 +24,8 @@ export interface DriverOffer {
 // A rider asking to join the current user's drive.
 export interface RiderRequest {
   id: string;
+  /** Stable person identity. Request IDs remain separate from participant IDs. */
+  participantId?: string;
   riderName: string;
   startAreaLabel: string;
   campusLot: CampusLotId;

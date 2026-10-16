@@ -11,6 +11,7 @@ import {
 import { useRides } from '../../../rides/RidesProvider';
 import { useHomeClock } from '../../../rides/useHomeClock';
 import { TripDetailScreen } from '../../../screens/TripDetailScreen';
+import { participantIdForOffer } from '../../../profiles/publicProfiles';
 
 // A trip's id is its local date, e.g. /rides/2026-09-28.
 export default function TripDetailRoute() {
@@ -44,7 +45,8 @@ export default function TripDetailRoute() {
       bookedDays={(offer && requestSummary(outgoing, offer.id)?.acceptedDays) || []}
       onBack={() => router.back()}
       onMessage={chatId ? () => router.navigate(`/inbox/${chatId}`, { withAnchor: true }) : undefined}
-      onOpenDriver={() => offer && router.navigate(`/home/driver/${offer.id}`, { withAnchor: true })}
+      onOpenDriver={() => offer && router.push({ pathname: '/profile/[participantId]', params: { participantId: participantIdForOffer(offer), name: offer.driverName } })}
+      onOpenRider={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })}
       onSkip={() => skipTrip(trip.id)}
       onStopRiding={() => {
         if (offer) {

@@ -30,6 +30,7 @@ import {
   type RouteNavigationRequest,
 } from '../navigation/routeNavigationRequest';
 import { getRuntimeGoogleNavigationAvailability } from '../navigation/googleNavigationRuntime';
+import { participantIdForRequest } from '../profiles/publicProfiles';
 import type { Trip } from '../rides/rideModel';
 import { RoadRouteLayers, type EndpointSelection } from '../routing/components/RouteMap';
 import { LatestRouteRequest } from '../routing/latestRouteRequest';
@@ -68,6 +69,7 @@ interface MapScreenProps {
   onOpenDriverTest?: () => void;
   onOpenMatchingDiagnostics?: () => void;
   onOpenRoutePlanner?: () => void;
+  onOpenProfile?: (participantId: string, displayName: string) => void;
   fridayDriverTest?: { status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR'; message: string | null };
   onLoadFridayDriverTest?: () => Promise<void>;
   onResetFridayDriverTest?: () => void;
@@ -117,7 +119,7 @@ function routingFailureMessage(result: Exclude<RoutingResult, { status: 'SUCCESS
   }
 }
 
-export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, fridayDriverTest, onClearPickupRoute, onLoadFridayDriverTest, onOpenCarpoolMatchingDemo, onOpenDriverTest, onOpenMatchingDiagnostics, onOpenRoutePlanner, onResetFridayDriverTest, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
+export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, fridayDriverTest, onClearPickupRoute, onLoadFridayDriverTest, onOpenCarpoolMatchingDemo, onOpenDriverTest, onOpenMatchingDiagnostics, onOpenRoutePlanner, onOpenProfile, onResetFridayDriverTest, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const expandedMapRef = useRef<MapView>(null);
@@ -682,7 +684,10 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
               {pickupRouteTrip && pickupRouteResult && (
                 <View style={styles.pickupRouteSummary}>
                   <Text style={styles.rideNoticeTitle}>{pickupRouteResult.orderKind === 'PROPOSED' ? 'Proposed pickup order' : 'Confirmed pickup order'}</Text>
-                  {pickupRouteResult.orderedStops.map((stop, index) => <View key={stop.riderId} style={styles.pickupOrderRow}><View style={styles.pickupNumber}><Text style={styles.pickupNumberText}>{index + 1}</Text></View><View style={styles.panelHeaderCopy}><Text style={styles.resultLabel}>{stop.riderName}</Text><Text style={styles.resultContext}>{stop.label}{pickupSchedule && pickupSchedule.status !== 'INCOMPLETE' ? ` · est. ${formatEpochTime(pickupSchedule.pickupEpochs[stop.riderId])}` : ''}</Text></View></View>)}
+                  {pickupRouteResult.orderedStops.map((stop, index) => {
+                    const rider = pickupRouteTrip?.riders?.find((candidate) => candidate.id === stop.riderId);
+                    return <View key={stop.riderId} style={styles.pickupOrderRow}><View style={styles.pickupNumber}><Text style={styles.pickupNumberText}>{index + 1}</Text></View><Pressable accessibilityLabel={`View ${stop.riderName}'s profile`} accessibilityRole="button" disabled={!rider || !onOpenProfile} onPress={() => rider && onOpenProfile?.(participantIdForRequest(rider), rider.riderName)} style={({ pressed }) => [styles.panelHeaderCopy, pressed && styles.profilePressed]}><Text style={styles.resultLabel}>{stop.riderName}</Text><Text style={styles.resultContext}>{stop.label}{pickupSchedule && pickupSchedule.status !== 'INCOMPLETE' ? ` · est. ${formatEpochTime(pickupSchedule.pickupEpochs[stop.riderId])}` : ''}</Text></Pressable></View>;
+                  })}
                   <Text style={styles.smallText}>Road driving: {formatDuration(pickupRouteResult.route.durationSeconds)} · {formatDistance(pickupRouteResult.route.distanceMeters)}</Text>
                   <Text style={styles.smallText}>Pickup service: {formatDuration(pickupRouteResult.orderedStops.reduce((total, stop) => total + (stop.serviceSeconds ?? 0), 0))} total, applied once per stop.</Text>
                   {pickupRouteResult.orderKind === 'PROPOSED' && !pickupOrderConfirmed && <><Text style={styles.privacyNote}>Shortest live road-driving duration among {pickupRouteResult.alternativesCompared} directed orders. This does not prove schedule feasibility.</Text><AppButton label="Confirm proposed pickup order" onPress={() => setPickupOrderConfirmed(true)} variant="secondary" /></>}
@@ -773,5 +778,5 @@ const styles = StyleSheet.create({
   riderMarker: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.accent, borderRadius: radii.pill, borderWidth: 2, elevation: 2, height: 34, justifyContent: 'center', width: 34 },
   selectedRiderMarker: { backgroundColor: colors.accent, borderColor: colors.surface, height: 42, width: 42 },
   pickupMarker: { alignItems: 'center', backgroundColor: colors.accent, borderColor: colors.surface, borderRadius: radii.pill, borderWidth: 2, height: 38, justifyContent: 'center', width: 38 }, pickupMarkerText: { color: colors.surface, fontSize: 15, fontWeight: '900' },
-  tripRouteCard: { backgroundColor: colors.accentSoft, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, privacyNote: { color: colors.textMuted, fontSize: 11, lineHeight: 16 }, pickupRouteSummary: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, pickupOrderRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, pickupNumber: { alignItems: 'center', backgroundColor: colors.accent, borderRadius: radii.pill, height: 26, justifyContent: 'center', width: 26 }, pickupNumberText: { color: colors.surface, fontSize: 12, fontWeight: '900' }, confirmedOrder: { color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 17 }, scheduleIncomplete: { backgroundColor: colors.warningSoft, borderRadius: radii.sm, color: colors.warning, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleConflict: { backgroundColor: colors.errorSoft, borderRadius: radii.sm, color: colors.error, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleVerified: { backgroundColor: colors.successSoft, borderRadius: radii.sm, color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 18, padding: spacing.sm },
+  tripRouteCard: { backgroundColor: colors.accentSoft, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, privacyNote: { color: colors.textMuted, fontSize: 11, lineHeight: 16 }, pickupRouteSummary: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, pickupOrderRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, profilePressed: { opacity: 0.62 }, pickupNumber: { alignItems: 'center', backgroundColor: colors.accent, borderRadius: radii.pill, height: 26, justifyContent: 'center', width: 26 }, pickupNumberText: { color: colors.surface, fontSize: 12, fontWeight: '900' }, confirmedOrder: { color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 17 }, scheduleIncomplete: { backgroundColor: colors.warningSoft, borderRadius: radii.sm, color: colors.warning, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleConflict: { backgroundColor: colors.errorSoft, borderRadius: radii.sm, color: colors.error, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleVerified: { backgroundColor: colors.successSoft, borderRadius: radii.sm, color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 18, padding: spacing.sm },
 });

@@ -5,6 +5,7 @@ import type { DriverOffer, PastTrip, RiderRequest } from './rideModel';
 export const driverOfferFixtures: DriverOffer[] = [
   {
     id: 'alex',
+    participantId: 'demo-driver-alex',
     driverName: 'Alex',
     startAreaLabel: 'Lake Grove area',
     campusLot: 'tabler',
@@ -19,6 +20,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'sarah',
+    participantId: 'demo-driver-sarah',
     driverName: 'Sarah',
     startAreaLabel: 'Centereach area',
     campusLot: 'westSide',
@@ -33,6 +35,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'priya',
+    participantId: 'demo-driver-priya',
     driverName: 'Priya',
     startAreaLabel: 'Selden area',
     campusLot: 'roth',
@@ -46,6 +49,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'marcus',
+    participantId: 'demo-driver-marcus',
     driverName: 'Marcus',
     startAreaLabel: 'Port Jefferson area',
     campusLot: 'lot40',
@@ -59,6 +63,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'jenna',
+    participantId: 'demo-driver-jenna',
     driverName: 'Jenna',
     startAreaLabel: 'Smithtown area',
     campusLot: 'eastSide',
@@ -72,6 +77,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'dan',
+    participantId: 'demo-driver-dan',
     driverName: 'Dan',
     startAreaLabel: 'Hauppauge area',
     campusLot: 'tabler',
@@ -85,6 +91,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'omar',
+    participantId: 'demo-driver-omar',
     driverName: 'Omar',
     startAreaLabel: 'Ronkonkoma area',
     campusLot: 'lot40',
@@ -98,6 +105,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'lena',
+    participantId: 'demo-driver-lena',
     driverName: 'Lena',
     startAreaLabel: 'Setauket area',
     campusLot: 'eastSide',
@@ -111,6 +119,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'jordan',
+    participantId: 'demo-driver-jordan',
     driverName: 'Jordan',
     startAreaLabel: 'Coram area',
     campusLot: 'westSide',
@@ -124,6 +133,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'hannah',
+    participantId: 'demo-driver-hannah',
     driverName: 'Hannah',
     startAreaLabel: 'Commack area',
     campusLot: 'roth',
@@ -141,6 +151,7 @@ export const driverOfferFixtures: DriverOffer[] = [
 export const riderRequestFixtures: RiderRequest[] = [
   {
     id: 'dev',
+    participantId: 'demo-rider-dev',
     riderName: 'Dev',
     startAreaLabel: 'Centereach area',
     campusLot: 'tabler',
@@ -153,6 +164,7 @@ export const riderRequestFixtures: RiderRequest[] = [
   },
   {
     id: 'maya',
+    participantId: 'demo-rider-maya',
     riderName: 'Maya',
     startAreaLabel: 'Lake Ronkonkoma area',
     campusLot: 'westSide',
@@ -173,6 +185,7 @@ export const riderRequestFixtures: RiderRequest[] = [
   },
   {
     id: 'chris',
+    participantId: 'demo-rider-chris',
     riderName: 'Chris',
     startAreaLabel: 'Stony Brook area',
     campusLot: 'roth',
@@ -192,6 +205,7 @@ export const riderRequestFixtures: RiderRequest[] = [
   },
   {
     id: 'sam',
+    participantId: 'demo-rider-sam',
     riderName: 'Sam',
     startAreaLabel: 'Mount Sinai area',
     campusLot: 'eastSide',
@@ -203,6 +217,7 @@ export const riderRequestFixtures: RiderRequest[] = [
   },
   {
     id: 'nia',
+    participantId: 'demo-rider-nia',
     riderName: 'Nia',
     startAreaLabel: 'Holbrook area',
     campusLot: 'tabler',

@@ -29,6 +29,7 @@ export default function DayDriversRoute() {
       riderId={user.id}
       skippedDates={skipped}
       onBack={() => router.back()}
+      onOpenProfile={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })}
       onSendDatedRequest={sendDatedRequest}
       statusFor={(offerId) => requestSummaryForOccurrence(outgoing, offerId, date)?.status}
     />

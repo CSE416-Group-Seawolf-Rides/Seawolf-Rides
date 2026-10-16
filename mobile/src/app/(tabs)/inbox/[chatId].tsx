@@ -13,5 +13,5 @@ export default function ConversationRoute() {
     return <Redirect href="/inbox" />;
   }
 
-  return <ConversationScreen conversation={conversation} onBack={() => router.back()} />;
+  return <ConversationScreen conversation={conversation} onBack={() => router.back()} onOpenProfile={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })} />;
 }

@@ -52,6 +52,7 @@ interface HomeScreenProps {
   requestableDaysFor: (offerId: string) => Weekday[];
   onPressDay: (day: Weekday) => void;
   onReviewRequests: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
   onOpenOffer: (offerId: string) => void;
   onSeeAllDrivers: (day: Weekday, localDate: string) => void;
   onSendRequest: (offerId: string, days: Weekday[]) => void;
@@ -81,6 +82,7 @@ export function HomeScreen({
   requestableDaysFor,
   onPressDay,
   onReviewRequests,
+  onOpenProfile,
   onOpenOffer,
   onSeeAllDrivers,
   onSendRequest,
@@ -129,6 +131,7 @@ export function HomeScreen({
           <RequestsSummaryCard
             days={requestDays}
             onReview={onReviewRequests}
+            onOpenProfile={onOpenProfile}
             requests={pendingRequests.map((view) => view.request)}
           />
         </View>

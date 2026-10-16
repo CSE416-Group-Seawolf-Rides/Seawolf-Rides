@@ -1,8 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '../../components/AppButton';
 import { Avatar } from '../../components/Avatar';
 import { formatTime, lotTitle, Weekday, weekdays } from '../../commute/commuteModel';
+import { participantIdForRequest, resolvePublicProfile } from '../../profiles/publicProfiles';
 import { colors, radii, spacing } from '../../theme';
 import { IncomingRequest } from '../rideModel';
 import { DayPills } from './DayPills';
@@ -15,6 +16,7 @@ interface IncomingRequestCardProps {
   conflictDay?: Weekday;
   onAccept: () => void;
   onDecline: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
 }
 
 // Drivers decide on every request themselves, so the card leads with what that costs
@@ -26,6 +28,7 @@ export function IncomingRequestCard({
   conflictDay,
   onAccept,
   onDecline,
+  onOpenProfile,
 }: IncomingRequestCardProps) {
   const fullDayName = fullDay && weekdays.find((weekday) => weekday.value === fullDay)?.name;
   const conflictDayName =
@@ -33,15 +36,19 @@ export function IncomingRequestCard({
   const proposalTime = (epoch: number) => new Intl.DateTimeFormat('en-US', {
     hour: 'numeric', minute: '2-digit', timeZone: request.proposal?.occurrence.timeZone,
   }).format(new Date(epoch * 1000));
+  const participantId = participantIdForRequest(request);
+  const profile = resolvePublicProfile(participantId, request.riderName);
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <Avatar name={request.riderName} />
-        <View style={styles.headerCopy}>
-          <Text style={styles.name}>{request.riderName}</Text>
-          <Text style={styles.meta}>{request.startAreaLabel}</Text>
-        </View>
+        <Pressable accessibilityLabel={`View ${request.riderName}'s profile`} accessibilityRole="button" onPress={() => onOpenProfile(participantId, request.riderName)} style={({ pressed }) => [styles.identity, pressed && styles.pressed]}>
+          <Avatar name={profile.displayName} participantId={participantId} sampleAvatar={profile.sampleAvatar} />
+          <View style={styles.headerCopy}>
+            <Text style={styles.name}>{request.riderName}</Text>
+            <Text style={styles.meta}>{request.startAreaLabel}</Text>
+          </View>
+        </Pressable>
         <View style={styles.detour}>
           <Text style={styles.detourValue}>+{request.proposal ? Math.round(request.proposal.routingEstimates.metrics.driverExtraDurationSeconds / 60) : request.addedMinutes} min</Text>
           <Text style={styles.detourLabel}>to your drive</Text>
@@ -114,6 +121,8 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  identity: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.md, minHeight: 48 },
+  pressed: { opacity: 0.62 },
   name: {
     color: colors.text,
     fontSize: 17,

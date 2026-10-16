@@ -75,6 +75,7 @@ export default function HomeRoute() {
         }
       }}
       onReviewRequests={() => router.push('/home/requests')}
+      onOpenProfile={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })}
       onSeeAllDrivers={(day, localDate) => router.push({ pathname: '/home/day/[day]', params: { day, date: localDate } })}
       onSendRequest={sendRequest}
       onSetUpCommute={() => router.push('/commute-setup')}

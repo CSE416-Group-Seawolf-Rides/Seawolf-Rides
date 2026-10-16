@@ -12,11 +12,12 @@ interface ReviewRequestsScreenProps {
   pending: IncomingRequestView[];
   onRespond: (requestId: string, status: 'accepted' | 'declined') => void;
   onDone: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
 }
 
 // One request at a time with its full context, so each yes/no gets real attention
 // and there's never a pile of cards to scroll through.
-export function ReviewRequestsScreen({ pending, onRespond, onDone }: ReviewRequestsScreenProps) {
+export function ReviewRequestsScreen({ pending, onRespond, onDone, onOpenProfile }: ReviewRequestsScreenProps) {
   const [deferred, setDeferred] = useState<string[]>([]);
   const [total] = useState(pending.length);
   const queue = [
@@ -52,6 +53,7 @@ export function ReviewRequestsScreen({ pending, onRespond, onDone }: ReviewReque
         key={current.request.id}
         onAccept={() => onRespond(current.request.id, 'accepted')}
         onDecline={() => onRespond(current.request.id, 'declined')}
+        onOpenProfile={onOpenProfile}
         request={current.request}
         sharedDays={current.sharedDays}
       />

@@ -13,6 +13,7 @@ export default function ReviewRequestsRoute() {
   return (
     <ReviewRequestsScreen
       onDone={() => router.back()}
+      onOpenProfile={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })}
       onRespond={(requestId, status) => {
         const result = respondToRequest(requestId, status);
         Haptics.notificationAsync(

@@ -10,6 +10,7 @@ export const QUEENS_TEST_DRIVER_ID = 'queens-test-driver';
  */
 export const queensTestDriverOffer: DriverOffer = {
   id: QUEENS_TEST_DRIVER_ID,
+  participantId: 'demo-driver-queens-test',
   driverName: 'Queens test driver',
   startAreaLabel: 'Jamaica LIRR station test origin',
   campusLot: 'lot40',

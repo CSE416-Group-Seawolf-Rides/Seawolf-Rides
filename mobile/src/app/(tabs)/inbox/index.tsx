@@ -11,17 +11,17 @@ export default function ChatsRoute() {
   const returning = user !== null && !user.isNewUser;
 
   // A chat opens once a match is confirmed; unlinked chats are the demo user's history.
-  const chats = conversationFixtures.filter(({ offerId, riderId }) =>
+  const chats = conversationFixtures.filter(({ offerId, requestId }) =>
     offerId
       ? outgoing.some((request) => request.offerId === offerId && request.status === 'accepted')
-      : riderId
-        ? incoming.some((request) => request.id === riderId && request.status === 'accepted')
+      : requestId
+        ? incoming.some((request) => request.id === requestId && request.status === 'accepted')
         : returning,
   );
 
   return (
     <ChatsScreen
-      chats={chats.map((conversation) => conversation.preview)}
+      chats={chats.map((conversation) => ({ ...conversation.preview, participantId: conversation.participantId }))}
       onOpenChat={(chatId) => router.push(`/inbox/${chatId}`)}
     />
   );

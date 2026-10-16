@@ -2,10 +2,11 @@ import { router } from 'expo-router';
 
 import { useSession } from '../../../auth/SessionProvider';
 import { driverOfferFixtures, pastTripFixtures } from '../../../rides/rideFixtures';
-import { getCarpools, getUpcoming, incomingForCommute, isTrip } from '../../../rides/rideModel';
+import { getCarpools, getUpcoming, incomingForCommute } from '../../../rides/rideModel';
 import { useRides } from '../../../rides/RidesProvider';
 import { useHomeClock } from '../../../rides/useHomeClock';
 import { HistorySummary, RidesScreen } from '../../../screens/RidesScreen';
+import { participantIdForRequest } from '../../../profiles/publicProfiles';
 
 export default function RidesRoute() {
   const { user, commute } = useSession();
@@ -49,13 +50,7 @@ export default function RidesRoute() {
           router.navigate(`/home/driver/${carpool.offer.id}`, { withAnchor: true });
           return;
         }
-        // Riders have no profile screen yet, so open the next drive they're on.
-        const drive = upcoming
-          .filter(isTrip)
-          .find((trip) => trip.riders?.some((rider) => rider.id === carpool.rider.id));
-        if (drive) {
-          router.push(`/rides/${drive.id}`);
-        }
+        router.push({ pathname: '/profile/[participantId]', params: { participantId: participantIdForRequest(carpool.rider), name: carpool.rider.riderName } });
       }}
       onOpenHistory={() => router.push('/rides/history')}
       onOpenTrip={(tripId) => router.push(`/rides/${tripId}`)}

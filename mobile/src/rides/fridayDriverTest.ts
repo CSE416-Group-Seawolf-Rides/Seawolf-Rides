@@ -126,6 +126,7 @@ export async function buildFridayDriverTest(options: {
     }
     requests.push({
       id: `${FRIDAY_DRIVER_TEST_PREFIX}${rider.id}`,
+      participantId: `${FRIDAY_DRIVER_TEST_PREFIX}${rider.id}`,
       riderName: rider.name,
       startAreaLabel: `${rider.area} · synthetic`,
       campusLot: fridayDriverTestOffer.campusLot,

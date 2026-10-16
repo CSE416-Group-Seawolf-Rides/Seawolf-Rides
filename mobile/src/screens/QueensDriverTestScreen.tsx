@@ -3,6 +3,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '../components/AppButton';
+import { Avatar } from '../components/Avatar';
 import { Card } from '../components/Card';
 import { Screen } from '../components/Screen';
 import { TextField } from '../components/TextField';
@@ -29,9 +30,10 @@ import {
 import { parseClockMinutes } from '../matching/driverRecommendations';
 import { RiderComparisonMap } from '../routing/components/RouteMap';
 import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
+import { resolvePublicProfile } from '../profiles/publicProfiles';
 import { colors, radii, spacing } from '../theme';
 
-interface QueensDriverTestScreenProps { onBack: () => void }
+interface QueensDriverTestScreenProps { onBack: () => void; onOpenProfile: (participantId: string, displayName: string) => void }
 
 interface DriverForm {
   localDate: string;
@@ -69,7 +71,7 @@ function parseForm(form: DriverForm): QueensDriverTestConfig | null {
   };
 }
 
-export function QueensDriverTestScreen({ onBack }: QueensDriverTestScreenProps) {
+export function QueensDriverTestScreen({ onBack, onOpenProfile }: QueensDriverTestScreenProps) {
   const [form, setForm] = useState<DriverForm>(initialForm);
   const [state, dispatch] = useReducer(queensDriverTestPresentationReducer, undefined, createQueensDriverTestPresentationState);
   const [notice, setNotice] = useState('Review the synthetic driver inputs, then load test riders.');
@@ -190,9 +192,9 @@ export function QueensDriverTestScreen({ onBack }: QueensDriverTestScreenProps) 
         <Text accessibilityRole="header" style={styles.sectionTitle}>Rider results</Text>
         <Text style={styles.summary}>{resultSummary(state.result.candidates)}</Text>
         <Text style={styles.note}>Each rider is evaluated independently. Three seats does not mean the top three riders can travel together.</Text>
-        {feasible.map((candidate) => <RiderCard baselineSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} key={candidate.candidate.id} onSelect={(riderId) => dispatch({ type: 'SELECT', riderId })} selected={candidate.candidate.id === state.selectedRiderId} />)}
+        {feasible.map((candidate) => <RiderCard baselineSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} key={candidate.candidate.id} onOpenProfile={onOpenProfile} onSelect={(riderId) => dispatch({ type: 'SELECT', riderId })} selected={candidate.candidate.id === state.selectedRiderId} />)}
         <Disclosure count={others.length} expanded={otherExpanded} onToggle={() => setOtherExpanded((value) => !value)} title="Doesn't fit or needs information">
-          {others.map((candidate) => <RiderCard baselineSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} key={candidate.candidate.id} onSelect={(riderId) => dispatch({ type: 'SELECT', riderId })} selected={candidate.candidate.id === state.selectedRiderId} />)}
+          {others.map((candidate) => <RiderCard baselineSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} key={candidate.candidate.id} onOpenProfile={onOpenProfile} onSelect={(riderId) => dispatch({ type: 'SELECT', riderId })} selected={candidate.candidate.id === state.selectedRiderId} />)}
         </Disclosure>
       </View>}
 
@@ -207,15 +209,17 @@ function FormField({ field, form, label, numeric, onChange }: { field: keyof Dri
   return <View style={styles.field}><TextField autoCapitalize="none" autoCorrect={false} keyboardType={numeric ? 'number-pad' : 'numbers-and-punctuation'} label={label} onChangeText={(value) => onChange(field, value)} value={form[field]} /></View>;
 }
 
-function RiderCard({ baselineSeconds, candidate, onSelect, selected }: { baselineSeconds: number | null; candidate: EvaluatedRiderDemoCandidate; onSelect: (id: string) => void; selected: boolean }) {
+function RiderCard({ baselineSeconds, candidate, onOpenProfile, onSelect, selected }: { baselineSeconds: number | null; candidate: EvaluatedRiderDemoCandidate; onOpenProfile: (participantId: string, displayName: string) => void; onSelect: (id: string) => void; selected: boolean }) {
   const status = candidate.evaluation.status === 'FEASIBLE' ? `#${candidate.rank}` : candidate.evaluation.status === 'INFEASIBLE' ? "Doesn't fit" : 'Needs information';
   const evaluation = candidate.evaluation;
   const summary = evaluation.status === 'FEASIBLE'
     ? `Adds ${formatDuration(evaluation.metrics.driverExtraDurationSeconds)} · pickup ${formatTime(evaluation.plan.pickup)} · campus ${formatTime(evaluation.plan.vehicleCampusArrival)}`
     : riderDemoReasonExplanations[evaluation.reasonCodes[0]];
   const routeAdded = candidate.route && baselineSeconds !== null ? candidate.route.durationSeconds + candidate.candidate.input.pickupServiceSeconds - baselineSeconds : null;
+  const displayName = cleanName(candidate.candidate.name);
+  const profile = resolvePublicProfile(candidate.candidate.id, displayName);
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onSelect(candidate.candidate.id)}><Card style={[styles.riderCard, selected && styles.selectedCard]}>
-    <View style={styles.headerRow}><Text style={styles.riderCardTitle}>{status} {cleanName(candidate.candidate.name)}</Text><View style={[styles.dot, evaluation.status === 'FEASIBLE' ? styles.good : evaluation.status === 'INFEASIBLE' ? styles.bad : styles.warn]} /></View>
+    <View style={styles.headerRow}><Pressable accessibilityLabel={`View ${displayName}'s profile`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onOpenProfile(candidate.candidate.id, displayName); }} style={styles.riderIdentity}><Avatar name={displayName} participantId={candidate.candidate.id} sampleAvatar={profile.sampleAvatar} size={38} /><Text style={styles.riderCardTitle}>{status} {displayName}</Text></Pressable><View style={[styles.dot, evaluation.status === 'FEASIBLE' ? styles.good : evaluation.status === 'INFEASIBLE' ? styles.bad : styles.warn]} /></View>
     <Text style={styles.cardSummary}>{summary}</Text>
     {candidate.rankingExplanation && <Text style={styles.ranking}>{candidate.rankingExplanation}</Text>}
     {candidate.routingIssue && <Text style={styles.error}>{candidate.routingIssue.message}</Text>}
@@ -250,6 +254,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 }, identity: { backgroundColor: colors.successSoft, gap: spacing.md }, identityTitle: { color: colors.success, fontSize: 17, fontWeight: '900', lineHeight: 22 }, headerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, muted: { color: colors.textMuted, fontSize: 12, lineHeight: 18 }, note: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   formCard: { gap: spacing.md }, sectionTitle: { color: colors.text, fontSize: 19, fontWeight: '900' }, row: { flexDirection: 'row', gap: spacing.sm }, field: { flex: 1 },
   mapSection: { gap: spacing.sm }, legend: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }, legendItem: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs }, legendLine: { borderRadius: radii.pill, height: 6, width: 24 }, liveNote: { backgroundColor: colors.successSoft, borderRadius: radii.md, color: colors.success, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, notice: { color: colors.accent, fontSize: 14, fontWeight: '800', lineHeight: 20 }, error: { backgroundColor: colors.errorSoft, borderRadius: radii.md, color: colors.error, fontSize: 12, lineHeight: 18, padding: spacing.sm }, loading: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, cancel: { marginLeft: 'auto', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.sm }, cancelText: { color: colors.accent, fontWeight: '800' },
-  results: { gap: spacing.md }, summary: { color: colors.text, fontSize: 16, fontWeight: '800' }, riderCard: { gap: spacing.sm, padding: spacing.md }, selectedCard: { borderColor: colors.accent, borderWidth: 2 }, riderCardTitle: { color: colors.text, flex: 1, fontSize: 16, fontWeight: '900' }, dot: { borderRadius: radii.pill, height: 11, width: 11 }, good: { backgroundColor: colors.success }, bad: { backgroundColor: colors.error }, warn: { backgroundColor: colors.warning }, cardSummary: { color: colors.text, fontSize: 13, fontWeight: '700', lineHeight: 19 }, ranking: { color: colors.success, fontSize: 12, fontWeight: '700', lineHeight: 18 },
+  results: { gap: spacing.md }, summary: { color: colors.text, fontSize: 16, fontWeight: '800' }, riderCard: { gap: spacing.sm, padding: spacing.md }, selectedCard: { borderColor: colors.accent, borderWidth: 2 }, riderIdentity: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 44 }, riderCardTitle: { color: colors.text, flex: 1, fontSize: 16, fontWeight: '900' }, dot: { borderRadius: radii.pill, height: 11, width: 11 }, good: { backgroundColor: colors.success }, bad: { backgroundColor: colors.error }, warn: { backgroundColor: colors.warning }, cardSummary: { color: colors.text, fontSize: 13, fontWeight: '700', lineHeight: 19 }, ranking: { color: colors.success, fontSize: 12, fontWeight: '700', lineHeight: 18 },
   disclosure: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' }, disclosureHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 50, paddingHorizontal: spacing.md }, disclosureTitle: { color: colors.text, fontSize: 14, fontWeight: '800' }, disclosureBody: { backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.sm, padding: spacing.sm }, whyHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 }, whyTitle: { color: colors.text, fontSize: 12, fontWeight: '800' }, whyBody: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.xs, paddingTop: spacing.sm }, riderDetail: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.xs, paddingVertical: spacing.sm }, riderName: { color: colors.text, fontSize: 14, fontWeight: '800' },
 });

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '../components/AppButton';
+import { Avatar } from '../components/Avatar';
 import { Card } from '../components/Card';
 import { Screen } from '../components/Screen';
 import {
@@ -30,16 +31,17 @@ import {
 } from '../matching/riderDemoPresentation';
 import { RiderComparisonMap } from '../routing/components/RouteMap';
 import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
+import { resolvePublicProfile } from '../profiles/publicProfiles';
 import { colors, radii, spacing } from '../theme';
 
-interface FindRidersDemoScreenProps { onBack: () => void }
+interface FindRidersDemoScreenProps { onBack: () => void; onOpenProfile: (participantId: string, displayName: string) => void }
 
 function configuredSnapLimit(): number {
   const value = Number(process.env.EXPO_PUBLIC_RIDER_DEMO_MAX_SNAP_METERS);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_RIDER_DEMO_MAX_SNAP_METERS;
 }
 
-export function FindRidersDemoScreen({ onBack }: FindRidersDemoScreenProps) {
+export function FindRidersDemoScreen({ onBack, onOpenProfile }: FindRidersDemoScreenProps) {
   const [state, dispatch] = useReducer(riderDemoPresentationReducer, undefined, () => createRiderDemoPresentationState());
   const [mode, setMode] = useState<RiderDemoMode>('FIXTURE');
   const [notice, setNotice] = useState('Choose a case and load demo riders.');
@@ -170,12 +172,12 @@ export function FindRidersDemoScreen({ onBack }: FindRidersDemoScreenProps) {
         <Text accessibilityRole="header" style={styles.sectionTitle}>Matches</Text>
         <Text accessibilityLiveRegion="polite" style={styles.resultSummary}>{resultSummary(state.result.candidates)}</Text>
         <Text style={styles.independentNote}>Each rider is evaluated individually against Jordan’s solo trip—not together as a group.</Text>
-        {feasible.map((candidate, index) => <CompactCandidateCard baselineDurationSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} comparison={feasible[index + 1] ?? feasible[index - 1] ?? null} key={candidate.candidate.id} onSelect={(candidateId) => dispatch({ type: 'SELECT_CANDIDATE', candidateId })} selected={candidate.candidate.id === state.selectedCandidateId} />)}
+        {feasible.map((candidate, index) => <CompactCandidateCard baselineDurationSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} comparison={feasible[index + 1] ?? feasible[index - 1] ?? null} key={candidate.candidate.id} onOpenProfile={onOpenProfile} onSelect={(candidateId) => dispatch({ type: 'SELECT_CANDIDATE', candidateId })} selected={candidate.candidate.id === state.selectedCandidateId} />)}
         <ResultGroup count={infeasible.length} expanded={doesntFitExpanded} label="Doesn't fit" onToggle={() => setDoesntFitExpanded((value) => !value)} tone="error">
-          {infeasible.map((candidate) => <CompactCandidateCard baselineDurationSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} comparison={null} key={candidate.candidate.id} onSelect={(candidateId) => dispatch({ type: 'SELECT_CANDIDATE', candidateId })} selected={candidate.candidate.id === state.selectedCandidateId} />)}
+          {infeasible.map((candidate) => <CompactCandidateCard baselineDurationSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} comparison={null} key={candidate.candidate.id} onOpenProfile={onOpenProfile} onSelect={(candidateId) => dispatch({ type: 'SELECT_CANDIDATE', candidateId })} selected={candidate.candidate.id === state.selectedCandidateId} />)}
         </ResultGroup>
         <ResultGroup count={unknown.length} expanded={needsInfoExpanded} label="Needs information" onToggle={() => setNeedsInfoExpanded((value) => !value)} tone="warning">
-          {unknown.map((candidate) => <CompactCandidateCard baselineDurationSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} comparison={null} key={candidate.candidate.id} onSelect={(candidateId) => dispatch({ type: 'SELECT_CANDIDATE', candidateId })} selected={candidate.candidate.id === state.selectedCandidateId} />)}
+          {unknown.map((candidate) => <CompactCandidateCard baselineDurationSeconds={state.result?.baselineRoute?.durationSeconds ?? null} candidate={candidate} comparison={null} key={candidate.candidate.id} onOpenProfile={onOpenProfile} onSelect={(candidateId) => dispatch({ type: 'SELECT_CANDIDATE', candidateId })} selected={candidate.candidate.id === state.selectedCandidateId} />)}
         </ResultGroup>
       </View>}
 
@@ -199,13 +201,14 @@ function CaseButton({ item, onPress, selected }: { item: (typeof riderDemoPresen
   return <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => onPress(item.id)} style={[styles.caseButton, selected && styles.caseButtonSelected]}><Text style={[styles.caseButtonText, selected && styles.caseButtonTextSelected]}>{item.title}</Text></Pressable>;
 }
 
-function CompactCandidateCard({ baselineDurationSeconds, candidate, comparison, onSelect, selected }: { baselineDurationSeconds: number | null; candidate: EvaluatedRiderDemoCandidate; comparison: EvaluatedRiderDemoCandidate | null; onSelect: (id: string) => void; selected: boolean }) {
+function CompactCandidateCard({ baselineDurationSeconds, candidate, comparison, onOpenProfile, onSelect, selected }: { baselineDurationSeconds: number | null; candidate: EvaluatedRiderDemoCandidate; comparison: EvaluatedRiderDemoCandidate | null; onOpenProfile: (participantId: string, displayName: string) => void; onSelect: (id: string) => void; selected: boolean }) {
   const name = cleanName(candidate.candidate.name);
   const isFeasible = candidate.evaluation.status === 'FEASIBLE';
   const title = isFeasible ? `#${candidate.rank} ${name}` : `${name} — ${candidate.evaluation.status === 'INFEASIBLE' ? "Doesn't fit" : 'Needs information'}`;
   const summary = candidateSummary(candidate);
+  const profile = resolvePublicProfile(candidate.candidate.id, name);
   return <Pressable accessibilityLabel={`${title}. ${summary}. Select route on map.`} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onSelect(candidate.candidate.id)}><Card style={[styles.candidateCard, selected && styles.selectedCard]}>
-    <View style={styles.candidateHeader}><Text style={styles.candidateTitle}>{title}</Text><StatusDot status={candidate.evaluation.status} /></View>
+    <View style={styles.candidateHeader}><Pressable accessibilityLabel={`View ${name}'s profile`} accessibilityRole="button" onPress={(event) => { event.stopPropagation(); onOpenProfile(candidate.candidate.id, name); }} style={styles.candidateIdentity}><Avatar name={name} participantId={candidate.candidate.id} sampleAvatar={profile.sampleAvatar} size={38} /><Text style={styles.candidateTitle}>{title}</Text></Pressable><StatusDot status={candidate.evaluation.status} /></View>
     <Text style={styles.candidateSummary}>{summary}</Text>
     {isFeasible && <Text style={styles.bestFit}>{bestFitExplanation(candidate, comparison)}</Text>}
     {candidate.routingIssue && <Text style={styles.visibleError}>{candidate.routingIssue.message}</Text>}
@@ -289,7 +292,7 @@ const styles = StyleSheet.create({
   tripSummary: { gap: spacing.md }, summaryHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.md }, summaryTitle: { color: colors.text, fontSize: 16, fontWeight: '800' }, summaryText: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 }, loadedMessage: { color: colors.accent, fontSize: 14, fontWeight: '800', lineHeight: 20 },
   mapSection: { gap: spacing.sm }, legend: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }, legendItem: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs }, legendSwatch: { borderRadius: radii.pill, height: 7, width: 24 }, schematicWarning: { backgroundColor: colors.warningSoft, borderRadius: radii.md, color: colors.warning, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, liveModeNote: { backgroundColor: colors.successSoft, borderRadius: radii.md, color: colors.success, fontSize: 12, lineHeight: 18, padding: spacing.sm }, visibleError: { backgroundColor: colors.errorSoft, borderRadius: radii.md, color: colors.error, fontSize: 12, lineHeight: 18, padding: spacing.sm },
   primaryAction: { gap: spacing.sm }, loadingRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'center' }, cancelButton: { justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.md }, cancelText: { color: colors.accent, fontSize: 14, fontWeight: '800' }, results: { gap: spacing.md }, resultSummary: { color: colors.text, fontSize: 16, fontWeight: '800' }, independentNote: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
-  candidateCard: { gap: spacing.sm, padding: spacing.md }, selectedCard: { borderColor: colors.accent, borderWidth: 2 }, candidateHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, candidateTitle: { color: colors.text, flex: 1, fontSize: 17, fontWeight: '900' }, candidateSummary: { color: colors.text, fontSize: 14, fontWeight: '700', lineHeight: 20 }, bestFit: { color: colors.success, fontSize: 12, fontWeight: '700', lineHeight: 18 }, statusDot: { borderRadius: radii.pill, height: 12, width: 12 }, successDot: { backgroundColor: colors.success }, errorDot: { backgroundColor: colors.error }, warningDot: { backgroundColor: colors.warning },
+  candidateCard: { gap: spacing.sm, padding: spacing.md }, selectedCard: { borderColor: colors.accent, borderWidth: 2 }, candidateHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, candidateIdentity: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 44 }, candidateTitle: { color: colors.text, flex: 1, fontSize: 17, fontWeight: '900' }, candidateSummary: { color: colors.text, fontSize: 14, fontWeight: '700', lineHeight: 20 }, bestFit: { color: colors.success, fontSize: 12, fontWeight: '700', lineHeight: 18 }, statusDot: { borderRadius: radii.pill, height: 12, width: 12 }, successDot: { backgroundColor: colors.success }, errorDot: { backgroundColor: colors.error }, warningDot: { backgroundColor: colors.warning },
   resultGroup: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' }, resultGroupHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.md }, groupDot: { borderRadius: radii.pill, height: 10, width: 10 }, resultGroupTitle: { color: colors.text, flex: 1, fontSize: 14, fontWeight: '800' }, groupBody: { backgroundColor: colors.background, gap: spacing.sm, padding: spacing.sm },
   disclosure: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' }, compactDisclosure: { borderWidth: 0 }, disclosureHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 48, paddingHorizontal: spacing.md }, disclosureTitle: { color: colors.text, fontSize: 13, fontWeight: '800' }, disclosureBody: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: spacing.sm, padding: spacing.md }, detailsBody: { gap: spacing.sm }, detailRow: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md }, detailLabel: { color: colors.textMuted, flex: 0.42, fontSize: 12, fontWeight: '700' }, detailValue: { color: colors.text, flex: 0.58, fontSize: 12, lineHeight: 17 }, detailText: { color: colors.text, fontSize: 12, lineHeight: 18 }, mutedText: { color: colors.textMuted, fontSize: 11, lineHeight: 16 }, riderDetail: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, gap: 2, paddingTop: spacing.sm }, riderDetailName: { color: colors.text, fontSize: 13, fontWeight: '800' }, modeRow: { gap: spacing.sm }, modeButton: { borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, justifyContent: 'center', minHeight: 48, paddingHorizontal: spacing.md }, modeButtonSelected: { backgroundColor: colors.text, borderColor: colors.text }, modeButtonText: { color: colors.text, fontSize: 12, fontWeight: '800', textAlign: 'center' }, modeButtonTextSelected: { color: colors.surface },
 });

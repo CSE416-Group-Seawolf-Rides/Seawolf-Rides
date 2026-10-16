@@ -1,12 +1,14 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Avatar } from '../components/Avatar';
 import { Card } from '../components/Card';
+import { resolvePublicProfile } from '../profiles/publicProfiles';
 import { Screen } from '../components/Screen';
 import { ChatPreview } from '../prototypeData/types';
-import { colors, radii, spacing } from '../theme';
+import { colors, spacing } from '../theme';
 
 interface ChatsScreenProps {
-  chats: ChatPreview[];
+  chats: (ChatPreview & { participantId: string })[];
   onOpenChat: (id: string) => void;
 }
 
@@ -26,7 +28,9 @@ export function ChatsScreen({ chats, onOpenChat }: ChatsScreenProps) {
         </Card>
       ) : (
         <Card style={styles.inboxCard}>
-          {chats.map((chat, index) => (
+          {chats.map((chat, index) => {
+            const profile = resolvePublicProfile(chat.participantId, chat.participantName);
+            return (
             <Pressable
               accessibilityLabel={`Open chat with ${chat.participantName}`}
               accessibilityRole="button"
@@ -38,9 +42,7 @@ export function ChatsScreen({ chats, onOpenChat }: ChatsScreenProps) {
                 pressed && styles.chatPressed,
               ]}
             >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{chat.participantName.charAt(0)}</Text>
-              </View>
+              <View style={styles.avatar}><Avatar name={profile.displayName} participantId={profile.participantId} sampleAvatar={profile.sampleAvatar} size={48} /></View>
               <View style={styles.chatCopy}>
                 <View style={styles.nameRow}>
                   <Text style={styles.name}>{chat.participantName}</Text>
@@ -53,7 +55,7 @@ export function ChatsScreen({ chats, onOpenChat }: ChatsScreenProps) {
               </View>
               <Text style={styles.chevron}>›</Text>
             </Pressable>
-          ))}
+          )})}
         </Card>
       )}
 
@@ -83,18 +85,7 @@ const styles = StyleSheet.create({
     opacity: 0.58,
   },
   avatar: {
-    alignItems: 'center',
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.pill,
-    height: 48,
-    justifyContent: 'center',
     marginRight: spacing.md,
-    width: 48,
-  },
-  avatarText: {
-    color: colors.accent,
-    fontSize: 18,
-    fontWeight: '800',
   },
   chatCopy: {
     flex: 1,

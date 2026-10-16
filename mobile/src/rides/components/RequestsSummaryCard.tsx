@@ -1,8 +1,9 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '../../components/AppButton';
 import { Avatar } from '../../components/Avatar';
 import { describeWeekdays, Weekday, weekdays } from '../../commute/commuteModel';
+import { participantIdForRequest, resolvePublicProfile } from '../../profiles/publicProfiles';
 import { colors, radii, spacing } from '../../theme';
 import { IncomingRequest } from '../rideModel';
 
@@ -11,11 +12,12 @@ interface RequestsSummaryCardProps {
   // The days each request overlaps with the user's drives.
   days: Weekday[];
   onReview: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
 }
 
 // Riders waiting on a yes/no, summed up in one card. Deciding happens one request at a
 // time on the review screen, so Home never grows into a long list of cards.
-export function RequestsSummaryCard({ requests, days, onReview }: RequestsSummaryCardProps) {
+export function RequestsSummaryCard({ requests, days, onReview, onOpenProfile }: RequestsSummaryCardProps) {
   const count = requests.length;
   const shown = requests.slice(0, 3);
   const minutes = requests.map((request) => request.addedMinutes);
@@ -35,9 +37,9 @@ export function RequestsSummaryCard({ requests, days, onReview }: RequestsSummar
       <View style={styles.header}>
         <View style={styles.avatars}>
           {shown.map((request, index) => (
-            <View key={request.id} style={[styles.avatarRing, index > 0 && styles.overlap]}>
-              <Avatar name={request.riderName} size={40} />
-            </View>
+            <Pressable accessibilityLabel={`View ${request.riderName}'s profile`} accessibilityRole="button" key={request.id} onPress={() => onOpenProfile(participantIdForRequest(request), request.riderName)} style={({ pressed }) => [styles.avatarRing, index > 0 && styles.overlap, pressed && styles.pressed]}>
+              <Avatar name={request.riderName} participantId={participantIdForRequest(request)} sampleAvatar={resolvePublicProfile(participantIdForRequest(request), request.riderName).sampleAvatar} size={40} />
+            </Pressable>
           ))}
         </View>
         <View style={styles.badge}>
@@ -85,6 +87,7 @@ const styles = StyleSheet.create({
   overlap: {
     marginLeft: -12,
   },
+  pressed: { opacity: 0.62 },
   badge: {
     alignItems: 'center',
     backgroundColor: colors.accent,

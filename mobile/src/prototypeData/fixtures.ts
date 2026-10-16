@@ -1,10 +1,11 @@
-import { PrototypeConversation } from './types';
+import type { PrototypeConversation } from './types';
 
 // Frontend-only M2 fixtures. None of these values are calculated or persisted.
 // Details (spots, times, days) match the ride fixtures so the demo tells one story.
 export const conversationFixtures: PrototypeConversation[] = [
   {
     offerId: 'alex',
+    participantId: 'demo-driver-alex',
     preview: {
       id: 'alex-chat',
       participantName: 'Alex',
@@ -40,7 +41,8 @@ export const conversationFixtures: PrototypeConversation[] = [
     ],
   },
   {
-    riderId: 'maya',
+    requestId: 'maya',
+    participantId: 'demo-rider-maya',
     preview: {
       id: 'maya-chat',
       participantName: 'Maya',
@@ -70,6 +72,7 @@ export const conversationFixtures: PrototypeConversation[] = [
     ],
   },
   {
+    participantId: 'demo-driver-sarah',
     preview: {
       id: 'sarah-chat',
       participantName: 'Sarah',

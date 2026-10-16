@@ -1,6 +1,7 @@
 import type { CommuteSchedule, Weekday } from '../commute/commuteModel';
 import { getCampusDestinationMapLocation } from '../map/campusDestinations';
 import type { DriverOffer } from '../rides/rideModel';
+import { participantIdForOffer } from '../profiles/publicProfiles';
 import { sealDatedRideProposal, type DatedRideProposalV1 } from '../rides/datedRideProposal';
 import type { RouteCoordinate, RoutingAdapter, RoutingResult } from '../routing/types';
 import { evaluatePair } from './evaluatePair';
@@ -166,7 +167,7 @@ function buildInput(options: EvaluateDriverRecommendationsOptions, setup: Comple
   const epochWindow = (window: MinuteWindow) => ({ earliest: localMinuteToEpochSeconds(options.localDate, window.earliest, options.timeZone), latest: localMinuteToEpochSeconds(options.localDate, window.latest, options.timeZone) });
   return {
     driver: {
-      userId: options.driverId ?? `synthetic-driver-${offer.id}`,
+      userId: options.driverId ?? participantIdForOffer(offer),
       occurrence,
       departureWindow: epochWindow(profile.departureWindowMinutes),
       campusArrivalWindow: epochWindow(profile.campusArrivalWindowMinutes),

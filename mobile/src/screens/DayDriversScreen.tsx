@@ -31,6 +31,7 @@ import { StatusPill } from '../rides/components/StatusPill';
 import { requestOccursOn, type DriverOffer, type IncomingRequest, type OutgoingRequest, type RequestStatus } from '../rides/rideModel';
 import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
 import { routePresets } from '../routing/routePresets';
+import { participantIdForOffer, resolvePublicProfile } from '../profiles/publicProfiles';
 import { colors, radii, spacing } from '../theme';
 
 interface DayDriversScreenProps {
@@ -46,6 +47,7 @@ interface DayDriversScreenProps {
   statusFor: (offerId: string) => RequestStatus | undefined;
   onBack: () => void;
   onSendDatedRequest: (proposal: DatedRideProposalV1) => RequestTransitionCode;
+  onOpenProfile: (participantId: string, displayName: string) => void;
 }
 
 interface MatchingForm {
@@ -262,7 +264,7 @@ export function DayDriversScreen(props: DayDriversScreenProps) {
         <Text accessibilityRole="header" style={styles.heading}>{feasible.length} feasible recommendation{feasible.length === 1 ? '' : 's'}</Text>
         <Text style={styles.muted}>{infeasible} did not fit · {unknown} need routing information · {capacityExcluded} lacked capacity. Only feasible candidates are ranked.</Text>
         {feasible.length === 0 && <Card><Text style={styles.empty}>No sample driver satisfies every entered schedule, walking, capacity, and detour constraint. Adjust your explicit setup or retry routing.</Text></Card>}
-        {feasible.map((item) => <RecommendationCard item={item} key={item.offer.id} onRequest={() => setRequesting(item)} requestStatus={props.statusFor(item.offer.id)} />)}
+        {feasible.map((item) => <RecommendationCard item={item} key={item.offer.id} onOpenProfile={props.onOpenProfile} onRequest={() => setRequesting(item)} requestStatus={props.statusFor(item.offer.id)} />)}
         {result.recommendations.filter((item) => item.routingMessage).map((item) => <Text key={item.offer.id} style={styles.error}>{item.offer.driverName}: {item.routingMessage}</Text>)}
       </View>}
 
@@ -279,13 +281,15 @@ function CompactInput({ field, form, label, numeric, onChange }: { field: keyof 
   return <View style={styles.input}><TextField autoCapitalize="none" autoCorrect={false} keyboardType={numeric ? 'number-pad' : 'numbers-and-punctuation'} label={label} onChangeText={(value) => onChange(field, value)} placeholder={numeric ? 'Minutes' : '08:15'} value={form[field]} /></View>;
 }
 
-function RecommendationCard({ item, onRequest, requestStatus }: { item: DriverRecommendation; onRequest: () => void; requestStatus?: RequestStatus }) {
+function RecommendationCard({ item, onOpenProfile, onRequest, requestStatus }: { item: DriverRecommendation; onOpenProfile: (participantId: string, displayName: string) => void; onRequest: () => void; requestStatus?: RequestStatus }) {
   if (item.evaluation?.status !== 'FEASIBLE') return null;
   const evaluation = item.evaluation;
   const time = (epoch: number) => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: NORMAL_MATCHING_TIME_ZONE }).format(new Date(epoch * 1000));
   const minutes = (seconds: number) => `${Math.round(seconds / 60)} min`;
+  const participantId = participantIdForOffer(item.offer);
+  const profile = resolvePublicProfile(participantId, item.offer.driverName);
   return <Card style={styles.recommendation}>
-    <View style={styles.driverHeader}><Avatar name={item.offer.driverName} /><View style={styles.flex}><Text style={styles.driverName}>#{item.rank} {item.offer.driverName}</Text><Text style={styles.muted}>{item.offer.startAreaLabel} · synthetic driver</Text></View><Text style={styles.seats}>{item.offer.seatsLeft} seats</Text></View>
+    <View style={styles.driverHeader}><Pressable accessibilityLabel={`View ${item.offer.driverName}'s profile`} accessibilityRole="button" onPress={() => onOpenProfile(participantId, item.offer.driverName)} style={({ pressed }) => [styles.profileLink, pressed && styles.pressed]}><Avatar name={item.offer.driverName} participantId={participantId} sampleAvatar={profile.sampleAvatar} /><View style={styles.flex}><Text style={styles.driverName}>#{item.rank} {item.offer.driverName}</Text><Text style={styles.muted}>{item.offer.startAreaLabel} · synthetic driver</Text></View></Pressable><Text style={styles.seats}>{item.offer.seatsLeft} seats</Text></View>
     <Text style={styles.metrics}>Pickup {time(evaluation.plan.pickup)} · Campus {time(evaluation.plan.vehicleCampusArrival)}</Text>
     <Text style={styles.metrics}>Adds {minutes(evaluation.metrics.driverExtraDurationSeconds)} driving · active detour limit {minutes(evaluation.metrics.activeDriverDetourLimitSeconds)}</Text>
     <Text style={styles.explanation}>{item.rankingExplanation}</Text>
@@ -301,5 +305,5 @@ const styles = StyleSheet.create({
   setupCard: { gap: spacing.md }, heading: { color: colors.text, fontSize: 19, fontWeight: '800' }, muted: { color: colors.textMuted, fontSize: 13, lineHeight: 19 }, label: { color: colors.text, fontSize: 14, fontWeight: '700' }, helper: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   pointRow: { flexDirection: 'row', gap: spacing.sm }, pointButton: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: 48, padding: spacing.sm }, pointButtonSelected: { backgroundColor: colors.text, borderColor: colors.text }, pointText: { color: colors.text, fontSize: 12, fontWeight: '700', textAlign: 'center' }, pointTextSelected: { color: colors.surface },
   twoColumns: { flexDirection: 'row', gap: spacing.sm }, input: { flex: 1 }, loading: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, cancel: { justifyContent: 'center', marginLeft: 'auto', minHeight: 44, paddingHorizontal: spacing.sm }, cancelText: { color: colors.accent, fontWeight: '800' }, error: { backgroundColor: colors.errorSoft, borderRadius: radii.md, color: colors.error, fontSize: 12, lineHeight: 18, padding: spacing.sm },
-  results: { gap: spacing.md }, empty: { color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'center' }, recommendation: { gap: spacing.md }, driverHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, minHeight: 48 }, flex: { flex: 1 }, driverName: { color: colors.text, fontSize: 17, fontWeight: '900' }, seats: { color: colors.textMuted, fontSize: 12, fontWeight: '700' }, metrics: { color: colors.text, fontSize: 14, fontWeight: '700', lineHeight: 20 }, explanation: { color: colors.success, fontSize: 12, fontWeight: '700', lineHeight: 18 },
+  results: { gap: spacing.md }, empty: { color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'center' }, recommendation: { gap: spacing.md }, driverHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, minHeight: 48 }, profileLink: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.md, minHeight: 48 }, pressed: { opacity: 0.62 }, flex: { flex: 1 }, driverName: { color: colors.text, fontSize: 17, fontWeight: '900' }, seats: { color: colors.textMuted, fontSize: 12, fontWeight: '700' }, metrics: { color: colors.text, fontSize: 14, fontWeight: '700', lineHeight: 20 }, explanation: { color: colors.success, fontSize: 12, fontWeight: '700', lineHeight: 18 },
 });
