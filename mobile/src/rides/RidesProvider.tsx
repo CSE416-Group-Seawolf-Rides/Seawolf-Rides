@@ -13,8 +13,10 @@ import { useSession } from '../auth/SessionProvider';
 import type { Weekday } from '../commute/commuteModel';
 import { demoIncoming, demoOutgoing } from '../prototypeData/demoAccount';
 import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
+import { SharedLiveDirectedTravelSource, type TravelCacheOwnership } from '../routing/directedTravelSource';
 import { validateDatedRideProposal, type DatedRideProposalV1 } from './datedRideProposal';
-import { applyFridayDriverTestLoad, buildFridayDriverTest, isFridayDriverTestRequest, resetFridayDriverTestState } from './fridayDriverTest';
+import { GroupAcceptanceService, MultiCarScenarioStore, type GroupAcceptanceCode } from './groupAcceptance';
+import { applyFridayDriverTestLoad, buildFridayDriverTest, createFridayGroupStoreData, FRIDAY_DRIVER_TEST_OCCURRENCE_ID, isFridayDriverTestRequest, resetFridayDriverTestState } from './fridayDriverTest';
 import { driverOfferFixtures, riderRequestFixtures } from './rideFixtures';
 import {
   IncomingRequest,
@@ -38,7 +40,7 @@ interface Rides {
   sendDatedRequest: (proposal: DatedRideProposalV1) => RequestTransitionCode;
   cancelRequest: (offerId: string) => void;
   withdrawRequest: (requestId: string) => void;
-  respondToRequest: (requestId: string, status: 'accepted' | 'declined') => RequestTransitionCode;
+  respondToRequest: (requestId: string, status: 'accepted' | 'declined') => Promise<RequestResponseResult>;
   driverOccurrences: DriverOccurrenceOverride[];
   fridayDriverTest: { status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR'; message: string | null };
   loadFridayDriverTest: () => Promise<void>;
@@ -47,6 +49,12 @@ interface Rides {
   skipped: string[];
   skipTrip: (tripId: string) => void;
   undoSkip: (tripId: string) => void;
+}
+
+export interface RequestResponseResult {
+  ok: boolean;
+  code: RequestTransitionCode | GroupAcceptanceCode;
+  message: string;
 }
 
 const RidesContext = createContext<Rides | null>(null);
@@ -79,6 +87,10 @@ export function RidesProvider({ children }: PropsWithChildren) {
   const skippedRef = useRef(skipped);
   const driverOccurrencesRef = useRef(driverOccurrences);
   const fridayLoadController = useRef<AbortController | null>(null);
+  const fridayGroupStore = useRef<MultiCarScenarioStore | null>(null);
+  const fridayTravelSource = useRef<SharedLiveDirectedTravelSource | null>(null);
+  const fridayRoutingOwnership = useRef<TravelCacheOwnership | null>(null);
+  const groupAcceptance = useRef(new GroupAcceptanceService());
 
   useEffect(() => {
     commuteRef.current = commute;
@@ -240,7 +252,41 @@ export function RidesProvider({ children }: PropsWithChildren) {
         timers.current.delete(requestId);
         setOutgoing((current) => current.filter((request) => request.id !== requestId));
       },
-      respondToRequest: (requestId, status) => {
+      respondToRequest: async (requestId, status) => {
+        const request = incomingRef.current.find((item) => item.id === requestId);
+        if (request?.proposal && isFridayDriverTestRequest(request)) {
+          if (status === 'declined') {
+            const transition = transitionIncomingRequest({
+              commute: commuteRef.current, requests: incomingRef.current, outgoing: outgoingRef.current,
+              requestId, status, nowEpochSeconds: Math.floor(Date.now() / 1000),
+              driverOccurrences: driverOccurrencesRef.current,
+            });
+            if (transition.ok) {
+              fridayGroupStore.current?.cancelPendingRequest(requestId);
+              incomingRef.current = transition.requests;
+              setIncoming(transition.requests);
+            }
+            return { ok: transition.ok, code: transition.code, message: requestTransitionMessage(transition.code) };
+          }
+          const store = fridayGroupStore.current;
+          const source = fridayTravelSource.current;
+          const routingOwnership = fridayRoutingOwnership.current;
+          if (!store || !source || !routingOwnership) {
+            return { ok: false, code: 'LEGACY_INCOMPLETE', message: 'This dated request is missing its complete group acceptance context.' };
+          }
+          const result = await groupAcceptance.current.accept({
+            store, requestId, source, routingOwnership,
+            nowEpochSeconds: () => Math.floor(Date.now() / 1000),
+          });
+          if (result.ok) {
+            const next = incomingRef.current.map((item) => item.id === requestId && item.status === 'pending'
+              ? { ...item, status: 'accepted' as const }
+              : item);
+            incomingRef.current = next;
+            setIncoming(next);
+          }
+          return { ok: result.ok, code: result.code, message: result.message };
+        }
         const transition = transitionIncomingRequest({
           commute: commuteRef.current,
           requests: incomingRef.current,
@@ -254,7 +300,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
           incomingRef.current = transition.requests;
           setIncoming(transition.requests);
         }
-        return transition.code;
+        return { ok: transition.ok, code: transition.code, message: requestTransitionMessage(transition.code) };
       },
       driverOccurrences,
       fridayDriverTest,
@@ -275,6 +321,16 @@ export function RidesProvider({ children }: PropsWithChildren) {
             return;
           }
           const next = applyFridayDriverTestLoad(incomingRef.current, driverOccurrencesRef.current, result);
+          const groupData = createFridayGroupStoreData(result);
+          fridayGroupStore.current = new MultiCarScenarioStore(groupData);
+          fridayTravelSource.current = new SharedLiveDirectedTravelSource({
+            adapter: routeAdapter,
+            rootGeneration: result.generationId,
+          });
+          fridayRoutingOwnership.current = {
+            mode: 'LIVE', providerId: 'osrm', profile: 'driving', optionsKey: 'friday-driver-test',
+            rootGeneration: result.generationId, estimateVersion: 'friday-live-v1',
+          };
           incomingRef.current = next.incoming;
           setIncoming(next.incoming);
           driverOccurrencesRef.current = next.occurrences;
@@ -290,6 +346,18 @@ export function RidesProvider({ children }: PropsWithChildren) {
         if (!__DEV__) return;
         fridayLoadController.current?.abort();
         fridayLoadController.current = null;
+        const existingStore = fridayGroupStore.current;
+        if (existingStore) {
+          const existing = existingStore.snapshot();
+          existingStore.replace({
+            scenario: { ...existing.scenario, generationId: `${existing.scenario.generationId}:reset` },
+            pendingProposals: [], skippedDriverOccurrenceIds: [], cancelledRequestIds: [],
+          });
+        }
+        fridayTravelSource.current?.beginRootGeneration(`friday-reset-${Date.now()}`);
+        fridayGroupStore.current = null;
+        fridayTravelSource.current = null;
+        fridayRoutingOwnership.current = null;
         const next = resetFridayDriverTestState(incomingRef.current, driverOccurrencesRef.current);
         incomingRef.current = next.incoming;
         setIncoming(next.incoming);
@@ -298,14 +366,38 @@ export function RidesProvider({ children }: PropsWithChildren) {
         setFridayDriverTest({ status: 'IDLE', message: null });
       },
       skipped,
-      skipTrip: (tripId) =>
-        setSkipped((current) => (current.includes(tripId) ? current : [...current, tripId])),
-      undoSkip: (tripId) => setSkipped((current) => current.filter((id) => id !== tripId)),
+      skipTrip: (tripId) => {
+        if (tripId === FRIDAY_DRIVER_TEST_OCCURRENCE_ID || tripId === '2026-10-16') {
+          fridayGroupStore.current?.setDriverSkipped(FRIDAY_DRIVER_TEST_OCCURRENCE_ID, true);
+        }
+        setSkipped((current) => (current.includes(tripId) ? current : [...current, tripId]));
+      },
+      undoSkip: (tripId) => {
+        if (tripId === FRIDAY_DRIVER_TEST_OCCURRENCE_ID || tripId === '2026-10-16') {
+          fridayGroupStore.current?.setDriverSkipped(FRIDAY_DRIVER_TEST_OCCURRENCE_ID, false);
+        }
+        setSkipped((current) => current.filter((id) => id !== tripId));
+      },
     }),
     [commute, driverOccurrences, fridayDriverTest, incoming, outgoing, routeAdapter, skipped, user],
   );
 
   return <RidesContext.Provider value={rides}>{children}</RidesContext.Provider>;
+}
+
+function requestTransitionMessage(code: RequestTransitionCode): string {
+  return ({
+    ACCEPTED: 'The request was accepted.', DECLINED: 'The request was declined.',
+    REQUEST_NOT_FOUND: 'The request no longer exists.', NOT_PENDING: 'The request is no longer pending.',
+    LEGACY_RECURRING_REQUEST: 'This legacy recurring request does not have a complete dated agreement.',
+    WRONG_OCCURRENCE: 'The request no longer matches this occurrence.',
+    DUPLICATE_COMMITMENT: 'The rider is already committed for this occurrence.',
+    SCHEDULE_CONFLICT: 'The request conflicts with the current schedule.',
+    INVALID_SEAT_QUANTITY: 'The requested seat quantity is invalid.',
+    NO_REMAINING_CAPACITY: 'The car no longer has enough seats.',
+    OUTDATED_PROPOSAL: 'The proposal expired. Ask the rider to refresh it.',
+    INVALID_PROPOSAL: 'The proposal is invalid or changed.', OFFER_CHANGED: 'The driver offer changed.',
+  } as Partial<Record<RequestTransitionCode, string>>)[code] ?? 'The request could not be updated.';
 }
 
 export function useRides(): Rides {

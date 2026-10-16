@@ -79,6 +79,8 @@ test('loads three fresh versioned proposals for the exact Friday occurrence and 
 
 test('loading is idempotent and reset removes only Friday test requests and occurrence', async () => {
   const loaded = await load();
+  const reloaded = await load();
+  assert.notEqual(reloaded.generationId, loaded.generationId);
   const unrelated = { id: 'unrelated', riderName: 'Other', startAreaLabel: 'Other area', campusLot: 'tabler', days: ['tue'], arriveBy: 540, leaveAt: null, addedMinutes: 2, pickupSpot: 'Other point', status: 'pending' };
   const first = applyFridayDriverTestLoad([unrelated], [], loaded);
   const second = applyFridayDriverTestLoad(first.incoming, first.occurrences, loaded);

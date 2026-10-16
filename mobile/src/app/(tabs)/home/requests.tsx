@@ -14,13 +14,14 @@ export default function ReviewRequestsRoute() {
     <ReviewRequestsScreen
       onDone={() => router.back()}
       onOpenProfile={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })}
-      onRespond={(requestId, status) => {
-        const result = respondToRequest(requestId, status);
-        Haptics.notificationAsync(
-          result === 'ACCEPTED'
+      onRespond={async (requestId, status) => {
+        const result = await respondToRequest(requestId, status);
+        await Haptics.notificationAsync(
+          result.ok
             ? Haptics.NotificationFeedbackType.Success
             : Haptics.NotificationFeedbackType.Warning,
         );
+        return result;
       }}
       pending={incomingForCommute(commute, incoming, outgoing, driverOccurrences).filter(
         (view) => view.request.status === 'pending',

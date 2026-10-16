@@ -17,6 +17,7 @@ interface IncomingRequestCardProps {
   onAccept: () => void;
   onDecline: () => void;
   onOpenProfile: (participantId: string, displayName: string) => void;
+  checking?: boolean;
 }
 
 // Drivers decide on every request themselves, so the card leads with what that costs
@@ -29,6 +30,7 @@ export function IncomingRequestCard({
   onAccept,
   onDecline,
   onOpenProfile,
+  checking = false,
 }: IncomingRequestCardProps) {
   const fullDayName = fullDay && weekdays.find((weekday) => weekday.value === fullDay)?.name;
   const conflictDayName =
@@ -84,6 +86,7 @@ export function IncomingRequestCard({
               <AppButton
                 accessibilityLabel={`Decline ${request.riderName}`}
                 label="Decline"
+                disabled={checking}
                 onPress={onDecline}
                 variant="secondary"
               />
@@ -91,12 +94,13 @@ export function IncomingRequestCard({
             <View style={styles.action}>
               <AppButton
                 accessibilityLabel={`Accept ${request.riderName}`}
-                disabled={Boolean(fullDay || conflictDay)}
-                label="Accept"
+                disabled={checking || Boolean(fullDay || conflictDay)}
+                label={checking ? 'Checking…' : 'Accept'}
                 onPress={onAccept}
               />
             </View>
           </View>
+          {checking && <Text style={styles.checking}>Verifying the complete group route before accepting…</Text>}
         </>
       )}
     </View>
@@ -165,6 +169,11 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontSize: 13,
     fontWeight: '600',
+  },
+  checking: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
   },
   actions: {
     flexDirection: 'row',

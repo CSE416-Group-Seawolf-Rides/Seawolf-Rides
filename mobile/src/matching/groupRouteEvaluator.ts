@@ -178,6 +178,12 @@ export function evaluateGroupRoute(options: EvaluateGroupRouteOptions): GroupRou
     || member.egressWalkSeconds > member.maxEgressWalkSeconds)) {
     return infeasible(['WALK_LIMIT'], emptyDiagnostics);
   }
+  if (members.some((member) => (
+    member.pickupWindow.earliest + member.pickupServiceSeconds + member.egressWalkSeconds
+      > member.destinationArrivalWindow.latest
+  ))) {
+    return infeasible(['DESTINATION_WINDOW'], emptyDiagnostics);
+  }
 
   const solo = classifyEstimate(options.travel.solo);
   if (solo.status === 'UNKNOWN') return unknown([solo.reason], emptyDiagnostics);

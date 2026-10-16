@@ -7,6 +7,11 @@ import {
   type RiderRecommendationSetup,
 } from '../matching/driverRecommendations';
 import type { RoutingAdapter } from '../routing/types';
+import {
+  groupContractsFromDatedProposal,
+  type MultiCarScenarioStoreData,
+} from './groupAcceptance';
+import { driverOccurrenceFromDatedProposal } from './groupRideContracts';
 import type { DriverOccurrenceOverride, DriverOffer, IncomingRequest } from './rideModel';
 
 export const FRIDAY_DRIVER_TEST_DATE = '2026-10-16';
@@ -73,9 +78,12 @@ export const fridayDriverTestRiders: readonly FridayRiderFixture[] = [
 
 export interface FridayDriverTestSuccess {
   status: 'SUCCESS';
+  generationId: string;
   occurrence: DriverOccurrenceOverride;
   requests: IncomingRequest[];
 }
+
+let fridayGenerationSequence = 0;
 
 export interface FridayDriverTestFailure {
   status: 'FAILURE';
@@ -88,6 +96,8 @@ export async function buildFridayDriverTest(options: {
   evaluatedAtEpochSeconds?: number;
   signal?: AbortSignal;
 }): Promise<FridayDriverTestSuccess | FridayDriverTestFailure> {
+  fridayGenerationSequence += 1;
+  const generationId = `${FRIDAY_DRIVER_TEST_PREFIX}generation-${Date.now()}-${fridayGenerationSequence}`;
   const occurrence: DriverOccurrenceOverride = {
     id: FRIDAY_DRIVER_TEST_OCCURRENCE_ID,
     driverId: options.driverId,
@@ -147,7 +157,52 @@ export async function buildFridayDriverTest(options: {
       proposal: recommendation.proposal,
     });
   }
-  return { status: 'SUCCESS', occurrence, requests };
+  return { status: 'SUCCESS', generationId, occurrence, requests };
+}
+
+export function createFridayGroupStoreData(loaded: FridayDriverTestSuccess): MultiCarScenarioStoreData {
+  const firstProposal = loaded.requests[0]?.proposal;
+  if (!firstProposal) throw new Error('Friday group acceptance requires dated proposals.');
+  const namespace = 'friday-driver-test';
+  const driver = driverOccurrenceFromDatedProposal(firstProposal, {
+    driverOccurrenceId: loaded.occurrence.id,
+    scenarioNamespace: namespace,
+    generationId: loaded.generationId,
+    driverContractRevision: `${FRIDAY_DRIVER_TEST_PREFIX}driver-contract-v1`,
+    passengerCapacity: loaded.occurrence.passengerCapacity,
+  });
+  const riderIntents = [];
+  const pendingRequests = [];
+  const pendingProposals = [];
+  for (const request of loaded.requests) {
+    if (!request.proposal) throw new Error('Friday group acceptance cannot invent a legacy proposal.');
+    const adapted = groupContractsFromDatedProposal({
+      proposal: request.proposal,
+      requestId: request.id,
+      driver,
+      scenarioNamespace: namespace,
+      generationId: loaded.generationId,
+    });
+    if (!adapted) throw new Error('Friday proposals do not share one authoritative driver contract.');
+    riderIntents.push(adapted.intent);
+    pendingRequests.push(adapted.request);
+    pendingProposals.push(adapted.pendingProposal);
+  }
+  return {
+    scenario: {
+      namespace,
+      generationId: loaded.generationId,
+      offers: [fridayDriverTestOffer],
+      driverOccurrences: [driver],
+      riderIntents,
+      pendingRequests,
+      acceptedMemberships: [],
+      combinedPlans: [],
+    },
+    pendingProposals,
+    skippedDriverOccurrenceIds: [],
+    cancelledRequestIds: [],
+  };
 }
 
 export function isFridayDriverTestRequest(request: Pick<IncomingRequest, 'id'>): boolean {
