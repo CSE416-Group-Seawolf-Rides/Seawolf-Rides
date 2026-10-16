@@ -1,5 +1,7 @@
 # Seawolf Rides: three drivers, seven riders
 
+> **Stage 6 live-presentation amendment (October 16, 2026):** The primary three-car presentation now uses the confirmed station inputs documented in `docs/three-car-live-scenario.md` and Live OSRM by default. Its durations, feasibility, orders, rankings, and walkthrough outcomes must be calculated at runtime. The directed matrix and predetermined examples below remain deterministic developer fixtures and regression oracles only; they are not presentation outcomes and never serve as a live fallback. This amendment supersedes conflicting Stage 6 presentation instructions below.
+
 Implementation specification and sequential Codex prompts. Prepared October 16, 2026, from the supplied `test.zip`.
 
 Reviewed snapshot SHA-256: `93e547cf9f0961959afcfa8a6f8a14cd3eaf347499c4752e0f0261ca08bf8816`. The developer should reconcile subsequent checkout changes rather than assuming this snapshot is still the exact current tree.

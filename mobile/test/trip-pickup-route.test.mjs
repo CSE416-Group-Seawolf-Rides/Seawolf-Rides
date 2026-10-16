@@ -4,6 +4,7 @@ import test from 'node:test';
 import { buildConfirmedPickupNavigationRequest } from '../src/navigation/routeNavigationRequest.ts';
 import { riderRequestFixtures } from '../src/rides/rideFixtures.ts';
 import {
+  applyAcceptedGroupPlanToTrip,
   buildTripPickupManifest,
   calculateTripPickupRoute,
   evaluateTripPickupSchedule,
@@ -65,6 +66,49 @@ test('selected drive keeps its exact date, direction, Tabler destination, and ac
   assert.equal(manifest.campus.label, 'Tabler');
   assert.deepEqual(manifest.acceptedRiderIds, ['maya', 'nia']);
   assert.deepEqual(manifest.stops.map((stop) => stop.riderId), ['maya', 'nia']);
+});
+
+test('accepted group plan adapts its authoritative order into the dated Trip contract', () => {
+  const base = trip([accepted('maya'), accepted('chris')]);
+  const byId = new Map(base.riders.map((rider) => [rider.id, rider]));
+  const plan = {
+    occurrence: { localDate: base.id },
+    driverStart: { coordinate: origin, label: 'Driver start' },
+    campusDropoff: { coordinate: { latitude: 40.9130574, longitude: -73.1304816 }, label: 'Tabler' },
+    selectedRequestOrder: ['chris', 'maya'],
+    riderPromises: ['maya', 'chris'].map((requestId) => ({
+      requestId,
+      pickup: byId.get(requestId).confirmedPickup,
+    })),
+  };
+  const adapted = applyAcceptedGroupPlanToTrip(base, plan);
+  const manifest = buildTripPickupManifest(adapted);
+  assert.deepEqual(manifest.agreedOrderIds, ['chris', 'maya']);
+  assert.deepEqual(adapted.routingPoints.stops.map((stop) => stop.riderRequestId), ['chris', 'maya']);
+  assert.equal(manifest.missingAcceptedPlan, false);
+});
+
+test('dated accepted riders cannot route without their authoritative combined plan', async () => {
+  const seeded = accepted('maya');
+  const datedRider = {
+    ...seeded,
+    proposal: {
+      occurrence: { localDate: '2026-10-15', direction: 'TO_CAMPUS', timeZone: 'America/New_York' },
+      agreed: {
+        pickup: seeded.confirmedPickup,
+        campusDropoff: { label: 'Tabler', coordinate: { latitude: 40.9130574, longitude: -73.1304816 } },
+        riderPickupWindow: { earliest: Date.parse('2026-10-15T08:00:00-04:00') / 1000, latest: Date.parse('2026-10-15T09:00:00-04:00') / 1000 },
+        riderDestinationArrivalWindow: { latest: Date.parse('2026-10-15T09:30:00-04:00') / 1000 },
+        egressWalkSeconds: 300,
+        pickupServiceSeconds: 120,
+      },
+    },
+  };
+  const manifest = buildTripPickupManifest(trip([datedRider]));
+  assert.equal(manifest.missingAcceptedPlan, true);
+  let calls = 0;
+  await assert.rejects(() => calculateTripPickupRoute({ adapter: { route: async () => { calls += 1; } }, manifest, origin }), /combined plan is unavailable/);
+  assert.equal(calls, 0);
 });
 
 test('seeded accepted riders have explicit sourced public fixture pins', () => {
@@ -143,4 +187,13 @@ test('superseded pickup-route work cannot repopulate a changed trip', async () =
   assert.equal((await second).status, 'CURRENT');
   resolvers[0](result);
   assert.equal((await first).status, 'STALE');
+});
+
+test('a late pickup-route failure becomes stale after occurrence invalidation', async () => {
+  const latest = new LatestTripPickupRouteRequest();
+  let reject;
+  const pending = latest.run(() => new Promise((_, rejectPromise) => { reject = rejectPromise; }));
+  latest.cancel();
+  reject(new Error('late provider failure'));
+  assert.deepEqual(await pending, { status: 'STALE' });
 });

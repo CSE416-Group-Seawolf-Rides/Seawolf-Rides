@@ -651,7 +651,11 @@ export function getUpcoming(
     const trip = { skipped: skipped.includes(id), leaveAt: plan.leaveAt };
     const driverOccurrence = driverOccurrences.find((occurrence) => occurrence.localDate === id && occurrence.direction === 'TO_CAMPUS');
     const occurrenceRiders = driverOccurrence
-      ? incoming.filter((request) => request.status === 'accepted' && request.proposal?.occurrence.localDate === id && request.proposal.occurrence.direction === 'TO_CAMPUS')
+      ? incoming.filter((request) => request.status === 'accepted'
+        && request.proposal?.participants.driverId === driverOccurrence.driverId
+        && request.proposal.occurrence.localDate === driverOccurrence.localDate
+        && request.proposal.occurrence.direction === driverOccurrence.direction
+        && request.proposal.occurrence.timeZone === driverOccurrence.timeZone)
       : [];
 
     if (driverOccurrence && occurrenceRiders.length > 0) {

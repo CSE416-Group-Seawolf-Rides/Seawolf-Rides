@@ -104,6 +104,8 @@ export type GroupRecommendation =
       status: 'FEASIBLE';
       rank: number;
       plan: GroupRoutePlanV1;
+      /** Exact estimates used for this plan; retained for lazy selected-route geometry validation. */
+      planningTravel: GroupTravelEstimates;
       metrics: {
         incrementalAddedDriverDurationSeconds: number;
         totalAddedDriverDurationSeconds: number;
@@ -257,6 +259,7 @@ export async function buildGroupRecommendations(
         current.plan.metrics.elapsedDurationSeconds,
         ownership,
         routing,
+        travel,
       ));
     }
   }
@@ -482,6 +485,7 @@ function fromEvaluation(
   currentElapsed: number,
   ownership: RecommendationOwnership,
   routing: RecommendationRoutingProvenance,
+  planningTravel: GroupTravelEstimates,
 ): GroupRecommendation {
   if (evaluation.status === 'FEASIBLE') {
     const interval = evaluation.plan.feasibleDepartureWindow;
@@ -491,7 +495,7 @@ function fromEvaluation(
       rank: 1, reasonCodes: [], explanation: evaluation.plan.searchComplete
         ? 'The complete accepted group plus this rider has a feasible schedule.'
         : 'A feasible schedule was found, but unresolved pickup orders may have a lower cost.',
-      ownership, routing, plan: evaluation.plan,
+      ownership, routing, plan: evaluation.plan, planningTravel,
       metrics: {
         incrementalAddedDriverDurationSeconds: evaluation.plan.metrics.incrementalAddedDriverDurationSeconds,
         totalAddedDriverDurationSeconds: evaluation.plan.metrics.totalAddedDriverDurationSeconds,

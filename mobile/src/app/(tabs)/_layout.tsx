@@ -8,6 +8,7 @@ import { useSession } from '../../auth/SessionProvider';
 import { sharedDrivingDays } from '../../rides/rideModel';
 import { RidesProvider, useRides } from '../../rides/RidesProvider';
 import { colors } from '../../theme';
+import { ThreeCarDemoProvider } from '../../matching/ThreeCarDemoProvider';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -88,7 +89,9 @@ export default function TabsLayout() {
   // inside the protected tabs subtree clears them when sign-out unmounts the tabs.
   return (
     <RidesProvider>
-      <TabsNavigator />
+      <ThreeCarDemoProvider>
+        <TabsNavigator />
+      </ThreeCarDemoProvider>
     </RidesProvider>
   );
 }

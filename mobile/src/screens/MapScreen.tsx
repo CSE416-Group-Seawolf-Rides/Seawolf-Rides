@@ -21,7 +21,7 @@ import { LatestGeocodingSearch } from '../geocoding/latestGeocodingSearch';
 import { createPhotonGeocodingAdapter } from '../geocoding/photonAdapter';
 import type { GeocodingResult } from '../geocoding/types';
 import { getCampusDestinationMapLocation } from '../map/campusDestinations';
-import type { RiderMapCandidate } from '../map/riderMapModel';
+import { PENDING_PICKUP_PRIVACY_LABEL, type DatedPendingRiderMapCandidate } from '../map/datedDriverMapModel';
 import { queensTestDriverRoutingProfile } from '../matching/driverRecommendationFixtures';
 import { parseClockMinutes } from '../matching/driverRecommendations';
 import {
@@ -71,11 +71,12 @@ interface MapScreenProps {
   onOpenRoutePlanner?: () => void;
   onOpenProfile?: (participantId: string, displayName: string) => void;
   fridayDriverTest?: { status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR'; message: string | null };
+  mapDataRevision: string;
   onLoadFridayDriverTest?: () => Promise<void>;
   onResetFridayDriverTest?: () => void;
   onStartBasicNavigation: (request: RouteNavigationRequest) => void;
   onStartNavigation: (request: RouteNavigationRequest) => void;
-  riders: RiderMapCandidate[];
+  pendingRiders: DatedPendingRiderMapCandidate[];
 }
 
 type CurrentLocationState = 'IDLE' | 'LOADING' | 'DENIED' | 'UNAVAILABLE' | 'ERROR' | 'SELECTED';
@@ -119,7 +120,7 @@ function routingFailureMessage(result: Exclude<RoutingResult, { status: 'SUCCESS
   }
 }
 
-export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, fridayDriverTest, onClearPickupRoute, onLoadFridayDriverTest, onOpenCarpoolMatchingDemo, onOpenDriverTest, onOpenMatchingDiagnostics, onOpenRoutePlanner, onOpenProfile, onResetFridayDriverTest, onStartBasicNavigation, onStartNavigation, riders }: MapScreenProps) {
+export function MapScreen({ commute, currentTrip, pendingRiders, pickupRouteTrip = null, fridayDriverTest, mapDataRevision, onClearPickupRoute, onLoadFridayDriverTest, onOpenCarpoolMatchingDemo, onOpenDriverTest, onOpenMatchingDiagnostics, onOpenRoutePlanner, onOpenProfile, onResetFridayDriverTest, onStartBasicNavigation, onStartNavigation }: MapScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const expandedMapRef = useRef<MapView>(null);
@@ -145,7 +146,9 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
 
   const [selection, setSelection] = useState<EndpointSelection>('start');
   const [start, setStart] = useState<RouteEndpoint | null>(() =>
-    rideContext.status === 'LOCKED' ? rideContext.start : null,
+    pickupRouteTrip?.routingPoints
+      ? { ...createRouteEndpoint(pickupRouteTrip.routingPoints.start.coordinate, pickupRouteTrip.routingPoints.start.label, 'PRESET'), locked: true }
+      : rideContext.status === 'LOCKED' ? rideContext.start : null,
   );
   const [destination, setDestination] = useState<RouteEndpoint | null>(() =>
     pickupRouteTrip && initialCampus
@@ -189,6 +192,47 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
     }).format(new Date(proposal.routingEstimates.plan.departure * 1000));
   });
   const [pickupRouteError, setPickupRouteError] = useState<string | null>(null);
+  const [renderedMapDataRevision, setRenderedMapDataRevision] = useState(mapDataRevision);
+  const [previousHadPickupRoute, setPreviousHadPickupRoute] = useState(pickupRouteTrip !== null);
+  const [standaloneDraft, setStandaloneDraft] = useState({
+    start: pickupRouteTrip ? null : start,
+    destination: pickupRouteTrip && commute
+      ? createRouteEndpoint(getCampusDestinationMapLocation(commute.campusLot).coordinate, getCampusDestinationMapLocation(commute.campusLot).title, 'PRESET')
+      : destination,
+    standaloneConfirmed: pickupRouteTrip ? true : standaloneConfirmed,
+  });
+
+  if (renderedMapDataRevision !== mapDataRevision) {
+    setRenderedMapDataRevision(mapDataRevision);
+    setRouteLoading(false);
+    setRouteResult(null);
+    setPickupRouteResult(null);
+    setPickupOrderConfirmed(false);
+    setPickupRouteError(null);
+    setSession(idleRouteSession);
+    setSelectedRiderId((selected) => selected && pendingRiders.some((rider) => rider.id === selected) ? selected : null);
+
+    if (pickupRouteTrip?.routingPoints) {
+      const points = pickupRouteTrip.routingPoints;
+      setStart({ ...createRouteEndpoint(points.start.coordinate, points.start.label, 'PRESET'), locked: true });
+      setDestination({ ...createRouteEndpoint(points.destination.coordinate, points.destination.label, 'PRESET'), locked: true });
+      setStandaloneConfirmed(true);
+      const proposal = pickupRouteTrip.proposal ?? pickupRouteTrip.riders?.find((rider) => rider.proposal)?.proposal;
+      setPlannedDeparture(proposal ? new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: proposal.occurrence.timeZone,
+      }).format(new Date(proposal.routingEstimates.plan.departure * 1000)) : '');
+      setNotice('Accepted pickup membership changed. Calculate the authoritative group route again.');
+    } else if (previousHadPickupRoute) {
+      setStart(standaloneDraft.start);
+      setDestination(standaloneDraft.destination);
+      setStandaloneConfirmed(standaloneDraft.standaloneConfirmed);
+      setPlannedDeparture('');
+      setNotice('The dated pickup context changed. Previous route geometry was cleared.');
+    } else {
+      setNotice('The selected dated occurrence changed. Previous route geometry was cleared.');
+    }
+    setPreviousHadPickupRoute(pickupRouteTrip !== null);
+  }
 
   const active = session.status === 'ACTIVE';
   const displayedRoute: RoadRoute | null = active
@@ -237,6 +281,11 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
   }, []);
 
   useEffect(() => {
+    latestRoute.current.cancel();
+    latestPickupRoute.current.cancel();
+  }, [mapDataRevision]);
+
+  useEffect(() => {
     const text = query.trim();
     if (text.length < 3 || !selectedEndpointEditable) return;
     const timer = setTimeout(async () => {
@@ -283,10 +332,12 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
     invalidateRoute('Endpoint changed. Get a new route.');
     if (selection === 'start') {
       setStart(endpoint);
+      if (!pickupRouteTrip) setStandaloneDraft((draft) => ({ ...draft, start: endpoint }));
       setCurrentLocationState(endpoint.source === 'CURRENT_LOCATION' ? 'SELECTED' : 'IDLE');
       setSelection('destination');
     } else {
       setDestination(endpoint);
+      if (!pickupRouteTrip) setStandaloneDraft((draft) => ({ ...draft, destination: endpoint }));
     }
     setQuery('');
     setSearchResults([]);
@@ -305,6 +356,11 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
     setSearchResults([]);
     setSearchError(null);
     setSearching(false);
+  };
+
+  const confirmStandaloneRoute = () => {
+    setStandaloneConfirmed(true);
+    setStandaloneDraft((draft) => ({ ...draft, standaloneConfirmed: true }));
   };
 
   const changeSearchQuery = (text: string) => {
@@ -357,6 +413,7 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
       latestSearch.current.cancel();
       invalidateRoute('Current location selected as the start. Get a new preview route.');
       setStart(createRouteEndpoint(coordinate, 'Current location', 'CURRENT_LOCATION'));
+      setStandaloneDraft((draft) => ({ ...draft, start: createRouteEndpoint(coordinate, 'Current location', 'CURRENT_LOCATION') }));
       setSelection('destination');
       setQuery('');
       setSearchResults([]);
@@ -380,12 +437,14 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
     setCurrentLocationState('IDLE');
     latestSearch.current.cancel();
     invalidateRoute('Jamaica, Queens test start selected. Get a new preview route.');
-    setStandaloneConfirmed(true);
-    setStart(createRouteEndpoint(
+    const queensStart = createRouteEndpoint(
       queensTestDriverRoutingProfile.driverStart,
       'Jamaica, Queens — test start',
       'PRESET',
-    ));
+    );
+    setStandaloneConfirmed(true);
+    setStart(queensStart);
+    setStandaloneDraft((draft) => ({ ...draft, start: queensStart, standaloneConfirmed: true }));
     setSelection('destination');
     setQuery('');
     setSearchResults([]);
@@ -434,6 +493,7 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
     invalidateRoute('Endpoints swapped. Get a new route.');
     setStart(swapped.start);
     setDestination(swapped.destination);
+    if (!pickupRouteTrip) setStandaloneDraft((draft) => ({ ...draft, start: swapped.start, destination: swapped.destination }));
   };
 
   const getRoute = async () => {
@@ -441,6 +501,10 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
     if (pickupRouteTrip && pickupManifest) {
       if (pickupManifest.missingPickupRiders.length > 0) {
         setPickupRouteError(pickupManifest.missingPickupRiders.map((rider) => `Confirm pickup location for ${rider.name} before routing.`).join(' '));
+        return;
+      }
+      if (pickupManifest.missingAcceptedPlan) {
+        setPickupRouteError('The authoritative accepted combined plan is unavailable. Refresh acceptance before routing.');
         return;
       }
       setRouteLoading(true);
@@ -528,17 +592,17 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
         startTitle={displayedStart?.label}
       />
       {pickupRouteTrip && displayedPickupStops.map((stop, index) => (
-        <Marker accessibilityLabel={`Pickup ${index + 1}, ${stop.riderName}`} coordinate={stop.coordinate} description={stop.label} key={stop.riderId} title={`${index + 1}. ${stop.riderName}`}>
-          <View style={styles.pickupMarker}><Text style={styles.pickupMarkerText}>{index + 1}</Text></View>
+        <Marker accessibilityLabel={`${stop.riderName}, confirmed pickup, stop ${index + 1}`} anchor={{ x: 0.5, y: 1 }} coordinate={stop.coordinate} description={stop.label} key={stop.riderId} title={`${index + 1}. ${stop.riderName}`}>
+          <DatedRiderPin kind="ACCEPTED" order={index + 1} selected={false} />
         </Marker>
       ))}
-      {!pickupRouteTrip && riders.map((rider) => {
+      {pendingRiders.map((rider) => {
         const selected = rider.id === selectedRiderId;
         return (
           <Fragment key={rider.id}>
             <Circle center={rider.approximateArea.center} fillColor="rgba(153, 0, 0, 0.14)" radius={rider.approximateArea.radiusMiles * METERS_PER_MILE} strokeColor={colors.accent} strokeWidth={selected ? 4 : 2} />
-            <Marker accessibilityLabel={`${rider.name}, approximate area`} coordinate={rider.approximateArea.center} description="Approximate area" onPress={() => setSelectedRiderId(rider.id)} title={rider.name}>
-              <View style={[styles.riderMarker, selected && styles.selectedRiderMarker]}><Ionicons color={selected ? colors.surface : colors.accent} name="person" size={18} /></View>
+            <Marker accessibilityLabel={`${rider.name}, pending rider. ${PENDING_PICKUP_PRIVACY_LABEL}`} anchor={{ x: 0.5, y: 1 }} coordinate={rider.approximateArea.center} description={PENDING_PICKUP_PRIVACY_LABEL} onPress={() => setSelectedRiderId(rider.id)} title={rider.name} zIndex={selected ? 20 : 10}>
+              <DatedRiderPin kind="PENDING" selected={selected} />
             </Marker>
           </Fragment>
         );
@@ -553,6 +617,7 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
       </MapView>
 
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        {(pendingRiders.length > 0 || displayedPickupStops.length > 0) && <DatedRiderLegend bottom={insets.bottom + 72} />}
         <Pressable accessibilityLabel="Expand map" accessibilityRole="button" onPress={() => void expandMap()} style={({ pressed }) => [styles.mapExpandButton, { bottom: insets.bottom + spacing.md }, pressed && styles.mapControlPressed]}>
           <Ionicons color={colors.text} name="expand-outline" size={23} />
         </Pressable>
@@ -609,6 +674,7 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
                   <Text style={styles.smallText}>{pickupRouteTrip.proposal ? `${pickupRouteTrip.offer?.driverName ?? 'Driver'} · ${pickupRouteTrip.proposal.agreed.pickup.label}` : (pickupRouteTrip.riders ?? []).map((rider) => rider.riderName).join(', ')}</Text>
                   <Text style={styles.privacyNote}>{pickupRouteTrip.proposal ? 'This route uses the exact pickup and destination preserved in the accepted dated proposal.' : 'These precise points are accepted-request data. Candidate privacy areas are not used.'}</Text>
                   {pickupManifest.missingPickupRiders.map((rider) => <Text key={rider.id} style={styles.navigationWarning}>Confirm pickup location for {rider.name} before routing.</Text>)}
+                  {pickupManifest.missingAcceptedPlan && <Text style={styles.navigationWarning}>The authoritative accepted combined plan is unavailable. Refresh acceptance before routing.</Text>}
                   {onClearPickupRoute && <AppButton label="Plan a standalone route" onPress={onClearPickupRoute} variant="secondary" />}
                 </View>
               )}
@@ -620,7 +686,7 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
                   ) : (
                     <>
                       <Text style={styles.smallText}>This ride has descriptive pickup text but no confirmed exact routing coordinates. Its privacy-area center will not be used.</Text>
-                      {!standaloneConfirmed && <AppButton label="Plan a separate route" onPress={() => setStandaloneConfirmed(true)} variant="secondary" />}
+                      {!standaloneConfirmed && <AppButton label="Plan a separate route" onPress={confirmStandaloneRoute} variant="secondary" />}
                     </>
                   )}
                 </View>
@@ -725,19 +791,43 @@ export function MapScreen({ commute, currentTrip, pickupRouteTrip = null, friday
               {renderMapLayers()}
             </MapView>
             <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+              {(pendingRiders.length > 0 || displayedPickupStops.length > 0) && <DatedRiderLegend bottom={insets.bottom + spacing.md} />}
               <Pressable accessibilityLabel="Minimize map" accessibilityRole="button" onPress={() => void closeExpandedMap()} style={({ pressed }) => [styles.mapMinimizeButton, { top: insets.top + spacing.md, right: insets.right + spacing.md }, pressed && styles.mapControlPressed]}>
                 <Ionicons color={colors.text} name="contract-outline" size={23} />
               </Pressable>
               {selectedRiderId && (
                 <View pointerEvents="none" style={[styles.selectedRiderLabel, { top: insets.top + spacing.md }]}>
                   <Ionicons color={colors.accent} name="person" size={16} />
-                  <Text numberOfLines={1} style={styles.selectedRiderLabelText}>{riders.find((rider) => rider.id === selectedRiderId)?.name}</Text>
+                  <Text numberOfLines={1} style={styles.selectedRiderLabelText}>{pendingRiders.find((rider) => rider.id === selectedRiderId)?.name} · approximate area</Text>
                 </View>
               )}
             </View>
           </View>
         </Modal>
       )}
+    </View>
+  );
+}
+
+function DatedRiderPin({ kind, order, selected }: { kind: 'PENDING' | 'ACCEPTED'; order?: number; selected: boolean }) {
+  const accepted = kind === 'ACCEPTED';
+  return (
+    <View style={styles.datedPinBox}>
+      <View style={[styles.datedPinHead, accepted ? styles.acceptedPinHead : styles.pendingPinHead, selected && styles.selectedDatedPinHead]}>
+        {accepted
+          ? <Text style={styles.datedPinText}>{order}</Text>
+          : <Ionicons color={colors.surface} name="person" size={18} />}
+      </View>
+      <View style={[styles.datedPinTip, accepted ? styles.acceptedPinTip : styles.pendingPinTip]} />
+    </View>
+  );
+}
+
+function DatedRiderLegend({ bottom }: { bottom: number }) {
+  return (
+    <View accessibilityLabel="Map legend. Approximate awaiting acceptance is maroon. Confirmed accepted pickup is green." pointerEvents="none" style={[styles.datedRiderLegend, { bottom }]}>
+      <View style={styles.legendRow}><View style={[styles.legendDot, styles.pendingLegendDot]} /><Text style={styles.legendText}>Approximate / awaiting acceptance</Text></View>
+      <View style={styles.legendRow}><View style={[styles.legendDot, styles.acceptedLegendDot]} /><Text style={styles.legendText}>Confirmed pickup / accepted</Text></View>
     </View>
   );
 }
@@ -775,8 +865,14 @@ const styles = StyleSheet.create({
   queensStartAction: { gap: spacing.xs }, disabledReason: { color: colors.warning, fontSize: 11, lineHeight: 16, paddingHorizontal: spacing.xs }, sourceActions: { flexDirection: 'row', gap: spacing.sm }, sourceButton: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.sm }, currentLocationButton: { flex: 2 }, sourceButtonText: { color: colors.accent, fontSize: 13, fontWeight: '800' }, pressed: { backgroundColor: colors.accentSoft }, disabled: { opacity: 0.45 },
   searchInput: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, color: colors.text, fontSize: 14, minHeight: 44, paddingHorizontal: spacing.md }, searchResult: { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, paddingVertical: spacing.sm }, resultLabel: { color: colors.text, fontSize: 13, fontWeight: '800' }, resultContext: { color: colors.textMuted, fontSize: 11, lineHeight: 15 }, errorText: { color: colors.error, fontSize: 12, lineHeight: 17 }, attribution: { color: colors.textMuted, fontSize: 10 },
   presets: { flexDirection: 'row', gap: spacing.sm }, preset: { borderColor: colors.border, borderRadius: radii.pill, borderWidth: 1, justifyContent: 'center', minHeight: 36, paddingHorizontal: spacing.md }, presetText: { color: colors.text, fontSize: 12, fontWeight: '700' }, notice: { color: colors.textMuted, fontSize: 12, lineHeight: 17 }, previewLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }, metrics: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, flexDirection: 'row', justifyContent: 'space-between', padding: spacing.sm }, metric: { color: colors.text, fontSize: 12, fontWeight: '800' }, navigationSetup: { backgroundColor: colors.warningSoft, borderRadius: radii.md, gap: spacing.xs, padding: spacing.sm }, navigationSetupTitle: { color: colors.warning, fontSize: 12, fontWeight: '800' }, navigationWarning: { color: colors.error, fontSize: 12, lineHeight: 17 }, activeNote: { color: colors.warning, fontSize: 12, lineHeight: 17 }, snapNote: { color: colors.textMuted, fontSize: 11, lineHeight: 15 },
-  riderMarker: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.accent, borderRadius: radii.pill, borderWidth: 2, elevation: 2, height: 34, justifyContent: 'center', width: 34 },
-  selectedRiderMarker: { backgroundColor: colors.accent, borderColor: colors.surface, height: 42, width: 42 },
-  pickupMarker: { alignItems: 'center', backgroundColor: colors.accent, borderColor: colors.surface, borderRadius: radii.pill, borderWidth: 2, height: 38, justifyContent: 'center', width: 38 }, pickupMarkerText: { color: colors.surface, fontSize: 15, fontWeight: '900' },
+  datedPinBox: { alignItems: 'center', height: 52, justifyContent: 'flex-start', overflow: 'visible', width: 40 },
+  datedPinHead: { alignItems: 'center', borderColor: colors.surface, borderRadius: 20, borderWidth: 2, elevation: 4, height: 40, justifyContent: 'center', width: 40 },
+  pendingPinHead: { backgroundColor: colors.accent }, acceptedPinHead: { backgroundColor: colors.success },
+  selectedDatedPinHead: { borderColor: colors.text, borderWidth: 3, elevation: 7 },
+  datedPinTip: { borderLeftColor: 'transparent', borderLeftWidth: 7, borderRightColor: 'transparent', borderRightWidth: 7, borderTopWidth: 11, height: 0, marginTop: -3, width: 0 },
+  pendingPinTip: { borderTopColor: colors.accent }, acceptedPinTip: { borderTopColor: colors.success },
+  datedPinText: { color: colors.surface, fontSize: 15, fontWeight: '900' },
+  datedRiderLegend: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, elevation: 4, gap: spacing.xs, left: spacing.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, position: 'absolute', shadowColor: '#17212b', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.14, shadowRadius: 4, zIndex: 6 },
+  legendRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs }, legendDot: { borderColor: colors.surface, borderRadius: 6, borderWidth: 1, height: 12, width: 12 }, pendingLegendDot: { backgroundColor: colors.accent }, acceptedLegendDot: { backgroundColor: colors.success }, legendText: { color: colors.text, fontSize: 11, fontWeight: '700' },
   tripRouteCard: { backgroundColor: colors.accentSoft, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, privacyNote: { color: colors.textMuted, fontSize: 11, lineHeight: 16 }, pickupRouteSummary: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, gap: spacing.sm, padding: spacing.md }, pickupOrderRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, profilePressed: { opacity: 0.62 }, pickupNumber: { alignItems: 'center', backgroundColor: colors.accent, borderRadius: radii.pill, height: 26, justifyContent: 'center', width: 26 }, pickupNumberText: { color: colors.surface, fontSize: 12, fontWeight: '900' }, confirmedOrder: { color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 17 }, scheduleIncomplete: { backgroundColor: colors.warningSoft, borderRadius: radii.sm, color: colors.warning, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleConflict: { backgroundColor: colors.errorSoft, borderRadius: radii.sm, color: colors.error, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, scheduleVerified: { backgroundColor: colors.successSoft, borderRadius: radii.sm, color: colors.success, fontSize: 12, fontWeight: '800', lineHeight: 18, padding: spacing.sm },
 });

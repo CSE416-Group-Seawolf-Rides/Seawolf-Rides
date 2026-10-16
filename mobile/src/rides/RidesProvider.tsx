@@ -17,6 +17,7 @@ import { SharedLiveDirectedTravelSource, type TravelCacheOwnership } from '../ro
 import { validateDatedRideProposal, type DatedRideProposalV1 } from './datedRideProposal';
 import { GroupAcceptanceService, MultiCarScenarioStore, type GroupAcceptanceCode } from './groupAcceptance';
 import { applyFridayDriverTestLoad, buildFridayDriverTest, createFridayGroupStoreData, FRIDAY_DRIVER_TEST_OCCURRENCE_ID, isFridayDriverTestRequest, resetFridayDriverTestState } from './fridayDriverTest';
+import type { GroupRoutePlanV1 } from './groupRideContracts';
 import { driverOfferFixtures, riderRequestFixtures } from './rideFixtures';
 import {
   IncomingRequest,
@@ -43,6 +44,7 @@ interface Rides {
   respondToRequest: (requestId: string, status: 'accepted' | 'declined') => Promise<RequestResponseResult>;
   driverOccurrences: DriverOccurrenceOverride[];
   fridayDriverTest: { status: 'IDLE' | 'LOADING' | 'LOADED' | 'ERROR'; message: string | null };
+  fridayAcceptedPlan: GroupRoutePlanV1 | null;
   loadFridayDriverTest: () => Promise<void>;
   resetFridayDriverTest: () => void;
   // Trip ids (local dates) the user can't make. The recurring match stays in place.
@@ -79,6 +81,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
   const [skipped, setSkipped] = useState<string[]>([]);
   const [driverOccurrences, setDriverOccurrences] = useState<DriverOccurrenceOverride[]>([]);
   const [fridayDriverTest, setFridayDriverTest] = useState<Rides['fridayDriverTest']>({ status: 'IDLE', message: null });
+  const [fridayAcceptedPlan, setFridayAcceptedPlan] = useState<GroupRoutePlanV1 | null>(null);
   const routeAdapter = useMemo(() => createOsrmRoutingAdapter(), []);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const commuteRef = useRef(commute);
@@ -284,6 +287,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
               : item);
             incomingRef.current = next;
             setIncoming(next);
+            setFridayAcceptedPlan(result.plan ?? null);
           }
           return { ok: result.ok, code: result.code, message: result.message };
         }
@@ -304,6 +308,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
       },
       driverOccurrences,
       fridayDriverTest,
+      fridayAcceptedPlan,
       loadFridayDriverTest: async () => {
         if (!__DEV__ || !user || fridayLoadController.current) return;
         if (incomingRef.current.some(isFridayDriverTestRequest)) {
@@ -331,6 +336,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
             mode: 'LIVE', providerId: 'osrm', profile: 'driving', optionsKey: 'friday-driver-test',
             rootGeneration: result.generationId, estimateVersion: 'friday-live-v1',
           };
+          setFridayAcceptedPlan(null);
           incomingRef.current = next.incoming;
           setIncoming(next.incoming);
           driverOccurrencesRef.current = next.occurrences;
@@ -358,6 +364,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
         fridayGroupStore.current = null;
         fridayTravelSource.current = null;
         fridayRoutingOwnership.current = null;
+        setFridayAcceptedPlan(null);
         const next = resetFridayDriverTestState(incomingRef.current, driverOccurrencesRef.current);
         incomingRef.current = next.incoming;
         setIncoming(next.incoming);
@@ -379,7 +386,7 @@ export function RidesProvider({ children }: PropsWithChildren) {
         setSkipped((current) => current.filter((id) => id !== tripId));
       },
     }),
-    [commute, driverOccurrences, fridayDriverTest, incoming, outgoing, routeAdapter, skipped, user],
+    [commute, driverOccurrences, fridayAcceptedPlan, fridayDriverTest, incoming, outgoing, routeAdapter, skipped, user],
   );
 
   return <RidesContext.Provider value={rides}>{children}</RidesContext.Provider>;

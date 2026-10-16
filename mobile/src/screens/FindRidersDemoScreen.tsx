@@ -33,6 +33,7 @@ import { RiderComparisonMap } from '../routing/components/RouteMap';
 import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
 import { resolvePublicProfile } from '../profiles/publicProfiles';
 import { colors, radii, spacing } from '../theme';
+import { ThreeCarDemoScreen } from './ThreeCarDemoScreen';
 
 interface FindRidersDemoScreenProps { onBack: () => void; onOpenProfile: (participantId: string, displayName: string) => void }
 
@@ -41,7 +42,17 @@ function configuredSnapLimit(): number {
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_RIDER_DEMO_MAX_SNAP_METERS;
 }
 
-export function FindRidersDemoScreen({ onBack, onOpenProfile }: FindRidersDemoScreenProps) {
+export function FindRidersDemoScreen(props: FindRidersDemoScreenProps) {
+  const [scenario, setScenario] = useState<'CHOOSER' | 'EXISTING' | 'THREE_CAR'>('CHOOSER');
+  if (scenario === 'THREE_CAR') return <ThreeCarDemoScreen onBack={() => setScenario('CHOOSER')} onOpenProfile={props.onOpenProfile} />;
+  if (scenario === 'EXISTING') return <LegacyFindRidersDemoScreen {...props} onBack={() => setScenario('CHOOSER')} />;
+  return <Screen eyebrow="M3 PRESENTATION · SYNTHETIC PEOPLE" onBack={props.onBack} subtitle="Choose a scenario. The original comparison cases and Friday workflow remain separate." title="Carpool Matching Demo">
+    <Card style={styles.scenarioChoice}><Text style={styles.sectionTitle}>Three cars / seven riders</Text><Text style={styles.mutedText}>Complete-group recommendations, simulated acceptance, cancellation, and synchronized route layers.</Text><AppButton label="Open three-car scenario" onPress={() => setScenario('THREE_CAR')} /></Card>
+    <Disclosure title="Developer scenarios"><Text style={styles.mutedText}>Older deterministic one-driver cases remain available for diagnostics and regression comparison.</Text><AppButton label="Open existing cases" onPress={() => setScenario('EXISTING')} variant="secondary" /></Disclosure>
+  </Screen>;
+}
+
+function LegacyFindRidersDemoScreen({ onBack, onOpenProfile }: FindRidersDemoScreenProps) {
   const [state, dispatch] = useReducer(riderDemoPresentationReducer, undefined, () => createRiderDemoPresentationState());
   const [mode, setMode] = useState<RiderDemoMode>('FIXTURE');
   const [notice, setNotice] = useState('Choose a case and load demo riders.');
@@ -288,6 +299,7 @@ function formatDistance(meters: number): string { return `${(meters / 1609.344).
 function formatDetourCaps(seconds: number, ratio?: number): string { return ratio === undefined ? formatDuration(seconds) : `${formatDuration(seconds)} or ${Math.round(ratio * 100)}% of solo; stricter wins` }
 
 const styles = StyleSheet.create({
+  scenarioChoice: { gap: spacing.md },
   flex: { flex: 1 }, caseSection: { gap: spacing.sm }, sectionTitle: { color: colors.text, fontSize: 19, fontWeight: '800' }, caseRow: { flexDirection: 'row', gap: spacing.sm }, caseButton: { alignItems: 'center', borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: 52, padding: spacing.sm }, caseButtonSelected: { backgroundColor: colors.text, borderColor: colors.text }, caseButtonText: { color: colors.text, fontSize: 12, fontWeight: '800', textAlign: 'center' }, caseButtonTextSelected: { color: colors.surface }, caseDescription: { color: colors.textMuted, fontSize: 13, lineHeight: 18 }, changedSchedule: { backgroundColor: colors.warningSoft, borderRadius: radii.md, color: colors.warning, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm },
   tripSummary: { gap: spacing.md }, summaryHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.md }, summaryTitle: { color: colors.text, fontSize: 16, fontWeight: '800' }, summaryText: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 }, loadedMessage: { color: colors.accent, fontSize: 14, fontWeight: '800', lineHeight: 20 },
   mapSection: { gap: spacing.sm }, legend: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }, legendItem: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs }, legendSwatch: { borderRadius: radii.pill, height: 7, width: 24 }, schematicWarning: { backgroundColor: colors.warningSoft, borderRadius: radii.md, color: colors.warning, fontSize: 12, fontWeight: '700', lineHeight: 18, padding: spacing.sm }, liveModeNote: { backgroundColor: colors.successSoft, borderRadius: radii.md, color: colors.success, fontSize: 12, lineHeight: 18, padding: spacing.sm }, visibleError: { backgroundColor: colors.errorSoft, borderRadius: radii.md, color: colors.error, fontSize: 12, lineHeight: 18, padding: spacing.sm },

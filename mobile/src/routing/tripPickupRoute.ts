@@ -1,6 +1,7 @@
 import { localMinuteToEpochSeconds, NORMAL_MATCHING_TIME_ZONE } from '../matching/driverRecommendations';
 import { getCampusDestinationMapLocation } from '../map/campusDestinations';
 import type { IncomingRequest, Trip } from '../rides/rideModel';
+import type { GroupRoutePlanV1 } from '../rides/groupRideContracts';
 import type { RoadRoute, RouteCoordinate, RoutingAdapter, RoutingResult } from './types';
 
 export const TRIP_PICKUP_ROUTE_CONCURRENCY = 2;
@@ -24,6 +25,7 @@ export interface TripPickupManifest {
   campus: { label: string; coordinate: RouteCoordinate };
   stops: TripPickupStop[];
   missingPickupRiders: { id: string; name: string }[];
+  missingAcceptedPlan: boolean;
   acceptedRiderIds: string[];
   agreedOrderIds: string[] | null;
 }
@@ -33,6 +35,27 @@ export interface TripPickupRouteResult {
   orderedStops: TripPickupStop[];
   orderKind: 'AGREED' | 'PROPOSED';
   alternativesCompared: number;
+}
+
+/** Preserves the acceptance service's selected order for the legacy Trip adapter. */
+export function applyAcceptedGroupPlanToTrip(trip: Trip | null, plan: GroupRoutePlanV1 | null): Trip | null {
+  if (!trip || !plan || trip.kind !== 'drive' || plan.occurrence.localDate !== trip.id) return trip;
+  const promises = new Map(plan.riderPromises.map((promise) => [promise.requestId, promise]));
+  const acceptedIds = new Set((trip.riders ?? []).filter((rider) => rider.status === 'accepted').map((rider) => rider.id));
+  if (plan.selectedRequestOrder.length !== acceptedIds.size
+    || plan.selectedRequestOrder.some((requestId) => !acceptedIds.has(requestId) || !promises.has(requestId))) return trip;
+  return {
+    ...trip,
+    routingPoints: {
+      confirmed: true,
+      start: { coordinate: { ...plan.driverStart.coordinate }, label: plan.driverStart.label },
+      stops: plan.selectedRequestOrder.map((requestId) => {
+        const pickup = promises.get(requestId)!.pickup;
+        return { coordinate: { ...pickup.coordinate }, label: pickup.label, riderRequestId: requestId };
+      }),
+      destination: { coordinate: { ...plan.campusDropoff.coordinate }, label: plan.campusDropoff.label },
+    },
+  };
 }
 
 export function resolveTripPickupSelection(
@@ -79,6 +102,7 @@ export function buildTripPickupManifest(trip: Trip): TripPickupManifest | null {
         serviceSeconds: proposal.agreed.pickupServiceSeconds,
       }],
       missingPickupRiders: [],
+      missingAcceptedPlan: false,
       acceptedRiderIds: [proposal.proposalId],
       agreedOrderIds: [proposal.proposalId],
     };
@@ -125,6 +149,7 @@ export function buildTripPickupManifest(trip: Trip): TripPickupManifest | null {
     campus: { label: campus.title, coordinate: { ...campus.coordinate } },
     stops,
     missingPickupRiders,
+    missingAcceptedPlan: accepted.some((rider) => rider.proposal) && agreedOrderIds === null,
     acceptedRiderIds: acceptedIds,
     agreedOrderIds,
   };
@@ -170,6 +195,7 @@ export async function calculateTripPickupRoute(options: {
 }): Promise<TripPickupRouteResult> {
   const { manifest } = options;
   if (manifest.missingPickupRiders.length > 0) throw new Error('Every accepted rider needs a confirmed pickup before routing.');
+  if (manifest.missingAcceptedPlan) throw new Error('The accepted combined plan is unavailable. Refresh acceptance before routing.');
   if (manifest.stops.length === 0) throw new Error('This trip has no accepted pickup stops.');
   if (!manifest.agreedOrderIds && manifest.stops.length > TRIP_PICKUP_MAX_PROPOSED_STOPS) throw new Error(`Confirm an order before routing more than ${TRIP_PICKUP_MAX_PROPOSED_STOPS} pickups.`);
   const byId = new Map(manifest.stops.map((stop) => [stop.riderId, stop]));
@@ -240,7 +266,14 @@ export class LatestTripPickupRouteRequest {
     const generation = this.generation;
     const controller = new AbortController();
     this.controller = controller;
-    const result = await calculate(controller.signal);
+    let result: TripPickupRouteResult;
+    try {
+      result = await calculate(controller.signal);
+    } catch (caught) {
+      if (generation !== this.generation || controller.signal.aborted) return { status: 'STALE' };
+      this.controller = null;
+      throw caught;
+    }
     if (generation !== this.generation || controller.signal.aborted) return { status: 'STALE' };
     this.controller = null;
     return { status: 'CURRENT', result };

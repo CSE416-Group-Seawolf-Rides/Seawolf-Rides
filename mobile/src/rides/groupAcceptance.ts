@@ -12,6 +12,7 @@ import {
   type TravelCacheOwnership,
 } from '../routing/directedTravelSource';
 import type { DatedRideProposalV1 } from './datedRideProposal';
+import type { RoadRoute } from '../routing/types';
 import {
   RIDER_INTENT_SCHEMA,
   RIDER_INTENT_VERSION,
@@ -94,6 +95,7 @@ export interface GroupAcceptanceResult {
   plan?: GroupRoutePlanV1;
   evaluation?: GroupRouteEvaluation;
   verification?: 'LIVE_GEOMETRY' | 'FIXTURE_SCHEMATIC';
+  route?: RoadRoute;
 }
 
 export interface GroupCancellationResult {
@@ -102,6 +104,7 @@ export interface GroupCancellationResult {
   message: string;
   attempts: number;
   plan?: GroupRoutePlanV1;
+  route?: RoadRoute;
 }
 
 export interface AcceptanceTravelSource {
@@ -162,6 +165,26 @@ export class MultiCarScenarioStore {
   replace(data: MultiCarScenarioStoreData): void {
     this.data = clone(data);
     this.revision += 1;
+  }
+
+  /** Materializes one explicit simulated request without reserving a seat. */
+  addPendingRequest(request: OccurrenceRideRequestV1, proposal: GroupPendingProposalV1): boolean {
+    const driver = this.data.scenario.driverOccurrences.find((item) => item.id === request.driverOccurrenceId);
+    const intent = this.data.scenario.riderIntents.find((item) => item.id === request.riderIntentId);
+    if (!driver || !intent || driver.generationId !== this.data.scenario.generationId
+      || intent.generationId !== this.data.scenario.generationId) return false;
+    if (this.data.scenario.pendingRequests.some((item) => item.id === request.id)
+      || this.data.pendingProposals.some((item) => item.requestId === request.id)
+      || this.data.scenario.acceptedMemberships.some((item) => item.requestId === request.id)) return false;
+    if (request.driverOccurrenceId !== proposal.driverOccurrenceId
+      || request.riderIntentId !== proposal.riderIntentId
+      || request.riderParticipantId !== proposal.riderParticipantId
+      || request.proposalId !== proposal.proposalId
+      || request.proposalRevision !== proposal.proposalRevision) return false;
+    this.data.scenario.pendingRequests.push(clone(request));
+    this.data.pendingProposals.push(clone(proposal));
+    this.revision += 1;
+    return true;
   }
 
   setDriverSkipped(driverOccurrenceId: string, skipped: boolean): void {
@@ -330,6 +353,7 @@ export async function acceptGroupRequest(options: AcceptGroupRequestOptions): Pr
     }
 
     let plan = evaluation.plan;
+    let route: RoadRoute | undefined;
     let verification: GroupAcceptanceResult['verification'] = 'FIXTURE_SCHEMATIC';
     if (options.routingOwnership.mode === 'LIVE') {
       if (!options.source.routeSelectedGeometry) {
@@ -349,6 +373,7 @@ export async function acceptGroupRequest(options: AcceptGroupRequestOptions): Pr
       }
       if (geometry.status === 'UNKNOWN') return failure('GEOMETRY_INVALID', geometry.message, attempt, evaluation);
       plan = geometry.plan;
+      route = geometry.route;
       verification = 'LIVE_GEOMETRY';
     }
 
@@ -359,7 +384,7 @@ export async function acceptGroupRequest(options: AcceptGroupRequestOptions): Pr
       acceptedAtEpochSeconds: options.nowEpochSeconds(),
     });
     if (committed.ok) {
-      return { ok: true, code: 'ACCEPTED', message: 'Membership and the complete group plan were committed together.', attempts: attempt, plan, evaluation, verification };
+      return { ok: true, code: 'ACCEPTED', message: 'Membership and the complete group plan were committed together.', attempts: attempt, plan, evaluation, verification, route };
     }
     if (committed.code === 'GENERATION_CHANGED') return failure('GENERATION_CHANGED', 'The scenario was reset or reloaded during acceptance.', attempt, evaluation);
     if (committed.code !== 'STALE_RETRY') return failure(committed.code, transitionMessage(committed.code), attempt, evaluation);
@@ -412,6 +437,7 @@ export async function cancelGroupMembership(options: CancelGroupMembershipOption
       return cancellationFailure('ROUTING_UNKNOWN', 'The remaining accepted promises could not be recomputed safely.', attempt);
     }
     let replacementPlan = evaluation.plan;
+    let route: RoadRoute | undefined;
     if (options.routingOwnership.mode === 'LIVE') {
       if (!options.source.routeSelectedGeometry) {
         return cancellationFailure('ROUTING_UNKNOWN', 'Live cancellation requires selected-route geometry validation.', attempt);
@@ -425,10 +451,11 @@ export async function cancelGroupMembership(options: CancelGroupMembershipOption
         return cancellationFailure('ROUTING_UNKNOWN', 'The remaining accepted route could not be validated.', attempt);
       }
       replacementPlan = geometry.plan;
+      route = geometry.route;
     }
     const committed = options.store.commitCancellation({ snapshot, membership, replacementPlan });
     if (committed.ok) {
-      return { ok: true, code: 'CANCELLED_MEMBERSHIP', message: 'Only the selected membership was removed and the remaining plan was recomputed.', attempts: attempt, plan: replacementPlan };
+      return { ok: true, code: 'CANCELLED_MEMBERSHIP', message: 'Only the selected membership was removed and the remaining plan was recomputed.', attempts: attempt, plan: replacementPlan, route };
     }
     if (committed.code === 'GENERATION_CHANGED') return cancellationFailure('GENERATION_CHANGED', 'The scenario was reset or reloaded during cancellation.', attempt);
     if (committed.code !== 'STALE_RETRY') return cancellationFailure(committed.code, 'The membership changed before cancellation.', attempt);

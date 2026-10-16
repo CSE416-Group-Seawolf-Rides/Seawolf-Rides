@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline, type Camera, type MapPressEvent } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline, type Camera, type MapPressEvent } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '../../theme';
 import type { RoadRoute, RouteCoordinate } from '../types';
+import { SCENARIO_MAP_PIN_COLORS, SCENARIO_MAP_PIN_DIMENSIONS, scenarioMapPinAccessibilityLabel, type ScenarioMapPinRole } from '../scenarioMapPinModel';
 
 export type EndpointSelection = 'start' | 'destination';
 
@@ -44,6 +45,38 @@ interface RiderComparisonMapProps {
   riders: readonly RiderComparisonMarker[];
   selectedCandidateId: string | null;
   selectedRoute: RoadRoute | null;
+}
+
+export interface MultiCarMapActor {
+  id: string;
+  coordinate: RouteCoordinate;
+  title: string;
+  subtitle: string;
+  color: string;
+  identityLetter: string;
+  role: 'DRIVER' | 'RIDER';
+  approximate?: boolean;
+}
+
+export interface MultiCarMapRoute {
+  id: string;
+  coordinates: readonly RouteCoordinate[];
+  color: string;
+  label: string;
+  kind: 'ACCEPTED' | 'PROPOSED';
+}
+
+interface MultiCarScenarioMapProps {
+  campus: RouteCoordinate;
+  drivers: readonly MultiCarMapActor[];
+  fitKey: number;
+  onSelectDriver: (id: string) => void;
+  onSelectRider: (id: string) => void;
+  riders: readonly MultiCarMapActor[];
+  routes: readonly MultiCarMapRoute[];
+  selectedDriverId: string;
+  selectedRiderId: string | null;
+  soloBaseline: readonly RouteCoordinate[] | null;
 }
 
 const STONY_BROOK_REGION = {
@@ -283,6 +316,71 @@ export function RiderComparisonMap({
   );
 }
 
+/** Multi-car layer that preserves exact actor coordinates and authoritative route order. */
+export function MultiCarScenarioMap({
+  campus, drivers, fitKey, onSelectDriver, onSelectRider, riders, routes,
+  selectedDriverId, selectedRiderId, soloBaseline,
+}: MultiCarScenarioMapProps) {
+  const insets = useSafeAreaInsets();
+  const mapRef = useRef<MapView>(null);
+  const expandedMapRef = useRef<MapView>(null);
+  const savedCamera = useRef<Camera | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [expandedCamera, setExpandedCamera] = useState<Camera | null>(null);
+
+  useEffect(() => {
+    if (!fitKey) return;
+    const map = expanded ? expandedMapRef.current : mapRef.current;
+    map?.fitToCoordinates([campus, ...drivers.map((item) => item.coordinate), ...riders.map((item) => item.coordinate)], {
+      animated: true, edgePadding: { top: 50, right: 38, bottom: 50, left: 38 },
+    });
+  }, [campus, drivers, expanded, fitKey, riders]);
+
+  const open = async () => {
+    try { savedCamera.current = await mapRef.current?.getCamera() ?? savedCamera.current; } catch { /* native transition */ }
+    setExpandedCamera(savedCamera.current);
+    setExpanded(true);
+  };
+  const close = async () => {
+    try { savedCamera.current = await expandedMapRef.current?.getCamera() ?? savedCamera.current; } catch { /* native transition */ }
+    setExpanded(false);
+    const camera = savedCamera.current;
+    requestAnimationFrame(() => { if (camera) mapRef.current?.animateCamera(camera, { duration: 0 }); });
+  };
+  const layers = () => <>
+    {soloBaseline && soloBaseline.length > 1 && <Polyline coordinates={[...soloBaseline]} strokeColor={colors.textMuted} strokeWidth={4} />}
+    {routes.map((route) => route.coordinates.length > 1 && <Polyline coordinates={[...route.coordinates]} key={route.id} lineDashPattern={route.kind === 'PROPOSED' ? [10, 8] : undefined} strokeColor={route.color} strokeWidth={route.kind === 'PROPOSED' ? 6 : 5} />)}
+    <Marker accessibilityLabel={scenarioMapPinAccessibilityLabel('Tabler', 'CAMPUS')} anchor={{ x: 0.5, y: 1 }} coordinate={campus} description="Shared confirmed campus drop-off" title="Tabler" zIndex={600}><ScenarioMapPin role="CAMPUS" /></Marker>
+    {drivers.map((driver) => <Marker accessibilityLabel={scenarioMapPinAccessibilityLabel(driver.title, 'DRIVER')} anchor={{ x: 0.5, y: 1 }} coordinate={driver.coordinate} description={driver.subtitle} key={driver.id} onPress={() => onSelectDriver(driver.id)} title={driver.title} zIndex={driver.id === selectedDriverId ? 500 : 300}><ScenarioMapPin identityLetter={driver.identityLetter} role="DRIVER" selected={driver.id === selectedDriverId} /></Marker>)}
+    {riders.filter((rider) => rider.approximate).map((rider) => <Circle center={rider.coordinate} fillColor="rgba(113, 79, 191, 0.10)" key={`area-${rider.id}`} radius={700} strokeColor={rider.color} />)}
+    {riders.map((rider) => <Marker accessibilityLabel={scenarioMapPinAccessibilityLabel(rider.title, 'RIDER', rider.approximate)} anchor={{ x: 0.5, y: 1 }} coordinate={rider.coordinate} description={rider.subtitle} key={rider.id} onPress={() => onSelectRider(rider.id)} title={rider.title} zIndex={rider.id === selectedRiderId ? 500 : 200}><ScenarioMapPin identityLetter={rider.identityLetter} role="RIDER" selected={rider.id === selectedRiderId} /></Marker>)}
+  </>;
+
+  return <View accessibilityLabel="Three-car recommendation map" style={styles.comparisonFrame}>
+    <MapView initialRegion={STONY_BROOK_REGION} ref={mapRef} style={StyleSheet.absoluteFill} toolbarEnabled={false}>{layers()}</MapView>
+    <Pressable accessibilityLabel="Expand three-car map" accessibilityRole="button" onPress={() => void open()} style={styles.comparisonExpandButton}><Ionicons color={colors.text} name="expand-outline" size={22} /></Pressable>
+    {expanded && <Modal animationType="fade" hardwareAccelerated onRequestClose={() => void close()} presentationStyle="fullScreen" visible>
+      <View style={styles.expandedComparisonContainer}>
+        <MapView initialCamera={expandedCamera ?? undefined} initialRegion={expandedCamera ? undefined : STONY_BROOK_REGION} ref={expandedMapRef} style={StyleSheet.absoluteFill} toolbarEnabled={false}>{layers()}</MapView>
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          <View pointerEvents="none" style={[styles.expandedLegend, { left: insets.left + spacing.md, top: insets.top + spacing.md }]}><MapLegend color={SCENARIO_MAP_PIN_COLORS.DRIVER} label="Driver pins" /><MapLegend color={SCENARIO_MAP_PIN_COLORS.RIDER} label="Rider pins" /><MapLegend color={SCENARIO_MAP_PIN_COLORS.CAMPUS} label="Campus pin" /><MapLegend color={colors.textMuted} label="Selected car solo baseline" />{routes.map((route) => <MapLegend color={route.color} key={route.id} label={route.label} />)}</View>
+          <Pressable accessibilityLabel="Close full-screen map" accessibilityRole="button" onPress={() => void close()} style={[styles.comparisonMinimizeButton, { right: insets.right + spacing.md, top: insets.top + spacing.md }]}><Ionicons color={colors.text} name="close" size={24} /></Pressable>
+        </View>
+      </View>
+    </Modal>}
+  </View>;
+}
+
+function ScenarioMapPin({ identityLetter, role, selected = false }: { identityLetter?: string; role: ScenarioMapPinRole; selected?: boolean }) {
+  const backgroundColor = SCENARIO_MAP_PIN_COLORS[role];
+  return <View collapsable={false} style={styles.scenarioPinFrame}>
+    <View style={[styles.scenarioPinTip, { borderTopColor: backgroundColor }]} />
+    <View style={[styles.scenarioPinBody, { backgroundColor }, selected && styles.scenarioPinSelected]}>
+      {role === 'CAMPUS' ? <Ionicons color={colors.surface} name="school" size={21} /> : <Text style={styles.scenarioPinLetter}>{identityLetter}</Text>}
+    </View>
+  </View>;
+}
+
 function MapLegend({ color, label }: { color: string; label: string }) {
   return <View style={styles.mapLegendItem}><View style={[styles.mapLegendLine, { backgroundColor: color }]} /><Text style={styles.mapLegendText}>{label}</Text></View>;
 }
@@ -419,4 +517,9 @@ const styles = StyleSheet.create({
     borderColor: colors.warning,
     borderStyle: 'dashed',
   },
+  scenarioPinFrame: { alignItems: 'center', height: SCENARIO_MAP_PIN_DIMENSIONS.height, overflow: 'visible', width: SCENARIO_MAP_PIN_DIMENSIONS.width },
+  scenarioPinBody: { alignItems: 'center', borderColor: colors.surface, borderRadius: 20, borderWidth: 2, height: 40, justifyContent: 'center', left: 0, position: 'absolute', top: 0, width: 40, zIndex: 2 },
+  scenarioPinSelected: { borderColor: colors.text, borderWidth: 4 },
+  scenarioPinTip: { borderLeftColor: 'transparent', borderLeftWidth: 9, borderRightColor: 'transparent', borderRightWidth: 9, borderTopWidth: 15, bottom: 0, height: 0, position: 'absolute', width: 0, zIndex: 1 },
+  scenarioPinLetter: { color: colors.surface, fontSize: 18, fontWeight: '900', includeFontPadding: false, lineHeight: 22, textAlign: 'center', textAlignVertical: 'center' },
 });
