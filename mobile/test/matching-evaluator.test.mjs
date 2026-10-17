@@ -8,7 +8,7 @@ import {
   missingStaticRoute,
   unreachableStaticRoute,
   workedExampleEpochSeconds,
-} from '../src/matching/fixtureTravel.ts';
+} from './fixtures/matching.ts';
 
 const at = (localTime) => {
   const [hour, minute] = localTime.split(':').map(Number);

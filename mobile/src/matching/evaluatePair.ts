@@ -26,11 +26,11 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isNonNegativeInteger(value: number): boolean {
-  return Number.isInteger(value) && value >= 0;
+  return Number.isSafeInteger(value) && value >= 0;
 }
 
 function isPositiveInteger(value: number): boolean {
-  return Number.isInteger(value) && value > 0;
+  return Number.isSafeInteger(value) && value > 0;
 }
 
 function isValidOccurrence(occurrence: DatedOccurrence | undefined): boolean {
@@ -55,8 +55,9 @@ function isValidWindow(window: TimeWindow | undefined): boolean {
     return false;
   }
   return (
-    Number.isInteger(window.earliest) &&
-    Number.isInteger(window.latest) &&
+    Number.isSafeInteger(window.earliest) &&
+    Number.isSafeInteger(window.latest) &&
+    Number.isSafeInteger(window.latest - window.earliest) &&
     window.earliest <= window.latest
   );
 }
@@ -119,6 +120,9 @@ function clamp(value: number, lower: number, upper: number): number {
  * walking is checked against its declared limit but is not added to the schedule.
  */
 export function evaluatePair(input: PairEvaluationInput): PairEvaluation {
+  if (!input?.driver || !input?.rider) {
+    return unknown('MALFORMED_USER_ID');
+  }
   const { driver, rider, anchors, facts, pickupServiceSeconds, travel } = input;
 
   if (!isNonEmptyString(driver.userId) || !isNonEmptyString(rider.userId)) {
@@ -132,7 +136,7 @@ export function evaluatePair(input: PairEvaluationInput): PairEvaluation {
     !isValidWindow(driver.campusArrivalWindow) ||
     !isValidWindow(rider.pickupWindow) ||
     !isValidWindow(rider.destinationArrivalWindow) ||
-    !Number.isInteger(driver.preferredDeparture)
+    !Number.isSafeInteger(driver.preferredDeparture)
   ) {
     return unknown('MALFORMED_WINDOW');
   }
@@ -235,6 +239,10 @@ export function evaluatePair(input: PairEvaluationInput): PairEvaluation {
 
   const shared =
     startToPickup.durationSeconds + pickupServiceSeconds + pickupToCampus.durationSeconds;
+  const sharedDistance = startToPickup.distanceMeters + pickupToCampus.distanceMeters;
+  if (!Number.isSafeInteger(shared) || !Number.isSafeInteger(sharedDistance)) {
+    return unknown('MALFORMED_TRAVEL_ESTIMATE');
+  }
   const driverExtra = shared - baseline;
   if (driverExtra < 0) {
     return unknown('INCONSISTENT_TRAVEL_ESTIMATES');
@@ -243,7 +251,10 @@ export function evaluatePair(input: PairEvaluationInput): PairEvaluation {
   const percentageLimit =
     driver.maxExtraDurationRatio === undefined
       ? Number.POSITIVE_INFINITY
-      : driver.maxExtraDurationRatio * baseline;
+      : Math.floor(driver.maxExtraDurationRatio * baseline);
+  if (driver.maxExtraDurationRatio !== undefined && !Number.isFinite(percentageLimit)) {
+    return unknown('MALFORMED_LIMIT');
+  }
   const activeDriverDetourLimit = Math.min(
     driver.maxExtraDurationSeconds,
     percentageLimit,
@@ -266,18 +277,23 @@ export function evaluatePair(input: PairEvaluationInput): PairEvaluation {
     return infeasible('RIDER_RIDE_LIMIT');
   }
 
-  const lower = Math.max(
+  const lowerBounds = [
     driver.departureWindow.earliest,
     driver.campusArrivalWindow.earliest - shared,
     rider.pickupWindow.earliest - startToPickup.durationSeconds,
     rider.destinationArrivalWindow.earliest - shared - rider.egressWalkSeconds,
-  );
-  const upper = Math.min(
+  ];
+  const upperBounds = [
     driver.departureWindow.latest,
     driver.campusArrivalWindow.latest - shared,
     rider.pickupWindow.latest - startToPickup.durationSeconds,
     rider.destinationArrivalWindow.latest - shared - rider.egressWalkSeconds,
-  );
+  ];
+  if (![...lowerBounds, ...upperBounds].every(Number.isSafeInteger)) {
+    return unknown('MALFORMED_WINDOW');
+  }
+  const lower = Math.max(...lowerBounds);
+  const upper = Math.min(...upperBounds);
   if (lower > upper) {
     return infeasible('NO_FEASIBLE_DEPARTURE');
   }
@@ -287,7 +303,9 @@ export function evaluatePair(input: PairEvaluationInput): PairEvaluation {
   const boardingComplete = pickup + pickupServiceSeconds;
   const vehicleCampusArrival = departure + shared;
   const riderDestinationArrival = vehicleCampusArrival + rider.egressWalkSeconds;
-  const sharedDistance = startToPickup.distanceMeters + pickupToCampus.distanceMeters;
+  if (![pickup, boardingComplete, vehicleCampusArrival, riderDestinationArrival].every(Number.isSafeInteger)) {
+    return unknown('MALFORMED_WINDOW');
+  }
 
   const metrics: PairMetrics = {
     soloDurationSeconds: baseline,

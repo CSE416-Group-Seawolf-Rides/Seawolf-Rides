@@ -9,7 +9,7 @@ import { HistorySummary, RidesScreen } from '../../../screens/RidesScreen';
 import { participantIdForRequest } from '../../../profiles/publicProfiles';
 
 export default function RidesRoute() {
-  const { user, commute } = useSession();
+  const { commute } = useSession();
   const { outgoing, incoming, skipped, withdrawRequest, driverOccurrences } = useRides();
   const { now } = useHomeClock();
 
@@ -25,8 +25,8 @@ export default function RidesRoute() {
     driverOccurrences,
   );
 
-  // Only the demo (returning) account has history; new accounts start with none.
-  const past = user !== null && !user.isNewUser ? pastTripFixtures : [];
+  // Trip history is not persisted until its M4 implementation.
+  const past: typeof pastTripFixtures = [];
   const history: HistorySummary | null =
     past.length > 0
       ? {

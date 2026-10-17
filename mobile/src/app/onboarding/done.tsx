@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '../../auth/SessionProvider';
 import { AppButton } from '../../components/AppButton';
@@ -9,6 +9,7 @@ import { Card } from '../../components/Card';
 import { describeDays, lotTitle } from '../../commute/commuteModel';
 import { buildOnboardingProfile, roleLabels } from '../../onboarding/onboardingModel';
 import { useOnboarding } from '../../onboarding/OnboardingProvider';
+import { SavePendingError, saveErrorMessage } from '../../persistence/saveCoordinator';
 import { colors, radii, spacing } from '../../theme';
 
 export default function OnboardingDoneRoute() {
@@ -16,6 +17,27 @@ export default function OnboardingDoneRoute() {
   const { commute, completeOnboarding } = useSession();
   const profile = useMemo(() => buildOnboardingProfile(draft), [draft]);
   const [pop] = useState(() => new Animated.Value(0));
+  const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
+
+  async function finishOnboarding() {
+    if (submitting.current) {
+      return;
+    }
+    submitting.current = true;
+    setSaving(true);
+    try {
+      await completeOnboarding(profile);
+    } catch (error) {
+      Alert.alert(
+        error instanceof SavePendingError ? 'Save still pending' : 'Couldn’t save your profile',
+        saveErrorMessage(error, 'Check your connection and try again. Your answers are still here.'),
+      );
+    } finally {
+      submitting.current = false;
+      setSaving(false);
+    }
+  }
 
   // Finishing onboarding is a rare, first-time moment, so it earns a little delight.
   useEffect(() => {
@@ -52,7 +74,7 @@ export default function OnboardingDoneRoute() {
             You’re all set, {profile.firstName}.
           </Text>
           <Text style={styles.subtitle}>
-            {commute ? 'Your commute is saved. Let’s find your matches.' : 'Welcome to Seawolf Rides.'}
+            {commute ? 'Your commute is ready. Save it to start exploring.' : 'Welcome to Seawolf Rides.'}
           </Text>
         </View>
 
@@ -73,7 +95,11 @@ export default function OnboardingDoneRoute() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <AppButton label="Start exploring" onPress={() => completeOnboarding(profile)} />
+        <AppButton
+          disabled={saving}
+          label={saving ? 'Saving…' : 'Start exploring'}
+          onPress={finishOnboarding}
+        />
       </View>
     </View>
   );

@@ -1,7 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRef, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Pressable,
   StyleSheet,
@@ -10,12 +9,19 @@ import {
   View,
 } from 'react-native';
 
-import { AuthUser, registerWithEmail, signInWithEmail } from '../auth/authService';
+import {
+  registerWithEmail,
+  requestPasswordReset,
+  signInWithEmail,
+  toAuthServiceError,
+} from '../auth/authService';
 import {
   AuthMode,
   CredentialErrors,
   hasCredentialErrors,
+  isStonyBrookEmail,
   MIN_PASSWORD_LENGTH,
+  normalizeEmail,
   validateCredentials,
 } from '../auth/authValidation';
 import { AppButton } from '../components/AppButton';
@@ -25,7 +31,6 @@ import { colors, radii, spacing } from '../theme';
 
 interface EmailAuthScreenProps {
   onBack: () => void;
-  onAuthenticated: (user: AuthUser) => void;
 }
 
 const modeCopy = {
@@ -48,13 +53,14 @@ const modeOptions: { mode: AuthMode; label: string }[] = [
   { mode: 'register', label: 'Create account' },
 ];
 
-export function EmailAuthScreen({ onBack, onAuthenticated }: EmailAuthScreenProps) {
+export function EmailAuthScreen({ onBack }: EmailAuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [errors, setErrors] = useState<CredentialErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
@@ -64,6 +70,7 @@ export function EmailAuthScreen({ onBack, onAuthenticated }: EmailAuthScreenProp
     setMode(nextMode);
     setErrors({});
     setFormError(null);
+    setNotice(null);
   }
 
   async function submit() {
@@ -71,6 +78,7 @@ export function EmailAuthScreen({ onBack, onAuthenticated }: EmailAuthScreenProp
     const nextErrors = validateCredentials(mode, credentials);
     setErrors(nextErrors);
     setFormError(null);
+    setNotice(null);
 
     if (hasCredentialErrors(nextErrors)) {
       return;
@@ -79,14 +87,42 @@ export function EmailAuthScreen({ onBack, onAuthenticated }: EmailAuthScreenProp
     setSubmitting(true);
     try {
       const authenticate = mode === 'signIn' ? signInWithEmail : registerWithEmail;
-      onAuthenticated(await authenticate(credentials));
-    } catch {
+      await authenticate(credentials);
+      if (mode === 'register') {
+        setMode('signIn');
+        setPassword('');
+        setNotice(
+          `We sent a verification link to ${normalizeEmail(email)}. Verify it, then sign in.`,
+        );
+      }
+    } catch (error) {
+      setFormError(toAuthServiceError(error).message);
+    } finally {
       setSubmitting(false);
-      setFormError(
-        mode === 'signIn'
-          ? 'We couldn’t sign you in. Check your email and password and try again.'
-          : 'We couldn’t create your account. Try again in a moment.',
+    }
+  }
+
+  async function resetPassword() {
+    setFormError(null);
+    setNotice(null);
+    if (!isStonyBrookEmail(email)) {
+      setErrors((current) => ({
+        ...current,
+        email: 'Enter your @stonybrook.edu email first.',
+      }));
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await requestPasswordReset(email);
+      setNotice(
+        `If an account exists for ${normalizeEmail(email)}, a password-reset link is on its way.`,
       );
+    } catch (error) {
+      setFormError(toAuthServiceError(error).message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -176,13 +212,9 @@ export function EmailAuthScreen({ onBack, onAuthenticated }: EmailAuthScreenProp
         {mode === 'signIn' && (
           <Pressable
             accessibilityRole="button"
+            disabled={submitting}
             hitSlop={8}
-            onPress={() =>
-              Alert.alert(
-                'Reset password',
-                'Password reset isn’t available in the M2 prototype yet.',
-              )
-            }
+            onPress={resetPassword}
             style={({ pressed }) => [styles.forgotLink, pressed && styles.linkPressed]}
           >
             <Text style={styles.linkText}>Forgot password?</Text>
@@ -193,6 +225,13 @@ export function EmailAuthScreen({ onBack, onAuthenticated }: EmailAuthScreenProp
           <View accessibilityLiveRegion="polite" style={styles.formError}>
             <Ionicons color={colors.error} name="alert-circle-outline" size={20} />
             <Text style={styles.formErrorText}>{formError}</Text>
+          </View>
+        )}
+
+        {notice && (
+          <View accessibilityLiveRegion="polite" style={styles.notice}>
+            <Ionicons color={colors.success} name="checkmark-circle-outline" size={20} />
+            <Text style={styles.noticeText}>{notice}</Text>
           </View>
         )}
 
@@ -269,6 +308,20 @@ const styles = StyleSheet.create({
   },
   formErrorText: {
     color: colors.error,
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  notice: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.successSoft,
+    borderRadius: radii.md,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  noticeText: {
+    color: colors.success,
     flex: 1,
     fontSize: 14,
     lineHeight: 20,

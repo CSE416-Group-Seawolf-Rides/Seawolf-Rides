@@ -1,10 +1,10 @@
-/** Integer Unix timestamp in seconds. */
+/** Safe integer Unix timestamp in seconds. */
 export type EpochSeconds = number;
 
-/** Integer elapsed time in seconds. */
+/** Safe integer elapsed time in seconds. */
 export type DurationSeconds = number;
 
-/** Integer road distance in meters. */
+/** Safe integer road distance in meters. */
 export type DistanceMeters = number;
 
 export type TripDirection = 'TO_CAMPUS' | 'FROM_CAMPUS';

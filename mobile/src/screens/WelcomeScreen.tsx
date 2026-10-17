@@ -1,16 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AuthUser, signInWithGoogle } from '../auth/authService';
 import { AuthProviderButton } from '../components/AuthProviderButton';
-import { GoogleLogo } from '../components/GoogleLogo';
 import { RouteIllustration } from '../components/RouteIllustration';
 import { colors, spacing } from '../theme';
 
 interface WelcomeScreenProps {
   onContinueWithEmail: () => void;
-  onAuthenticated: (user: AuthUser) => void;
 }
 
 const roles = [
@@ -18,21 +14,7 @@ const roles = [
   { title: 'Ride', description: 'Catch a lift with a Seawolf headed your way.' },
 ] as const;
 
-export function WelcomeScreen({ onContinueWithEmail, onAuthenticated }: WelcomeScreenProps) {
-  const [googlePending, setGooglePending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function continueWithGoogle() {
-    setError(null);
-    setGooglePending(true);
-    try {
-      onAuthenticated(await signInWithGoogle());
-    } catch {
-      setGooglePending(false);
-      setError('Google sign-in didn’t go through. Try again.');
-    }
-  }
-
+export function WelcomeScreen({ onContinueWithEmail }: WelcomeScreenProps) {
   return (
     <ScrollView
       contentContainerStyle={styles.content}
@@ -62,26 +44,13 @@ export function WelcomeScreen({ onContinueWithEmail, onAuthenticated }: WelcomeS
 
       <View style={styles.actions}>
         <AuthProviderButton
-          disabled={googlePending}
-          icon={<GoogleLogo />}
-          label="Continue with Google"
-          loading={googlePending}
-          onPress={continueWithGoogle}
-        />
-        <AuthProviderButton
-          disabled={googlePending}
           icon={<Ionicons color={colors.text} name="mail-outline" size={20} />}
           label="Continue with email"
           onPress={onContinueWithEmail}
         />
-        {error && (
-          <Text accessibilityLiveRegion="polite" style={styles.error}>
-            {error}
-          </Text>
-        )}
         <Text style={styles.legal}>
-          By continuing, you agree to the Terms and Privacy Policy.{'\n'}Sign-in is
-          simulated in this prototype.
+          By continuing, you agree to the Terms and Privacy Policy.{`\n`}
+          A verified @stonybrook.edu email is required.
         </Text>
       </View>
     </ScrollView>
@@ -145,11 +114,6 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.md,
-  },
-  error: {
-    color: colors.error,
-    fontSize: 14,
-    textAlign: 'center',
   },
   legal: {
     color: colors.textMuted,

@@ -20,8 +20,8 @@ export default function OnboardingReviewRoute() {
   return (
     <ReviewStep
       onEdit={(step) => router.navigate(`/onboarding/${step}`)}
-      onSave={() => {
-        saveCommute(buildCommuteSchedule(commuteDraft, role));
+      onSave={async () => {
+        await saveCommute(buildCommuteSchedule(commuteDraft, role));
         router.push('/onboarding/done');
       }}
       progress={getStepProgress(draft, 'review')}

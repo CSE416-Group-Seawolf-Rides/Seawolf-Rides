@@ -11,6 +11,8 @@
     "lint": "npm --prefix mobile run lint",
     "typecheck": "npm --prefix mobile run typecheck",
     "test": "npm --prefix mobile run test",
+    "test:firebase-auth": "npm --prefix mobile run test:firebase-auth",
+    "test:firestore-rules": "npm --prefix mobile run test:firestore-rules",
     "build": "npm --prefix mobile run build"
   }
 }
