@@ -5,8 +5,10 @@ import {
   getAuth,
   getReactNativePersistence,
   initializeAuth,
+  connectAuthEmulator,
 } from 'firebase/auth';
-import { Firestore, getFirestore } from 'firebase/firestore';
+import { Firestore, getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -27,9 +29,7 @@ const requiredConfigValues = [
 ] as const;
 
 function validateFirebaseConfig(): FirebaseOptions {
-  const missingVariables = requiredConfigValues
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
+  const missingVariables = requiredConfigValues.filter(([, value]) => !value).map(([name]) => name);
 
   if (missingVariables.length > 0) {
     throw new Error(`Missing Firebase configuration: ${missingVariables.join(', ')}`);
@@ -69,9 +69,36 @@ export function getFirebaseAuth(): Auth {
     }
   }
 
+  const emulatorHost = process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST;
+  if (__DEV__ && emulatorHost && !firebaseAuth.emulatorConfig)
+    connectAuthEmulator(firebaseAuth, `http://${emulatorHost}:9099`, { disableWarnings: true });
   return firebaseAuth;
 }
 
+// Firebase caches services across Fast Refresh; do not reconnect an already-used emulator service.
+const emulatorState = globalThis as typeof globalThis & { __seawolfEmulators?: WeakSet<object> };
+const connectedEmulators = (emulatorState.__seawolfEmulators ??= new WeakSet<object>());
+let database: Firestore | null = null;
 export function getFirebaseFirestore(): Firestore {
-  return getFirestore(getFirebaseApp());
+  if (!database) {
+    database = getFirestore(getFirebaseApp());
+    const host = process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST;
+    if (__DEV__ && host && !connectedEmulators.has(database)) {
+      connectFirestoreEmulator(database, host, 9095);
+      connectedEmulators.add(database);
+    }
+  }
+  return database;
+}
+let functions: ReturnType<typeof getFunctions> | null = null;
+export function getFirebaseFunctions() {
+  if (!functions) {
+    functions = getFunctions(getFirebaseApp(), 'us-central1');
+    const host = process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST;
+    if (__DEV__ && host && !connectedEmulators.has(functions)) {
+      connectFunctionsEmulator(functions, host, 5001);
+      connectedEmulators.add(functions);
+    }
+  }
+  return functions;
 }

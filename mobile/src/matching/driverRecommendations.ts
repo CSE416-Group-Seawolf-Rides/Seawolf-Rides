@@ -5,6 +5,7 @@ import { participantIdForOffer } from '../profiles/publicProfiles';
 import { sealDatedRideProposal, type DatedRideProposalV1 } from '../rides/datedRideProposal';
 import type { RouteCoordinate, RoutingAdapter, RoutingResult } from '../routing/types';
 import { evaluatePair } from './evaluatePair';
+import { rankDriversForRider } from './rankDrivers';
 import type { PairEvaluation, PairEvaluationInput, StaticRouteEstimate } from './types';
 
 export const NORMAL_MATCHING_TIME_ZONE = 'America/New_York';
@@ -52,6 +53,7 @@ export type RecommendationExclusion =
 
 export interface DriverRecommendation {
   offer: DriverOffer;
+  input?: PairEvaluationInput;
   evaluation: PairEvaluation | null;
   proposal: DatedRideProposalV1 | null;
   excludedReason: RecommendationExclusion | null;
@@ -293,20 +295,18 @@ export async function evaluateDriverRecommendations(options: EvaluateDriverRecom
           },
         }, evaluatedAtEpochSeconds)
       : null;
-    return { offer, evaluation, proposal, excludedReason: null, rank: null, rankingExplanation: null, routingFailure, routingMessage } satisfies DriverRecommendation;
+    return { offer, input, evaluation, proposal, excludedReason: null, rank: null, rankingExplanation: null, routingFailure, routingMessage } satisfies DriverRecommendation;
   });
   return { localDate: options.localDate, timeZone: options.timeZone, recommendations: rankRecommendations([...evaluated, ...excluded]) };
 }
 
 export function rankRecommendations(items: readonly DriverRecommendation[]): DriverRecommendation[] {
-  const feasible = items.filter((item): item is DriverRecommendation & { evaluation: Extract<PairEvaluation, { status: 'FEASIBLE' }> } => item.evaluation?.status === 'FEASIBLE').sort((a, b) => a.evaluation.metrics.driverExtraDurationSeconds - b.evaluation.metrics.driverExtraDurationSeconds || (b.evaluation.plan.feasibleDepartureWindow.latest - b.evaluation.plan.feasibleDepartureWindow.earliest) - (a.evaluation.plan.feasibleDepartureWindow.latest - a.evaluation.plan.feasibleDepartureWindow.earliest) || a.offer.id.localeCompare(b.offer.id));
-  const ranks = new Map(feasible.map((item, index) => [item.offer.id, index + 1]));
+  const supplied = items.filter((item) => item.input !== undefined);
+  if (!supplied.length) return items.map((item) => ({ ...item, rank: null, rankingExplanation: null }));
+  const ranked = rankDriversForRider(supplied[0].input!.rider, supplied.map((item) => item.input!)).recommendations;
   return items.map((item) => {
-    const rank = ranks.get(item.offer.id) ?? null;
-    if (rank === null || item.evaluation?.status !== 'FEASIBLE') return { ...item, rank: null, rankingExplanation: null };
-    const previous = feasible[rank - 2];
-    const explanation = rank === 1 ? 'Best fit because it has the least added driver time among feasible candidates.' : `Ranks below ${previous.offer.driverName} under added driving, schedule flexibility, and stable-ID tie-breakers.`;
-    return { ...item, rank, rankingExplanation: explanation };
+    const index = ranked.findIndex((recommendation) => recommendation.driverId === item.input?.driver.userId);
+    return { ...item, rank: index < 0 ? null : index + 1, rankingExplanation: index < 0 ? null : ranked[index].explanations.join(' ') };
   });
 }
 

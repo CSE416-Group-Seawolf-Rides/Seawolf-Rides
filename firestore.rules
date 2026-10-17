@@ -76,6 +76,52 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
     }
 
+    function validWindow(w) {
+      return w is map && w.keys().hasOnly(['earliest', 'latest'])
+        && w.earliest is int && w.latest is int
+        && w.earliest >= 0 && w.latest < 1440 && w.earliest <= w.latest;
+    }
+
+    function validMatchingSetup(userId) {
+      let d = request.resource.data;
+      return d.keys().hasAll(['schemaVersion', 'ownerId', 'revision', 'commuteKey',
+          'mode', 'active', 'optIn', 'campusLot', 'weekdays', 'pointId',
+          'startWindow', 'arrivalWindow', 'seatsRequested', 'maxDetourSeconds',
+          'maxExtraRideSeconds', 'accessWalkSeconds', 'egressWalkSeconds',
+          'maxAccessWalkSeconds', 'maxEgressWalkSeconds', 'updatedAt'])
+        && d.keys().hasOnly(['schemaVersion', 'ownerId', 'revision', 'commuteKey',
+          'mode', 'active', 'optIn', 'campusLot', 'weekdays', 'pointId',
+          'startWindow', 'arrivalWindow', 'seatsRequested', 'maxDetourSeconds',
+          'maxExtraRideSeconds', 'accessWalkSeconds', 'egressWalkSeconds',
+          'maxAccessWalkSeconds', 'maxEgressWalkSeconds', 'updatedAt'])
+        && d.schemaVersion == 1 && d.ownerId == userId
+        && d.revision is string && d.revision.size() > 0 && d.revision.size() <= 80
+        && d.commuteKey is string && d.commuteKey.size() > 0 && d.commuteKey.size() <= 4000
+        && d.mode in ['driver', 'rider'] && d.active is bool && d.optIn is bool
+        && d.campusLot in ['westSide', 'eastSide', 'tabler', 'roth', 'lot40']
+        && d.pointId in ['stony-brook-station', 'port-jefferson-station', 'smithtown-station', 'jamaica-station']
+        && d.weekdays is list && d.weekdays.size() > 0 && d.weekdays.size() <= 7
+        && d.weekdays.hasOnly(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])
+        && d.weekdays.toSet().size() == d.weekdays.size()
+        && validWindow(d.startWindow) && validWindow(d.arrivalWindow)
+        && d.seatsRequested is int && d.seatsRequested >= 1 && d.seatsRequested <= 6
+        && d.maxDetourSeconds is int && d.maxDetourSeconds >= 0 && d.maxDetourSeconds <= 21600
+        && d.maxExtraRideSeconds is int && d.maxExtraRideSeconds >= 0 && d.maxExtraRideSeconds <= 21600
+        && d.accessWalkSeconds is int && d.accessWalkSeconds >= 0 && d.accessWalkSeconds <= 7200
+        && d.egressWalkSeconds is int && d.egressWalkSeconds >= 0 && d.egressWalkSeconds <= 7200
+        && d.maxAccessWalkSeconds is int && d.maxAccessWalkSeconds >= 0 && d.maxAccessWalkSeconds <= 7200
+        && d.maxEgressWalkSeconds is int && d.maxEgressWalkSeconds >= 0 && d.maxEgressWalkSeconds <= 7200
+        && d.updatedAt == request.time;
+    }
+
+    // Private matching inputs; the callable service performs candidate discovery.
+    match /matchingSetups/{userId} {
+      allow read, delete: if owns(userId);
+      allow create: if owns(userId) && validMatchingSetup(userId);
+      allow update: if owns(userId) && validMatchingSetup(userId)
+        && request.resource.data.revision != resource.data.revision;
+    }
+
     // Temporary M2 heartbeat. It remains read-only and exposes no user document.
     match /commutes/{commuteId} {
       allow read: if commuteId == 'sample-commute-001';

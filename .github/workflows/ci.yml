@@ -103,6 +103,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install matching service dependencies
+        run: npm ci --prefix ../functions
+
+      - name: Build and test matching service
+        run: npm run build --prefix ../functions && npm test --prefix ../functions && npx --yes --package=node@22 node --test ../functions/test/domain.test.cjs
+
       - name: Run unit tests
         run: npm run test
 
@@ -111,6 +117,9 @@ jobs:
 
       - name: Test Firestore security rules
         run: npm run test:firestore-rules
+
+      - name: Test real-account matching through callable emulator
+        run: npm run test:matching
 
   build:
     name: Build (Expo export)

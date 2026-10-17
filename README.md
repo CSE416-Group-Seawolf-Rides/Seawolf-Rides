@@ -20,7 +20,7 @@ These are requirements, not claims of implemented functionality. Stripe cost sha
 
 ## Technology Stack
 
-The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.27, and TypeScript 6.0.3. Node.js 24.21.0 and npm are standardized for local development and CI. Firebase Authentication now provides verified Stony Brook identities, while Cloud Firestore stores each user's profile and primary commute. Matching and routing remain separate team work.
+The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.30, and TypeScript 6.0.3. Node.js 24.21.0 and npm are standardized for local development and CI. Firebase Authentication now provides verified Stony Brook identities, while Cloud Firestore stores each user's profile and primary commute. The M3 integration adds persisted matching setup, an authenticated matching service, route estimates and ranked real-user results; see [M3 setup](docs/m3-matching-mvp.md).
 
 ## Repository Structure
 
@@ -174,13 +174,15 @@ npx firebase-tools deploy --only firestore:rules,firestore:indexes
 
 ## Development Status
 
-The project is in M2 (design and setup). The Expo app demonstrates the intended sign-in, onboarding, Home, Rides, Inbox, and Account experience and includes a tested Firestore repository for `commutes/sample-commute-001` (the read is no longer shown in the app's UI). The prototype has launched successfully on a physical iPhone using Expo Go, and GitHub Actions has completed successfully on `main` using `npm ci`, lint, type-check, tests, and the Expo export/build check.
+The code now includes the M3 single-driver/single-rider inbound matching flow. Home and Map use saved matching setup and the authenticated callable service. Deploy the service, rules and index and complete the two-client manual acceptance check before calling the hosted MVP operational; merging alone does not deploy it.
 
 ### Current Scope
 
-- **Real:** verified Firebase email/password registration and sign-in, password reset, persistent device sessions, owner-only Firestore profiles and primary commutes, and the restricted M2 sample read.
-- **Simulated locally:** driver offers, rider requests, request responses, dated trips, pickup spots, and conversations remain typed frontend fixtures or component state until their later milestone implementation.
-- **Not implemented here:** Google sign-in, matching/routing integration, live traffic, persisted ride requests or chat, payments, and the trusted matching backend.
+- **Implemented:** verified Firebase email/password accounts, password reset, persistent device sessions, owner-only profile/commute/matching setup, canonical feasibility/ranking, OSRM adapter, protected real-candidate discovery and matching results.
+- **Development-only:** synthetic multi-car/group/request simulations, clearly labeled and excluded from the normal matching flow.
+- **Later work:** persisted requests and seat reservations, participant messaging/history, return trips, native navigation, payments and live tracking. Static road estimates are not live traffic.
+
+See [M3 matching setup, deployment, limits and acceptance](docs/m3-matching-mvp.md). Automated callable/emulator tests use real saved accounts and mocked road estimates; they do not establish device UI or live routing verification.
 
 ## Team
 

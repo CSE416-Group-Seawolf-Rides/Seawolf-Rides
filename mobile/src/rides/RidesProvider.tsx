@@ -17,7 +17,7 @@ import { validateDatedRideProposal, type DatedRideProposalV1 } from './datedRide
 import { GroupAcceptanceService, MultiCarScenarioStore, type GroupAcceptanceCode } from './groupAcceptance';
 import { applyFridayDriverTestLoad, buildFridayDriverTest, createFridayGroupStoreData, FRIDAY_DRIVER_TEST_OCCURRENCE_ID, isFridayDriverTestRequest, resetFridayDriverTestState } from './fridayDriverTest';
 import type { GroupRoutePlanV1 } from './groupRideContracts';
-import { driverOfferFixtures, riderRequestFixtures } from './rideFixtures';
+import { driverOfferFixtures } from './rideFixtures';
 import {
   IncomingRequest,
   OutgoingRequest,
@@ -68,9 +68,7 @@ const DEMO_DRIVER_RESPONSE_MS = 5000;
 export function RidesProvider({ children }: PropsWithChildren) {
   const { user, commute } = useSession();
   const [outgoing, setOutgoing] = useState<OutgoingRequest[]>([]);
-  const [incoming, setIncoming] = useState<IncomingRequest[]>(() =>
-    riderRequestFixtures.map((request) => ({ ...request, status: 'pending' })),
-  );
+  const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [driverOccurrences, setDriverOccurrences] = useState<DriverOccurrenceOverride[]>([]);
   const [fridayDriverTest, setFridayDriverTest] = useState<Rides['fridayDriverTest']>({ status: 'IDLE', message: null });

@@ -1,3 +1,4 @@
+import { DevelopmentOnly } from '../../../mvp/DevelopmentOnly';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 
 import { useSession } from '../../../auth/SessionProvider';
@@ -14,7 +15,7 @@ import { TripDetailScreen } from '../../../screens/TripDetailScreen';
 import { participantIdForOffer } from '../../../profiles/publicProfiles';
 
 // A trip's id is its local date, e.g. /rides/2026-09-28.
-export default function TripDetailRoute() {
+function TripDetailRoute() {
   const { rideId } = useLocalSearchParams<{ rideId: string }>();
   const { commute } = useSession();
   const { outgoing, incoming, skipped, skipTrip, undoSkip, cancelRequest, driverOccurrences } = useRides();
@@ -60,3 +61,5 @@ export default function TripDetailRoute() {
     />
   );
 }
+
+export default function DevelopmentRoute() { return <DevelopmentOnly><TripDetailRoute /></DevelopmentOnly>; }

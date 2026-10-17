@@ -49,3 +49,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Compiled Cloud Functions deployment bundle
+functions/lib/

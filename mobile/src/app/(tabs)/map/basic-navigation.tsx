@@ -1,3 +1,4 @@
+import { DevelopmentOnly } from '../../../mvp/DevelopmentOnly';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -6,7 +7,7 @@ import { decodeRouteNavigationRequest } from '../../../navigation/routeNavigatio
 import { BasicNavigationScreen } from '../../../screens/BasicNavigationScreen';
 import { colors, spacing } from '../../../theme';
 
-export default function BasicNavigationRoute() {
+function BasicNavigationRoute() {
   const { request: encodedRequest } = useLocalSearchParams<{ request?: string }>();
   const request = decodeRouteNavigationRequest(encodedRequest);
   if (!request) {
@@ -26,3 +27,5 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
   message: { color: colors.textMuted, fontSize: 15, lineHeight: 22 },
 });
+
+export default function DevelopmentRoute() { return <DevelopmentOnly><BasicNavigationRoute /></DevelopmentOnly>; }

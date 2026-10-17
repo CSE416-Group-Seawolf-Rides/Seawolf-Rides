@@ -11,10 +11,10 @@ The `CI` GitHub Actions workflow runs four independent jobs in parallel:
 
 The static-analysis job also runs Expo Doctor so SDK and package compatibility
 problems fail the existing required check without changing its ruleset name.
-The unit-test job also starts local Firebase Authentication and Firestore emulators.
+The unit-test job also builds/tests the matching service and starts local Firebase Authentication, Firestore and Functions emulators.
 It verifies registration, email verification, sign-in, password reset, owner-only
 profile and commute access, verified Stony Brook email claims, rejection of
-unverified/outside-domain users, cross-user denial, and the typed persistence round trip.
+unverified/outside-domain users, cross-user denial, the typed persistence round trip, matching-settings validation and two-account callable matching with mocked OSRM responses. The compiled domain is tested under the deployed Node 22 runtime as well.
 
 The workflow runs when a pull request targets `main`, after an approving pull
 request review is submitted, and after changes land on `main`. Running the

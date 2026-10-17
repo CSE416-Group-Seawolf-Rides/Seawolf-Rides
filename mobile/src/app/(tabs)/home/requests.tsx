@@ -1,3 +1,4 @@
+import { DevelopmentOnly } from '../../../mvp/DevelopmentOnly';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 
@@ -6,7 +7,7 @@ import { incomingForCommute } from '../../../rides/rideModel';
 import { useRides } from '../../../rides/RidesProvider';
 import { ReviewRequestsScreen } from '../../../screens/ReviewRequestsScreen';
 
-export default function ReviewRequestsRoute() {
+function ReviewRequestsRoute() {
   const { commute } = useSession();
   const { outgoing, incoming, respondToRequest, driverOccurrences } = useRides();
 
@@ -29,3 +30,5 @@ export default function ReviewRequestsRoute() {
     />
   );
 }
+
+export default function DevelopmentRoute() { return <DevelopmentOnly><ReviewRequestsRoute /></DevelopmentOnly>; }

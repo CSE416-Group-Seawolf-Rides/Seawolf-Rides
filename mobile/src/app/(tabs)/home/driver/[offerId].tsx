@@ -1,3 +1,4 @@
+import { DevelopmentOnly } from '../../../../mvp/DevelopmentOnly';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 
 import { useSession } from '../../../../auth/SessionProvider';
@@ -6,7 +7,7 @@ import { matchDrivers, requestableDays, requestSummary } from '../../../../rides
 import { useRides } from '../../../../rides/RidesProvider';
 import { OfferDetailScreen } from '../../../../screens/OfferDetailScreen';
 
-export default function DriverOfferRoute() {
+function DriverOfferRoute() {
   const { offerId } = useLocalSearchParams<{ offerId: string }>();
   const { commute } = useSession();
   const { outgoing, incoming, sendRequest, cancelRequest } = useRides();
@@ -39,3 +40,5 @@ export default function DriverOfferRoute() {
     />
   );
 }
+
+export default function DevelopmentRoute() { return <DevelopmentOnly><DriverOfferRoute /></DevelopmentOnly>; }

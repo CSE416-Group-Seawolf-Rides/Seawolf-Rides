@@ -1,5 +1,7 @@
 # Seawolf Rides — Milestone 2 Design
 
+> **M3 implementation update:** Authentication, private profile/commute persistence, canonical matching and the real-candidate integration have advanced beyond this M2 design record. [M3 matching](m3-matching-mvp.md) documents the current data/service boundary, deployment requirements and remaining acceptance work. The M2 status statements below are historical, not a current implementation checklist.
+
 ## 1. Purpose and Scope
 
 This document translates the [Milestone 1 proposal and requirements](requirements.md) into a technical design that guides setup and implementation. It distinguishes the implemented M2 foundation and prototype from proposed M3 and semester-v1 components, responsibilities, data models, privacy constraints, risks, and decisions the team must still make.

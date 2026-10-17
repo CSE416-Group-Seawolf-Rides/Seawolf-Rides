@@ -4,9 +4,7 @@ import { ComponentProps } from 'react';
 import { ColorValue } from 'react-native';
 
 import { BottomTabBar } from '../../components/BottomTabBar';
-import { useSession } from '../../auth/SessionProvider';
-import { sharedDrivingDays } from '../../rides/rideModel';
-import { RidesProvider, useRides } from '../../rides/RidesProvider';
+import { RidesProvider } from '../../rides/RidesProvider';
 import { colors } from '../../theme';
 import { ThreeCarDemoProvider } from '../../matching/ThreeCarDemoProvider';
 
@@ -34,16 +32,6 @@ function tabIcon(selected: IconName, unselected: IconName) {
 // - Inbox: conversations with matched drivers and riders.
 // - Account: profile, commute role, and sign-out.
 function TabsNavigator() {
-  const { commute } = useSession();
-  const { incoming } = useRides();
-  // Badge only what needs the user's action: riders waiting on a yes/no.
-  const needsAnswer = commute
-    ? incoming.filter(
-        (request) =>
-          request.status === 'pending' && sharedDrivingDays(commute, request).length > 0,
-      ).length
-    : 0;
-
   return (
     <Tabs
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.background } }}
@@ -54,16 +42,14 @@ function TabsNavigator() {
         options={{
           title: 'Home',
           tabBarIcon: tabIcon('home', 'home-outline'),
-          tabBarBadge: needsAnswer > 0 ? needsAnswer : undefined,
-          tabBarAccessibilityLabel:
-            needsAnswer > 0
-              ? `Home, ${needsAnswer} ride request${needsAnswer === 1 ? '' : 's'} to answer`
-              : 'Home',
         }}
       />
       <Tabs.Screen
         name="rides"
-        options={{ title: 'Rides', tabBarIcon: tabIcon('calendar-clear', 'calendar-clear-outline') }}
+        options={{
+          title: 'Rides',
+          tabBarIcon: tabIcon('calendar-clear', 'calendar-clear-outline'),
+        }}
       />
       <Tabs.Screen
         name="map"
@@ -85,8 +71,7 @@ function TabsNavigator() {
 }
 
 export default function TabsLayout() {
-  // Prototype ride requests belong to the active session. Keeping their provider
-  // inside the protected tabs subtree clears them when sign-out unmounts the tabs.
+  if (!__DEV__) return <TabsNavigator />;
   return (
     <RidesProvider>
       <ThreeCarDemoProvider>
