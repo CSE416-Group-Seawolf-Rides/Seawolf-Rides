@@ -42,7 +42,11 @@ async function client(uid, verified = true) {
     password: 'Emulator-test-only-123!',
   });
   const app = initializeApp(
-    { projectId, apiKey: 'emulator-only', authDomain: `${projectId}.firebaseapp.com` },
+    {
+      projectId,
+      apiKey: 'emulator-only',
+      authDomain: `${projectId}.firebaseapp.com`,
+    },
     uid,
   );
   clients.push(app);
@@ -60,9 +64,13 @@ async function client(uid, verified = true) {
     uid,
     db,
     auth,
-    rawCall: httpsCallable(functions, 'findCompatibleDrivers', { timeout: 120000 }),
+    rawCall: httpsCallable(functions, 'findCompatibleDrivers', {
+      timeout: 120000,
+    }),
     call: async (input) => {
-      const invoke = httpsCallable(functions, 'findCompatibleDrivers', { timeout: 120000 });
+      const invoke = httpsCallable(functions, 'findCompatibleDrivers', {
+        timeout: 120000,
+      });
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
           return await invoke(input);
@@ -85,7 +93,12 @@ async function saveSetup(client, mode) {
     },
     campusLot: 'westSide',
     days: [
-      { day: weekday, mode: mode === 'driver' ? 'drive' : 'ride', arriveBy: 540, leaveAt: null },
+      {
+        day: weekday,
+        mode: mode === 'driver' ? 'drive' : 'ride',
+        arriveBy: 540,
+        leaveAt: null,
+      },
     ],
     ...(mode === 'driver' ? { seats: 2 } : {}),
   };
@@ -143,7 +156,11 @@ before(async () => {
     response.end(
       JSON.stringify({
         code: 'Ok',
-        waypoints: points.map((point) => ({ location: point, distance: 0, name: '' })),
+        waypoints: points.map((point) => ({
+          location: point,
+          distance: 0,
+          name: '',
+        })),
         routes: [
           {
             distance: 10000,
@@ -158,7 +175,10 @@ before(async () => {
                   duration,
                   distance: 5000,
                   name: 'Public road',
-                  geometry: { type: 'LineString', coordinates: [points[index], points[index + 1]] },
+                  geometry: {
+                    type: 'LineString',
+                    coordinates: [points[index], points[index + 1]],
+                  },
                   maneuver: { type: 'depart', location: points[index] },
                 },
               ],
@@ -182,8 +202,25 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
   const riderSetup = await saveSetup(rider, 'rider');
   const stored = (await getDoc(doc(rider.db, 'matchingSetups', rider.uid))).data();
   assert.equal(stored.revision, riderSetup.revision);
-  const request = { localDate: date, revision: riderSetup.revision, direction: 'TO_CAMPUS' };
-  let result = (await rider.call(request)).data;
+  const request = {
+    localDate: date,
+    revision: riderSetup.revision,
+    direction: 'TO_CAMPUS',
+  };
+  const pending = rider.call(request);
+  // A second authenticated account uses a separate SDK client while the first search routes.
+  for (let attempt = 0; attempt < 500 && providerCalls === 0; attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(providerCalls > 0, 'first search reached the fake provider');
+  await Promise.all([
+    assert.rejects(driver.rawCall(request), {
+      code: 'functions/resource-exhausted',
+    }),
+    assert.rejects(rider.rawCall({ action: 'PREVIEW', revision: 'v1' }), {
+      code: 'functions/resource-exhausted',
+    }),
+  ]);
+  let result = (await pending).data;
   assert.ok(result.recommendations.length > 0, JSON.stringify({ result, providerCalls }));
   assert.deepEqual(
     result.recommendations.map((item) => item.driverId),
@@ -192,19 +229,18 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
   assert.equal(result.recommendations[0].metrics.driverExtraDurationSeconds, 420);
   assert.ok(providerCalls >= 2);
   assert.equal(result.candidateLimit, 2);
-  await new Promise((resolve) => setTimeout(resolve, 1300));
-  const concurrent = await Promise.allSettled([
-    rider.rawCall(request),
-    rider.rawCall({ action: 'PREVIEW', revision: 'v1' }),
-  ]);
-  assert.equal(concurrent.filter((r) => r.status === 'fulfilled').length, 1);
-  assert.equal(
-    concurrent.find((r) => r.status === 'rejected').reason.code,
-    'functions/resource-exhausted',
-  );
+  const cachedCalls = providerCalls;
+  // Cached operations may complete before another invocation starts; do not assume overlap.
+  await rider.call(request);
+  await rider.call({ action: 'PREVIEW', revision: 'v1' });
+  assert.equal(providerCalls, cachedCalls, 'cached search/preview do not fetch the provider again');
   await assert.rejects(
     rider.call({ action: 'PREVIEW', revision: 'v1', coordinates: [] }),
     /Supply/,
+  );
+  assert.equal(
+    (await getAdminFirestore(admin).doc('_m3Routing/publicOsrm').get()).data().owner,
+    null,
   );
 
   assert.doesNotMatch(JSON.stringify(result), /coordinate|commuteKey|driverStart|routingEstimates/);
@@ -258,9 +294,19 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
   assert.equal((await getDoc(doc(rider.db, 'matchingSetups', rider.uid))).data().revision, 'v1');
   const preview = (await rider.call({ action: 'PREVIEW', revision: 'v1' })).data;
   assert.equal(preview.status, 'SUCCESS');
+  // Three eligible persisted drivers prove the public-demo cap reports an incomplete search.
+  for (const name of ['mvp-extra-a', 'mvp-extra-b', 'mvp-extra-c'])
+    await saveSetup(await client(name), 'driver');
+  result = (await rider.call(request)).data;
+  assert.equal(result.candidateLimitReached, true);
+  assert.equal(result.candidateLimit, 2);
+  assert.equal(result.recommendations.length, 2);
   for (let i = 1; i < providerTimes.length; i++)
     assert.ok(providerTimes[i] - providerTimes[i - 1] >= 1000);
   await assert.rejects(getDoc(doc(rider.db, '_m3Routing', 'publicOsrm')), /permission/i);
+  const cacheDoc = (await getAdminFirestore(admin).collection('_m3RouteCache').limit(1).get())
+    .docs[0];
+  await assert.rejects(getDoc(doc(rider.db, '_m3RouteCache', cacheDoc.id)), /permission/i);
   await signOut(rider.auth);
   await assert.rejects(rider.call(request), /verified/i);
 });

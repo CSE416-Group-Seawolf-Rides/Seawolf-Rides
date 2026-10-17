@@ -479,12 +479,20 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
             })}
             . Road estimates are not live traffic.
           </Text>
+          {result.candidateLimitReached && (
+            <Text accessibilityLiveRegion="polite">
+              Incomplete search: this demo covered only the first {result.candidateLimit} candidate
+              setups in user ID order. Other compatible drivers may exist.
+            </Text>
+          )}
           {result.recommendations.length === 0 && (
             <Card>
               <Text>
                 {result.unknownCount > 0
                   ? 'No confirmed match yet. Some estimates or inputs were unavailable; retry your search.'
-                  : 'No compatible drivers found for this date and setup.'}
+                  : result.candidateLimitReached
+                    ? 'No compatible drivers among the evaluated candidate setups.'
+                    : 'No compatible drivers found for this date and setup.'}
               </Text>
             </Card>
           )}
@@ -513,12 +521,6 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
             {result.incompatibleCount} evaluated pairs did not fit. {result.unknownCount} could not
             be confirmed.
           </Text>
-          {result.candidateLimitReached && (
-            <Text>
-              This demo search covered the first {result.candidateLimit} candidate setups. More
-              drivers may exist.
-            </Text>
-          )}
           {result.recommendations.length > 0 && (
             <AppButton
               label={previewing ? 'Loading preview…' : 'Preview public pickup to campus'}

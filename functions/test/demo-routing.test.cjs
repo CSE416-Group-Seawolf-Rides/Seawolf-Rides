@@ -205,3 +205,29 @@ test('network failures still impose a gap before the next provider request', asy
   );
   assert.ok(starts[1] - starts[0] >= REQUEST_GAP_MS);
 });
+
+test('thrown upstream and cache errors release ownership after queued work drains', async () => {
+  for (const failing of ['upstream', 'cache']) {
+    const e = environment();
+    const upstream = {
+      route: async () => {
+        if (failing === 'upstream') throw new Error('upstream threw');
+        return success;
+      },
+    };
+    if (failing === 'cache')
+      e.store.cache = async () => {
+        throw new Error('cache threw');
+      };
+    await assert.rejects(
+      withDemoRouting(e.store, upstream, 'owner', (r) => r.route(points(0)), e.timer),
+      /threw/,
+    );
+    assert.equal(e.state.owner, null);
+    e.advance(REQUEST_GAP_MS);
+    assert.equal(
+      await withDemoRouting(e.store, upstream, 'next', async () => 'usable', e.timer),
+      'usable',
+    );
+  }
+});

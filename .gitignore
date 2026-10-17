@@ -52,3 +52,6 @@ Thumbs.db
 
 # Compiled Cloud Functions deployment bundle
 functions/lib/
+
+# Local emulator accounts, saved commutes and machine-specific demo data
+.local-demo-data/
