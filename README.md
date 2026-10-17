@@ -170,6 +170,7 @@ npx firebase-tools deploy --only firestore:rules,firestore:indexes
 - [M2 design](docs/design.md)
 - [Editable architecture diagram](docs/architecture.mmd)
 - [CI/CD and merge protection](docs/ci-cd.md)
+- [Canonical M3 matching API](docs/canonical-matching.md)
 
 ## Development Status
 
