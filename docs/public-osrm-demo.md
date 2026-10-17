@@ -4,7 +4,7 @@ This profile is for the two-account M3 demonstration, not an unrestricted servic
 
 ## One shared outbound path
 
-Set `OSRM_BASE_URL=https://router.project-osrm.org` in the target function environment. `findCompatibleDrivers` handles matching and `{ action: 'PREVIEW', revision }` map previews. The mobile app never directly calls the public router. Other mobile development routes fail with a configuration message instead of bypassing the scheduler; a custom non-public provider requires its own approved configuration.
+Set `OSRM_BASE_URL=https://router.project-osrm.org` in the target function environment. `findCompatibleDrivers` handles matching and `{ action: 'PREVIEW', revision }` map previews. The mobile app never directly calls the public router. Server requests identify the application and repository in their User-Agent; the results screen attributes OSRM and OpenStreetMap and links to map corrections. Other mobile development routes fail with a configuration message instead of bypassing the scheduler; a custom non-public provider requires its own approved configuration.
 
 A Firestore transaction on `_m3Routing/publicOsrm` admits exactly one routing operation across concurrent invocations, instances and overlapping deployment revisions. Busy callers receive `resource-exhausted` immediately and can retry. Maximum function instances is one and concurrency is four so overlapping requests can promptly receive a busy response; the distributed transaction is the actual cross-instance guard.
 

@@ -128,6 +128,7 @@ async function saveSetup(client, mode) {
 }
 before(async () => {
   server = createServer((request, response) => {
+    assert.match(request.headers['user-agent'] ?? '', /SeawolfRides-M3-Demo/);
     providerCalls++;
     providerTimes.push(Date.now());
     response.setHeader('Content-Type', 'application/json');

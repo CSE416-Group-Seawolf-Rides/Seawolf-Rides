@@ -541,7 +541,8 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
       <Text>
         Demo routing: OSRM ·{' '}
         <Link href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</Link>.
-        Search or preview one at a time; retry if busy.
+        <Link href="https://www.openstreetmap.org/fixthemap">Fix the map</Link>. Search or preview
+        one at a time; retry if busy.
       </Text>
     </Screen>
   );

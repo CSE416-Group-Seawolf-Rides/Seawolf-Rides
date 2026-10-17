@@ -85,6 +85,14 @@ export const findCompatibleDrivers = onCall(
         baseUrl: endpoint,
         timeoutMs: ROUTE_TIMEOUT_MS,
         allowScheduledPublicDemo: true,
+        fetchImplementation: (url, options) =>
+          fetch(url, {
+            ...options,
+            headers: {
+              'User-Agent':
+                'SeawolfRides-M3-Demo/1.0 (+https://github.com/CSE416-Group-Seawolf-Rides/Seawolf-Rides)',
+            },
+          }),
       });
       return await withDemoRouting(
         firestoreDemoRouting(getFirestore(), endpoint),
