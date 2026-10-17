@@ -18,6 +18,8 @@ import { commuteKey, localDateAt, weekdayForDate } from '../src/mvp/settings.ts'
 const require = createRequire(new URL('../../functions/package.json', import.meta.url));
 const { initializeApp: initializeAdmin, deleteApp: deleteAdmin } = require('firebase-admin/app');
 const { getAuth: getAdminAuth } = require('firebase-admin/auth');
+const { getFirestore: getAdminFirestore } = require('firebase-admin/firestore');
+const { firestoreDemoRouting } = require('./lib/functions/src/firestoreDemoRouting');
 if (!process.env.FIREBASE_AUTH_EMULATOR_HOST || !process.env.FIRESTORE_EMULATOR_HOST)
   throw new Error('This test must run inside Firebase emulators.');
 const projectId = 'demo-seawolf-rides';
@@ -26,6 +28,7 @@ const clients = [];
 let server;
 let providerFails = false;
 let providerCalls = 0;
+const providerTimes = [];
 // Every participant and setup is persisted through real SDK calls. Only road estimates are mocked.
 const future = Date.now() / 1000 + 86400;
 const date = localDateAt(future);
@@ -57,7 +60,18 @@ async function client(uid, verified = true) {
     uid,
     db,
     auth,
-    call: httpsCallable(functions, 'findCompatibleDrivers', { timeout: 30000 }),
+    rawCall: httpsCallable(functions, 'findCompatibleDrivers', { timeout: 120000 }),
+    call: async (input) => {
+      const invoke = httpsCallable(functions, 'findCompatibleDrivers', { timeout: 120000 });
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          return await invoke(input);
+        } catch (error) {
+          if (error.code !== 'functions/resource-exhausted' || attempt === 4) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+      }
+    },
   };
 }
 async function saveSetup(client, mode) {
@@ -115,6 +129,7 @@ async function saveSetup(client, mode) {
 before(async () => {
   server = createServer((request, response) => {
     providerCalls++;
+    providerTimes.push(Date.now());
     response.setHeader('Content-Type', 'application/json');
     if (providerFails) {
       response.statusCode = 503;
@@ -175,6 +190,22 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
   );
   assert.equal(result.recommendations[0].metrics.driverExtraDurationSeconds, 420);
   assert.ok(providerCalls >= 2);
+  assert.equal(result.candidateLimit, 2);
+  await new Promise((resolve) => setTimeout(resolve, 1300));
+  const concurrent = await Promise.allSettled([
+    rider.rawCall(request),
+    rider.rawCall({ action: 'PREVIEW', revision: 'v1' }),
+  ]);
+  assert.equal(concurrent.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal(
+    concurrent.find((r) => r.status === 'rejected').reason.code,
+    'functions/resource-exhausted',
+  );
+  await assert.rejects(
+    rider.call({ action: 'PREVIEW', revision: 'v1', coordinates: [] }),
+    /Supply/,
+  );
+
   assert.doesNotMatch(JSON.stringify(result), /coordinate|commuteKey|driverStart|routingEstimates/);
   await assert.rejects(getDoc(doc(rider.db, 'matchingSetups', driver.uid)), /permission/i);
   await assert.rejects(
@@ -195,6 +226,10 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
     revision: 'v3',
     updatedAt: serverTimestamp(),
   });
+  // Invalidate persisted cache only in this emulator test to exercise provider outage.
+  const adminDb = getAdminFirestore(admin);
+  const cache = await adminDb.collection('_m3RouteCache').get();
+  await Promise.all(cache.docs.map((d) => d.ref.delete()));
   providerFails = true;
   result = (await rider.call(request)).data;
   assert.equal(result.recommendations.length, 0);
@@ -220,6 +255,32 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
     'Emulator-test-only-123!',
   );
   assert.equal((await getDoc(doc(rider.db, 'matchingSetups', rider.uid))).data().revision, 'v1');
+  const preview = (await rider.call({ action: 'PREVIEW', revision: 'v1' })).data;
+  assert.equal(preview.status, 'SUCCESS');
+  for (let i = 1; i < providerTimes.length; i++)
+    assert.ok(providerTimes[i] - providerTimes[i - 1] >= 1000);
+  await assert.rejects(getDoc(doc(rider.db, '_m3Routing', 'publicOsrm')), /permission/i);
   await signOut(rider.auth);
   await assert.rejects(rider.call(request), /verified/i);
+});
+
+test('Firestore admission is atomic across instances and never expires a crashed owner automatically', async () => {
+  const db = getAdminFirestore(admin);
+  const endpoint = 'http://127.0.0.1:5009';
+  const gate = db.doc('_m3Routing/publicOsrm');
+  await gate.delete();
+  const a = firestoreDemoRouting(db, endpoint);
+  const b = firestoreDemoRouting(db, endpoint);
+  const results = await Promise.all([a.acquire('a'), b.acquire('b')]);
+  assert.equal(results.filter(Boolean).length, 1);
+  const owner = results[0] ? 'a' : 'b';
+  await gate.update({ acquiredAtMs: 0 });
+  assert.equal(await b.acquire('late'), false);
+  await a.release('wrong-owner');
+  assert.equal((await gate.get()).data().owner, owner);
+  await a.release(owner);
+  assert.equal(await b.acquire('next'), false);
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  assert.equal(await b.acquire('next'), true);
+  await b.release('next');
 });

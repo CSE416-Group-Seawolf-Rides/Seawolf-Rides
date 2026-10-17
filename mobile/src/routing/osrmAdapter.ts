@@ -27,6 +27,8 @@ type FetchImplementation = (
 export interface OsrmAdapterOptions {
   baseUrl?: string;
   timeoutMs?: number;
+  /** Enabled only behind the backend distributed public-demo scheduler. */
+  allowScheduledPublicDemo?: boolean;
   fetchImplementation?: FetchImplementation;
 }
 
@@ -245,6 +247,13 @@ export function createOsrmRoutingAdapter(options: OsrmAdapterOptions = {}): Rout
       coordinates: readonly RouteCoordinate[],
       requestOptions: RouteRequestOptions = {},
     ): Promise<RoutingResult> {
+      if (
+        !options.fetchImplementation && baseUrl &&
+        ['router.project-osrm.org', 'routing.openstreetmap.de'].includes(new URL(baseUrl).hostname) &&
+        !options.allowScheduledPublicDemo
+      ) {
+        return failure('CONFIGURATION_ERROR', 'Public demo routing must use the protected matching/preview service.', false);
+      }
       if (coordinates.length < 2) {
         return failure('INSUFFICIENT_WAYPOINTS', 'At least two ordered waypoints are required.', false);
       }

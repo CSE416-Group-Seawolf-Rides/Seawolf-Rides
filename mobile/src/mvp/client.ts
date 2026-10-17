@@ -36,6 +36,16 @@ export async function searchMatchingDrivers(
   const call = httpsCallable<
     { localDate: string; revision: string; direction: string },
     MatchResponse
-  >(getFirebaseFunctions(), 'findCompatibleDrivers', { timeout: 300000 });
+  >(getFirebaseFunctions(), 'findCompatibleDrivers', { timeout: 120000 });
   return (await call({ localDate, revision, direction: 'TO_CAMPUS' })).data;
+}
+
+export async function previewMatchingRoute(
+  revision: string,
+): Promise<import('../routing/types').RoutingResult> {
+  const call = httpsCallable<
+    { action: string; revision: string },
+    import('../routing/types').RoutingResult
+  >(getFirebaseFunctions(), 'findCompatibleDrivers', { timeout: 120000 });
+  return (await call({ action: 'PREVIEW', revision })).data;
 }

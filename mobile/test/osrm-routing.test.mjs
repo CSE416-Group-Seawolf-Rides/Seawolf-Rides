@@ -203,3 +203,11 @@ test('latest-request guard prevents stale responses from becoming authoritative'
   resolvers[0]({ status: 'SUCCESS', route: {} });
   assert.equal((await first).status, 'STALE');
 });
+
+test('public demo endpoints cannot be called directly by mobile routing paths', async () => {
+  for (const baseUrl of ['https://router.project-osrm.org', 'https://routing.openstreetmap.de/routed-car']) {
+    const result = await createOsrmRoutingAdapter({ baseUrl }).route([start, destination]);
+    assert.equal(result.code, 'CONFIGURATION_ERROR');
+    assert.match(result.message, /protected/);
+  }
+});

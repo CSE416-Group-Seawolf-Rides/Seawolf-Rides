@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
@@ -12,7 +12,12 @@ import {
   saveErrorMessage,
 } from '../persistence/saveCoordinator';
 import { colors, spacing } from '../theme';
-import { saveMatchingSetup, searchMatchingDrivers, watchMatchingSetup } from './client';
+import {
+  saveMatchingSetup,
+  searchMatchingDrivers,
+  watchMatchingSetup,
+  previewMatchingRoute,
+} from './client';
 import {
   CAMPUS_POINTS,
   PUBLIC_POINTS,
@@ -25,7 +30,6 @@ import {
   type MatchingSetup,
 } from './settings';
 import type { MatchResponse } from './service';
-import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
 import type { RoadRoute } from '../routing/types';
 import { RouteMap } from '../routing/components/RouteMap';
 
@@ -256,15 +260,16 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
     previewController.current = controller;
     setPreviewing(true);
     setError(null);
-    const point = PUBLIC_POINTS.find((p) => p.id === saved.pointId)!;
-    const campus = CAMPUS_POINTS.find((p) => p.id === saved.campusLot)!;
     try {
-      const route = await createOsrmRoutingAdapter({
-        baseUrl: process.env.EXPO_PUBLIC_OSRM_BASE_URL,
-      }).route([point.coordinate, campus.coordinate], { signal: controller.signal });
+      const route = await previewMatchingRoute(saved.revision);
       if (version !== generation.current) return;
       if (route.status === 'SUCCESS') setPreview(route.route);
       else setError('Map preview unavailable. The matching result above is still available.');
+    } catch (caught) {
+      if (version === generation.current)
+        setError(
+          caught instanceof Error ? caught.message : 'Map preview unavailable. Please retry.',
+        );
     } finally {
       setPreviewing(false);
     }
@@ -292,7 +297,7 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
     <Screen
       title="Commute matching"
       eyebrow="TO CAMPUS"
-      subtitle="Real saved accounts · one driver and one rider · New York time"
+      subtitle="Limited demo · two candidate drivers per search · New York time"
     >
       {!commute ? (
         <Card>
@@ -509,7 +514,10 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
             be confirmed.
           </Text>
           {result.candidateLimitReached && (
-            <Text>This search covered the first 30 candidate setups. More drivers may exist.</Text>
+            <Text>
+              This demo search covered the first {result.candidateLimit} candidate setups. More
+              drivers may exist.
+            </Text>
           )}
           {result.recommendations.length > 0 && (
             <AppButton
@@ -530,6 +538,11 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
           )}
         </>
       )}
+      <Text>
+        Demo routing: OSRM ·{' '}
+        <Link href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</Link>.
+        Search or preview one at a time; retry if busy.
+      </Text>
     </Screen>
   );
 }
