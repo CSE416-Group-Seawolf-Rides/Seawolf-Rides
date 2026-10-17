@@ -18,6 +18,8 @@ import { commuteKey, localDateAt, weekdayForDate } from '../src/mvp/settings.ts'
 const require = createRequire(new URL('../../functions/package.json', import.meta.url));
 const { initializeApp: initializeAdmin, deleteApp: deleteAdmin } = require('firebase-admin/app');
 const { getAuth: getAdminAuth } = require('firebase-admin/auth');
+const { getFirestore: getAdminFirestore } = require('firebase-admin/firestore');
+const { firestoreDemoRouting } = require('./lib/functions/src/firestoreDemoRouting');
 if (!process.env.FIREBASE_AUTH_EMULATOR_HOST || !process.env.FIRESTORE_EMULATOR_HOST)
   throw new Error('This test must run inside Firebase emulators.');
 const projectId = 'demo-seawolf-rides';
@@ -26,6 +28,8 @@ const clients = [];
 let server;
 let providerFails = false;
 let providerCalls = 0;
+let providerPause = Promise.resolve();
+const providerTimes = [];
 // Every participant and setup is persisted through real SDK calls. Only road estimates are mocked.
 const future = Date.now() / 1000 + 86400;
 const date = localDateAt(future);
@@ -39,7 +43,11 @@ async function client(uid, verified = true) {
     password: 'Emulator-test-only-123!',
   });
   const app = initializeApp(
-    { projectId, apiKey: 'emulator-only', authDomain: `${projectId}.firebaseapp.com` },
+    {
+      projectId,
+      apiKey: 'emulator-only',
+      authDomain: `${projectId}.firebaseapp.com`,
+    },
     uid,
   );
   clients.push(app);
@@ -57,7 +65,22 @@ async function client(uid, verified = true) {
     uid,
     db,
     auth,
-    call: httpsCallable(functions, 'findCompatibleDrivers', { timeout: 30000 }),
+    rawCall: httpsCallable(functions, 'findCompatibleDrivers', {
+      timeout: 120000,
+    }),
+    call: async (input) => {
+      const invoke = httpsCallable(functions, 'findCompatibleDrivers', {
+        timeout: 120000,
+      });
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          return await invoke(input);
+        } catch (error) {
+          if (error.code !== 'functions/resource-exhausted' || attempt === 4) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+      }
+    },
   };
 }
 async function saveSetup(client, mode) {
@@ -71,7 +94,12 @@ async function saveSetup(client, mode) {
     },
     campusLot: 'westSide',
     days: [
-      { day: weekday, mode: mode === 'driver' ? 'drive' : 'ride', arriveBy: 540, leaveAt: null },
+      {
+        day: weekday,
+        mode: mode === 'driver' ? 'drive' : 'ride',
+        arriveBy: 540,
+        leaveAt: null,
+      },
     ],
     ...(mode === 'driver' ? { seats: 2 } : {}),
   };
@@ -113,8 +141,11 @@ async function saveSetup(client, mode) {
   return setup;
 }
 before(async () => {
-  server = createServer((request, response) => {
+  server = createServer(async (request, response) => {
+    assert.match(request.headers['user-agent'] ?? '', /SeawolfRides-M3-Demo/);
     providerCalls++;
+    providerTimes.push(Date.now());
+    await providerPause;
     response.setHeader('Content-Type', 'application/json');
     if (providerFails) {
       response.statusCode = 503;
@@ -127,7 +158,11 @@ before(async () => {
     response.end(
       JSON.stringify({
         code: 'Ok',
-        waypoints: points.map((point) => ({ location: point, distance: 0, name: '' })),
+        waypoints: points.map((point) => ({
+          location: point,
+          distance: 0,
+          name: '',
+        })),
         routes: [
           {
             distance: 10000,
@@ -142,7 +177,10 @@ before(async () => {
                   duration,
                   distance: 5000,
                   name: 'Public road',
-                  geometry: { type: 'LineString', coordinates: [points[index], points[index + 1]] },
+                  geometry: {
+                    type: 'LineString',
+                    coordinates: [points[index], points[index + 1]],
+                  },
                   maneuver: { type: 'depart', location: points[index] },
                 },
               ],
@@ -166,8 +204,34 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
   const riderSetup = await saveSetup(rider, 'rider');
   const stored = (await getDoc(doc(rider.db, 'matchingSetups', rider.uid))).data();
   assert.equal(stored.revision, riderSetup.revision);
-  const request = { localDate: date, revision: riderSetup.revision, direction: 'TO_CAMPUS' };
-  let result = (await rider.call(request)).data;
+  const request = {
+    localDate: date,
+    revision: riderSetup.revision,
+    direction: 'TO_CAMPUS',
+  };
+  let unblockProvider;
+  // Keep the first uncached request in flight so worker startup cannot erase the overlap.
+  providerPause = new Promise((resolve) => {
+    unblockProvider = resolve;
+  });
+  const pending = rider.call(request);
+  // A second authenticated account uses a separate SDK client while the first search routes.
+  for (let attempt = 0; attempt < 500 && providerCalls === 0; attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(providerCalls > 0, 'first search reached the fake provider');
+  try {
+    await Promise.all([
+      assert.rejects(driver.rawCall(request), {
+        code: 'functions/resource-exhausted',
+      }),
+      assert.rejects(rider.rawCall({ action: 'PREVIEW', revision: 'v1' }), {
+        code: 'functions/resource-exhausted',
+      }),
+    ]);
+  } finally {
+    unblockProvider();
+  }
+  let result = (await pending).data;
   assert.ok(result.recommendations.length > 0, JSON.stringify({ result, providerCalls }));
   assert.deepEqual(
     result.recommendations.map((item) => item.driverId),
@@ -175,6 +239,21 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
   );
   assert.equal(result.recommendations[0].metrics.driverExtraDurationSeconds, 420);
   assert.ok(providerCalls >= 2);
+  assert.equal(result.candidateLimit, 2);
+  const cachedCalls = providerCalls;
+  // Cached operations may complete before another invocation starts; do not assume overlap.
+  await rider.call(request);
+  await rider.call({ action: 'PREVIEW', revision: 'v1' });
+  assert.equal(providerCalls, cachedCalls, 'cached search/preview do not fetch the provider again');
+  await assert.rejects(
+    rider.call({ action: 'PREVIEW', revision: 'v1', coordinates: [] }),
+    /Supply/,
+  );
+  assert.equal(
+    (await getAdminFirestore(admin).doc('_m3Routing/publicOsrm').get()).data().owner,
+    null,
+  );
+
   assert.doesNotMatch(JSON.stringify(result), /coordinate|commuteKey|driverStart|routingEstimates/);
   await assert.rejects(getDoc(doc(rider.db, 'matchingSetups', driver.uid)), /permission/i);
   await assert.rejects(
@@ -195,6 +274,10 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
     revision: 'v3',
     updatedAt: serverTimestamp(),
   });
+  // Invalidate persisted cache only in this emulator test to exercise provider outage.
+  const adminDb = getAdminFirestore(admin);
+  const cache = await adminDb.collection('_m3RouteCache').get();
+  await Promise.all(cache.docs.map((d) => d.ref.delete()));
   providerFails = true;
   result = (await rider.call(request)).data;
   assert.equal(result.recommendations.length, 0);
@@ -220,6 +303,42 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
     'Emulator-test-only-123!',
   );
   assert.equal((await getDoc(doc(rider.db, 'matchingSetups', rider.uid))).data().revision, 'v1');
+  const preview = (await rider.call({ action: 'PREVIEW', revision: 'v1' })).data;
+  assert.equal(preview.status, 'SUCCESS');
+  // Three eligible persisted drivers prove the public-demo cap reports an incomplete search.
+  for (const name of ['mvp-extra-a', 'mvp-extra-b', 'mvp-extra-c'])
+    await saveSetup(await client(name), 'driver');
+  result = (await rider.call(request)).data;
+  assert.equal(result.candidateLimitReached, true);
+  assert.equal(result.candidateLimit, 2);
+  assert.equal(result.recommendations.length, 2);
+  for (let i = 1; i < providerTimes.length; i++)
+    assert.ok(providerTimes[i] - providerTimes[i - 1] >= 1000);
+  await assert.rejects(getDoc(doc(rider.db, '_m3Routing', 'publicOsrm')), /permission/i);
+  const cacheDoc = (await getAdminFirestore(admin).collection('_m3RouteCache').limit(1).get())
+    .docs[0];
+  await assert.rejects(getDoc(doc(rider.db, '_m3RouteCache', cacheDoc.id)), /permission/i);
   await signOut(rider.auth);
   await assert.rejects(rider.call(request), /verified/i);
+});
+
+test('Firestore admission is atomic across instances and never expires a crashed owner automatically', async () => {
+  const db = getAdminFirestore(admin);
+  const endpoint = 'http://127.0.0.1:5009';
+  const gate = db.doc('_m3Routing/publicOsrm');
+  await gate.delete();
+  const a = firestoreDemoRouting(db, endpoint);
+  const b = firestoreDemoRouting(db, endpoint);
+  const results = await Promise.all([a.acquire('a'), b.acquire('b')]);
+  assert.equal(results.filter(Boolean).length, 1);
+  const owner = results[0] ? 'a' : 'b';
+  await gate.update({ acquiredAtMs: 0 });
+  assert.equal(await b.acquire('late'), false);
+  await a.release('wrong-owner');
+  assert.equal((await gate.get()).data().owner, owner);
+  await a.release(owner);
+  assert.equal(await b.acquire('next'), false);
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  assert.equal(await b.acquire('next'), true);
+  await b.release('next');
 });

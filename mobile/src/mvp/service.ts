@@ -62,6 +62,7 @@ export interface MatchResponse {
   unknownReasons: string[];
   incompatibleReasons: string[];
   candidateLimitReached: boolean;
+  candidateLimit: number;
 }
 interface Participant {
   setup: MatchingSetup;
@@ -142,6 +143,7 @@ export async function findMatches(
   repository: MatchingRepository,
   routing: RoutingAdapter,
   now = Math.floor(Date.now() / 1000),
+  candidateLimit = 30,
 ): Promise<MatchResponse> {
   if (
     !record(request) ||
@@ -203,7 +205,9 @@ export async function findMatches(
     maxEgressWalkSeconds: rider.setup.maxEgressWalkSeconds,
     maxExtraInVehicleSeconds: rider.setup.maxExtraRideSeconds,
   };
-  const limit = 30;
+  if (!Number.isSafeInteger(candidateLimit) || candidateLimit < 1 || candidateLimit > 30)
+    throw new MatchingError('invalid-argument', 'Invalid server candidate limit.');
+  const limit = candidateLimit;
   const found = await repository.findDrivers(rider.setup.campusLot, weekday, limit + 1);
   const drivers = found.slice(0, limit).flatMap((saved) => {
     const parsed = participant(saved);
@@ -341,5 +345,6 @@ export async function findMatches(
       ),
     ],
     candidateLimitReached: found.length > limit,
+    candidateLimit: limit,
   };
 }

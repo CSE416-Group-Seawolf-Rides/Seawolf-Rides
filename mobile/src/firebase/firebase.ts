@@ -29,6 +29,14 @@ const requiredConfigValues = [
 ] as const;
 
 function validateFirebaseConfig(): FirebaseOptions {
+  if (
+    firebaseConfig.projectId?.startsWith('demo-') &&
+    (!__DEV__ || !process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST)
+  ) {
+    throw new Error(
+      'A demo Firebase project requires a development build and an explicit emulator host.',
+    );
+  }
   const missingVariables = requiredConfigValues.filter(([, value]) => !value).map(([name]) => name);
 
   if (missingVariables.length > 0) {

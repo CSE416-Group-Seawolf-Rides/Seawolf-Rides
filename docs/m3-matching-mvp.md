@@ -16,14 +16,14 @@ The matching windows apply to the eligible inbound days in the saved commute and
 - `/matchingSetups/{uid}` is a versioned owner-only document, with current commute fingerprint, revision, mode, opt-in/active flags, selected point, weekday filter, start/arrival windows, rider seats, walking inputs/limits and detour limits. The schema and public-point catalog are in `mobile/src/mvp/settings.ts`.
 - Saving uses server timestamps and the existing save coordinator. Retries wait for queued writes; a late acknowledgement does not discard newer form edits.
 - `findCompatibleDrivers` is a Firebase second-generation callable in `us-central1`, deployed from `functions/`. Authentication comes from the Firebase token, never a body-supplied rider ID. The service rechecks Firebase Auth verification/domain/disabled state for both caller and candidates.
-- Candidate discovery uses a compound index and a bounded UID-ordered query. Up to 30 candidate setups are considered; the response explicitly reports truncation when another setup exists. An edited, missing or opted-out setup is ignored, even if an old index entry was selected.
-- Routing is bounded to three candidate evaluations concurrently. Each candidate obtains a direct baseline and an ordered start/pickup/campus route. Route failures are never replaced with fixture estimates. Selected-waypoint snaps must be at most 75 meters and route leg/waypoint counts must agree.
+- Candidate discovery uses a compound index and a bounded UID-ordered query. Up to two candidate setups are considered in the public-demo profile; the response explicitly reports truncation when another setup exists. An edited, missing or opted-out setup is ignored, even if an old index entry was selected.
+- The public-demo profile serializes outbound requests through a shared Firestore guard and spaces requests by at least 1,100 ms after completion; it permits at most four uncached requests per operation. Each candidate obtains a direct baseline and an ordered start/pickup/campus route. Route failures are never replaced with fixture estimates. Selected-waypoint snaps must be at most 75 meters and route leg/waypoint counts must agree.
 - After routing, the service rechecks the rider and recommended drivers against current saved settings, commute and account eligibility. A changed rider setup requires reload; stale driver results are withheld.
 - Only the canonical `rankDriversForRider()` evaluates/ranks pair candidates. [Canonical API documentation](canonical-matching.md) explains feasibility, units, score components and deterministic tie-breaking. The demo pair wrapper delegates to this ranker as well; group insertion remains a separate development experiment.
 
 The service request is `{ localDate: 'YYYY-MM-DD', revision: '<saved revision>', direction: 'TO_CAMPUS' }`. The response contains ranked display cards, canonical plans/metrics/explanations, aggregate incompatible/unknown counts and reason codes, evaluation time, rider revision and a candidate-limit flag. It does not return the entire matching input, dated proposal, driver start coordinates or route geometry.
 
-The optional map preview separately requests the rider's selected **public pickup-to-campus** route. It does not expose a driver's full route. A map-preview failure does not replace or change an evaluated match.
+The optional map preview uses the same authenticated backend scheduler to request the rider's selected **public pickup-to-campus** route. It does not expose a driver's full route. A map-preview failure does not replace or change an evaluated match.
 
 ## Units and policy
 
@@ -56,20 +56,13 @@ Emulator suites require Java 21. The matching suite starts Auth, Firestore and F
 
 The test runner temporarily creates `functions/.env.local` with the local mock router. It refuses to overwrite an existing file. Move your development file aside before this automated test; it is removed on normal completion. Ports: Auth 9099, Firestore 9095, Functions 5001, mock OSRM 5009. Parallel emulator suites must not share these ports.
 
-## Configure and deploy the environment
+## Run the demonstration locally
 
-Merging the PR does not deploy the backend. Choose the Firebase project and an OSRM-compatible HTTPS endpoint whose usage terms/capacity fit the demonstration. The server requires `OSRM_BASE_URL`; there is no implicit public routing fallback for the callable. Keep credentials out of endpoint URLs. HTTP is accepted only for loopback mock routing in the Functions emulator.
+The demonstration uses Auth, Firestore and Functions emulators on the Mac, under `demo-seawolf-rides`, with public OSRM road estimates. It requires no billing account, Blaze upgrade, cloud Functions deployment or cloud index readiness. Follow [the local launch, persistence, device walkthrough and recovery guide](local-m3-demo.md). Its dedicated `firebase.demo.json` binds the three app-facing services to LAN interfaces; `firebase.json` remains loopback-only for automated tests.
 
-`functions/.env.example` documents the parameter. Configure it through Firebase deployment prompts or an ignored project-specific environment file. Set the existing six public Firebase values in `mobile/.env`; set `EXPO_PUBLIC_OSRM_BASE_URL` for the optional public-point map preview. Administrative credentials and private routing secrets never belong in `EXPO_PUBLIC_*` values. Cloud deployment requires the Firebase project's billing and deployment permissions to be configured.
+The local launcher supplies the OSRM endpoint through an ignored emulator environment file. The mobile launcher supplies demo Firebase values and the Mac LAN address to all three SDK services without changing existing cloud `.env` files. Both clients must share that project/host. A mirrored iPhone still needs the Mac LAN address; localhost on the phone cannot reach the Mac. Auth/Firestore export/import preserves accounts and saved commutes across graceful restarts. No real cloud credentials are necessary.
 
-From the repository root, after reviewing the target project:
-
-```sh
-npm ci --prefix functions
-npx --yes firebase-tools@15.33.0 deploy --project YOUR_PROJECT_ID --only firestore:rules,firestore:indexes,functions:findCompatibleDrivers
-```
-
-Wait for the composite index to finish building before testing candidate discovery. Predeploy compiles the shared domain into `functions/lib/`; that generated bundle is ignored by Git but included in the deployment source. For a local manual UI run, start the three emulators with an ignored `functions/.env.local` containing the intended router endpoint and set `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST` (for example, `127.0.0.1` for a local iOS simulator or `10.0.2.2` for Android). Emulator connections are development-only. Use the demo project configuration and complete email verification via the Auth emulator's action links.
+See [public OSRM safeguards](public-osrm-demo.md) for provider policy, scheduling and bounded execution. A backend emulator with external OSRM is a live routing integration; the automated fake-router suite is a separate test. Firestore's emulator does not enforce compound indexes, so emulator checks do not validate cloud index deployment.
 
 ## Manual acceptance still required
 
@@ -82,3 +75,5 @@ No device UI smoke test or live OSRM verification is claimed by automated tests.
 The three ZIP snapshots and native Google Navigation dependency/plugin/screens were removed. Their original content remains in PR #12's Git history. Existing map/routing helpers, regression tests and multi-rider work remain available. Simulations are explicitly labeled development-only; Rides and Inbox explain that booking/messaging are coming later. They cannot create a real booking through the MVP matching flow.
 
 Next: persisted requests, participant authorization, transactional seat accounting and cancellation, messaging/history, multi-rider insertion/waiting semantics, and return trips. Navigation, tracking and payments remain later work.
+
+The public demo profile caps candidate work, caches routes and coordinates all matching/preview traffic across invocations. See [the scheduling and crash-recovery contract](public-osrm-demo.md).
