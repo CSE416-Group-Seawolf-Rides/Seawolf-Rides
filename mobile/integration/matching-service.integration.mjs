@@ -28,6 +28,7 @@ const clients = [];
 let server;
 let providerFails = false;
 let providerCalls = 0;
+let providerPause = Promise.resolve();
 const providerTimes = [];
 // Every participant and setup is persisted through real SDK calls. Only road estimates are mocked.
 const future = Date.now() / 1000 + 86400;
@@ -140,10 +141,11 @@ async function saveSetup(client, mode) {
   return setup;
 }
 before(async () => {
-  server = createServer((request, response) => {
+  server = createServer(async (request, response) => {
     assert.match(request.headers['user-agent'] ?? '', /SeawolfRides-M3-Demo/);
     providerCalls++;
     providerTimes.push(Date.now());
+    await providerPause;
     response.setHeader('Content-Type', 'application/json');
     if (providerFails) {
       response.statusCode = 503;
@@ -207,19 +209,28 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
     revision: riderSetup.revision,
     direction: 'TO_CAMPUS',
   };
+  let unblockProvider;
+  // Keep the first uncached request in flight so worker startup cannot erase the overlap.
+  providerPause = new Promise((resolve) => {
+    unblockProvider = resolve;
+  });
   const pending = rider.call(request);
   // A second authenticated account uses a separate SDK client while the first search routes.
   for (let attempt = 0; attempt < 500 && providerCalls === 0; attempt++)
     await new Promise((resolve) => setTimeout(resolve, 20));
   assert.ok(providerCalls > 0, 'first search reached the fake provider');
-  await Promise.all([
-    assert.rejects(driver.rawCall(request), {
-      code: 'functions/resource-exhausted',
-    }),
-    assert.rejects(rider.rawCall({ action: 'PREVIEW', revision: 'v1' }), {
-      code: 'functions/resource-exhausted',
-    }),
-  ]);
+  try {
+    await Promise.all([
+      assert.rejects(driver.rawCall(request), {
+        code: 'functions/resource-exhausted',
+      }),
+      assert.rejects(rider.rawCall({ action: 'PREVIEW', revision: 'v1' }), {
+        code: 'functions/resource-exhausted',
+      }),
+    ]);
+  } finally {
+    unblockProvider();
+  }
   let result = (await pending).data;
   assert.ok(result.recommendations.length > 0, JSON.stringify({ result, providerCalls }));
   assert.deepEqual(
