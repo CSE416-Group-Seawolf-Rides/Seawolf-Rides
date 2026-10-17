@@ -2,6 +2,7 @@ import { Link, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
+import { sendRideRequest, useRideRequests } from './rideRequestClient';
 import { AppButton } from '../components/AppButton';
 import { Card } from '../components/Card';
 import { Screen } from '../components/Screen';
@@ -99,6 +100,8 @@ function formFrom(setup: MatchingSetup): Form {
 }
 function MatchingContent({ initialDate }: { initialDate?: string }) {
   const { user, commute, profile, retry } = useSession();
+  const requests = useRideRequests(user?.id);
+  const [requesting, setRequesting] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(blank);
   const formRef = useRef<Form>(blank);
   const pendingForm = useRef<string | null>(null);
@@ -456,6 +459,14 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
           </Card>
         </>
       )}
+      {requests.error && (
+        <>
+          <Text accessibilityLiveRegion="polite">
+            Could not load your request statuses: {requests.error}
+          </Text>
+          <AppButton label="Reload request statuses" onPress={requests.retry} />
+        </>
+      )}
       {error && (
         <View style={{ gap: spacing.sm }}>
           <Text accessibilityLiveRegion="polite" style={styles.error}>
@@ -515,6 +526,65 @@ function MatchingContent({ initialDate }: { initialDate?: string }) {
               {item.explanations.map((explanation, i) => (
                 <Text key={i}>{explanation}</Text>
               ))}
+              <Text>Recommendation only. Sending a request does not reserve seats.</Text>
+              {requests.items.some(
+                (r) => r.driverId === item.driverId && r.localDate === result.localDate,
+              ) ? (
+                <>
+                  <Text accessibilityLiveRegion="polite">
+                    Request status:{' '}
+                    {
+                      requests.items.find(
+                        (r) => r.driverId === item.driverId && r.localDate === result.localDate,
+                      )!.status
+                    }
+                  </Text>
+                  <AppButton
+                    label="View request in Rides"
+                    onPress={() => router.navigate('/rides')}
+                  />
+                </>
+              ) : (
+                <AppButton
+                  label={
+                    requesting === item.driverId ? 'Sending request…' : 'Request this dated ride'
+                  }
+                  disabled={
+                    requesting !== null ||
+                    dirty ||
+                    !requests.loaded ||
+                    !!requests.error ||
+                    saved?.revision !== result.riderRevision
+                  }
+                  onPress={() => {
+                    const version = generation.current;
+                    setRequesting(item.driverId);
+                    setError(null);
+                    void sendRideRequest({
+                      driverId: item.driverId,
+                      localDate: result.localDate,
+                      direction: 'TO_CAMPUS',
+                      riderRevision: result.riderRevision,
+                      driverRevision: item.inputRevision,
+                    })
+                      .then((response) => {
+                        if (version === generation.current)
+                          setNotice(
+                            `Request ${response.status.toLowerCase()}. Open Rides to see the shared status.`,
+                          );
+                      })
+                      .catch((caught) => {
+                        if (version === generation.current)
+                          setError(
+                            caught instanceof Error
+                              ? caught.message
+                              : 'Could not send request. Retry.',
+                          );
+                      })
+                      .finally(() => setRequesting(null));
+                  }}
+                />
+              )}
             </Card>
           ))}
           <Text>

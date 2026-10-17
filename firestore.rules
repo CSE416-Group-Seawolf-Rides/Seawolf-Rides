@@ -122,6 +122,13 @@ service cloud.firestore {
         && request.resource.data.revision != resource.data.revision;
     }
 
+    // Status and reservation writes are server-only. Queries must constrain participantIds.
+    match /rideRequests/{requestId} {
+      allow read: if isVerifiedStonyBrookUser()
+        && request.auth.uid in resource.data.participantIds;
+      allow write: if false;
+    }
+
     // Temporary M2 heartbeat. It remains read-only and exposes no user document.
     match /commutes/{commuteId} {
       allow read: if commuteId == 'sample-commute-001';

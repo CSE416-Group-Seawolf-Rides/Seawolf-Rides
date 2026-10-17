@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import {
   createContext,
   PropsWithChildren,
@@ -28,7 +27,6 @@ import {
 } from './rideModel';
 import {
   createDatedOutgoingRequest,
-  transitionDatedOutgoingRequest,
   transitionIncomingRequest,
   type RequestTransitionCode,
 } from './requestTransitions';
@@ -60,21 +58,18 @@ export interface RequestResponseResult {
 
 const RidesContext = createContext<Rides | null>(null);
 
-// Demo only: drivers "respond" a few seconds after a request so the whole
-// request → confirmed loop can be tried on one phone.
-const DEMO_DRIVER_RESPONSE_MS = 5000;
-
-// Frontend-only M2 state. Lives inside the signed-in tabs, so sign-out clears it.
+// Legacy development-screen state only. Real requests use the backend and RideRequestsScreen.
+// No automatic simulated driver responses.
 export function RidesProvider({ children }: PropsWithChildren) {
   const { user, commute } = useSession();
   const [outgoing, setOutgoing] = useState<OutgoingRequest[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [driverOccurrences, setDriverOccurrences] = useState<DriverOccurrenceOverride[]>([]);
+  const [reconciledCommute, setReconciledCommute] = useState(commute);
   const [fridayDriverTest, setFridayDriverTest] = useState<Rides['fridayDriverTest']>({ status: 'IDLE', message: null });
   const [fridayAcceptedPlan, setFridayAcceptedPlan] = useState<GroupRoutePlanV1 | null>(null);
   const routeAdapter = useMemo(() => createOsrmRoutingAdapter(), []);
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const commuteRef = useRef(commute);
   const outgoingRef = useRef(outgoing);
   const incomingRef = useRef(incoming);
@@ -107,31 +102,20 @@ export function RidesProvider({ children }: PropsWithChildren) {
   }, [driverOccurrences]);
 
   useEffect(() => {
-    const pending = timers.current;
     return () => {
-      pending.forEach((timer) => clearTimeout(timer));
       fridayLoadController.current?.abort();
     };
   }, []);
 
-  useEffect(() => {
-    if (!commute) {
-      return;
+  // Reconcile legacy development state before rendering a changed commute, without an effect cascade.
+  if (commute !== reconciledCommute) {
+    setReconciledCommute(commute);
+    if (commute) {
+      setOutgoing((current) => reconcileRideState(commute, current, []).outgoing);
+      setIncoming((current) => reconcileRideState(commute, [], current, driverOccurrences).incoming);
+      setSkipped((current) => reconcileSkippedDays(commute, current));
     }
-    setOutgoing((current) => {
-      const next = reconcileRideState(commute, current, []).outgoing;
-      const keptIds = new Set(next.map((request) => request.id));
-      current
-        .filter((request) => !keptIds.has(request.id))
-        .forEach((request) => {
-          clearTimeout(timers.current.get(request.id));
-          timers.current.delete(request.id);
-        });
-      return next;
-    });
-    setIncoming((current) => reconcileRideState(commute, [], current, driverOccurrencesRef.current).incoming);
-    setSkipped((current) => reconcileSkippedDays(commute, current));
-  }, [commute]);
+  }
 
   const rides = useMemo<Rides>(
     () => ({
@@ -159,37 +143,6 @@ export function RidesProvider({ children }: PropsWithChildren) {
           ...current,
           { id, offerId, days: allowedDays, status: 'pending' },
         ]);
-        timers.current.set(
-          id,
-          setTimeout(() => {
-            timers.current.delete(id);
-            const currentCommute = commuteRef.current;
-            const currentDays =
-              outgoingRef.current.find((request) => request.id === id)?.days ?? [];
-            const hasDrivingConflict =
-              currentCommute !== null &&
-              currentDays.some((day) =>
-                incomingRef.current.some(
-                  (request) =>
-                    request.status === 'accepted' &&
-                    request.days.includes(day) &&
-                    sharedDrivingDays(currentCommute, request).includes(day),
-                ),
-              );
-            setOutgoing((current) =>
-              current.map((request) =>
-                request.id === id && request.status === 'pending'
-                  ? { ...request, status: hasDrivingConflict ? 'declined' : 'accepted' }
-                  : request,
-              ),
-            );
-            Haptics.notificationAsync(
-              hasDrivingConflict
-                ? Haptics.NotificationFeedbackType.Warning
-                : Haptics.NotificationFeedbackType.Success,
-            );
-          }, DEMO_DRIVER_RESPONSE_MS),
-        );
       },
       sendDatedRequest: (proposal) => {
         const nowEpochSeconds = Math.floor(Date.now() / 1000);
@@ -208,42 +161,14 @@ export function RidesProvider({ children }: PropsWithChildren) {
         const next = [...outgoingRef.current, request];
         outgoingRef.current = next;
         setOutgoing(next);
-        timers.current.set(id, setTimeout(() => {
-          timers.current.delete(id);
-          const transition = transitionDatedOutgoingRequest({
-            requests: outgoingRef.current,
-            requestId: id,
-            status: 'accepted',
-            offers: driverOfferFixtures,
-            nowEpochSeconds: Math.floor(Date.now() / 1000),
-            riderCommute: commuteRef.current,
-            incoming: incomingRef.current,
-            skippedDates: skippedRef.current,
-          });
-          if (transition.ok) {
-            outgoingRef.current = transition.requests;
-            setOutgoing(transition.requests);
-          }
-          Haptics.notificationAsync(transition.ok ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning);
-        }, DEMO_DRIVER_RESPONSE_MS));
         return 'CREATED';
       },
       // Withdraws every request with this driver (a pending ask or the whole carpool).
       cancelRequest: (offerId) => {
-        setOutgoing((current) => {
-          current
-            .filter((request) => request.offerId === offerId)
-            .forEach((request) => {
-              clearTimeout(timers.current.get(request.id));
-              timers.current.delete(request.id);
-            });
-          return current.filter((request) => request.offerId !== offerId);
-        });
+        setOutgoing((current) => current.filter((request) => request.offerId !== offerId));
       },
       // Withdraws one pending ask, leaving other days with the same driver untouched.
       withdrawRequest: (requestId) => {
-        clearTimeout(timers.current.get(requestId));
-        timers.current.delete(requestId);
         setOutgoing((current) => current.filter((request) => request.id !== requestId));
       },
       respondToRequest: async (requestId, status) => {
