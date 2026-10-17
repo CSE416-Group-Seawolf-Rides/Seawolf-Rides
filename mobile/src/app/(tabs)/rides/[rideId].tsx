@@ -1,3 +1,4 @@
+import { DevelopmentOnly } from '../../../mvp/DevelopmentOnly';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 
 import { useSession } from '../../../auth/SessionProvider';
@@ -11,21 +12,24 @@ import {
 import { useRides } from '../../../rides/RidesProvider';
 import { useHomeClock } from '../../../rides/useHomeClock';
 import { TripDetailScreen } from '../../../screens/TripDetailScreen';
+import { participantIdForOffer } from '../../../profiles/publicProfiles';
 
 // A trip's id is its local date, e.g. /rides/2026-09-28.
-export default function TripDetailRoute() {
+function TripDetailRoute() {
   const { rideId } = useLocalSearchParams<{ rideId: string }>();
   const { commute } = useSession();
-  const { outgoing, incoming, skipped, skipTrip, undoSkip, cancelRequest } = useRides();
+  const { outgoing, incoming, skipped, skipTrip, undoSkip, cancelRequest, driverOccurrences } = useRides();
   const { now } = useHomeClock();
 
   const trip = getUpcoming(
     commute,
     outgoing,
-    incomingForCommute(commute, incoming, outgoing).map((view) => view.request),
+    incomingForCommute(commute, incoming, outgoing, driverOccurrences).map((view) => view.request),
     driverOfferFixtures,
     now,
     skipped,
+    14,
+    driverOccurrences,
   )
     .filter(isTrip)
     .find((candidate) => candidate.id === rideId);
@@ -42,7 +46,8 @@ export default function TripDetailRoute() {
       bookedDays={(offer && requestSummary(outgoing, offer.id)?.acceptedDays) || []}
       onBack={() => router.back()}
       onMessage={chatId ? () => router.navigate(`/inbox/${chatId}`, { withAnchor: true }) : undefined}
-      onOpenDriver={() => offer && router.navigate(`/home/driver/${offer.id}`, { withAnchor: true })}
+      onOpenDriver={() => offer && router.push({ pathname: '/profile/[participantId]', params: { participantId: participantIdForOffer(offer), name: offer.driverName } })}
+      onOpenRider={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })}
       onSkip={() => skipTrip(trip.id)}
       onStopRiding={() => {
         if (offer) {
@@ -51,7 +56,10 @@ export default function TripDetailRoute() {
         }
       }}
       onUndoSkip={() => undoSkip(trip.id)}
+      onViewPickupRoute={((trip.kind === 'drive' && trip.arriveBy !== null) || trip.proposal) ? () => router.push({ pathname: '/map', params: { tripId: trip.id, date: trip.id, direction: 'TO_CAMPUS' } }) : undefined}
       trip={trip}
     />
   );
 }
+
+export default function DevelopmentRoute() { return <DevelopmentOnly><TripDetailRoute /></DevelopmentOnly>; }

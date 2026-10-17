@@ -10,18 +10,22 @@ import {
   View,
 } from 'react-native';
 
+import { Avatar } from '../components/Avatar';
+import { resolvePublicProfile } from '../profiles/publicProfiles';
 import { PrototypeChatMessage, PrototypeConversation } from '../prototypeData/types';
 import { colors, radii, spacing } from '../theme';
 
 interface ConversationScreenProps {
   conversation: PrototypeConversation;
   onBack: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
 }
 
-export function ConversationScreen({ conversation, onBack }: ConversationScreenProps) {
+export function ConversationScreen({ conversation, onBack, onOpenProfile }: ConversationScreenProps) {
   const [draft, setDraft] = useState('');
   const [localMessages, setLocalMessages] = useState<PrototypeChatMessage[]>([]);
   const messages = [...conversation.messages, ...localMessages];
+  const profile = resolvePublicProfile(conversation.participantId, conversation.preview.participantName);
 
   function sendLocalMessage() {
     const text = draft.trim();
@@ -58,10 +62,13 @@ export function ConversationScreen({ conversation, onBack }: ConversationScreenP
         >
           <Text style={styles.backText}>‹ Back</Text>
         </Pressable>
-        <View style={styles.headerCopy}>
-          <Text style={styles.name}>{conversation.preview.participantName}</Text>
-          <Text style={styles.commute}>{conversation.preview.commuteLabel}</Text>
-        </View>
+        <Pressable accessibilityLabel={`View ${conversation.preview.participantName}'s profile`} accessibilityRole="button" onPress={() => onOpenProfile(conversation.participantId, conversation.preview.participantName)} style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}>
+          <Avatar name={profile.displayName} participantId={profile.participantId} sampleAvatar={profile.sampleAvatar} size={40} />
+          <View style={styles.headerCopy}>
+            <Text style={styles.name}>{conversation.preview.participantName}</Text>
+            <Text style={styles.commute}>{conversation.preview.commuteLabel}</Text>
+          </View>
+        </Pressable>
       </View>
 
       <ScrollView
@@ -149,8 +156,8 @@ const styles = StyleSheet.create({
   },
   headerCopy: {
     flex: 1,
-    paddingRight: 60,
   },
+  profileButton: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', paddingRight: 60 },
   name: {
     color: colors.text,
     fontSize: 18,

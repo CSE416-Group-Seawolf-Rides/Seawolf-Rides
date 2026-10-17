@@ -10,15 +10,18 @@ import { colors, spacing } from '../theme';
 
 interface ReviewRequestsScreenProps {
   pending: IncomingRequestView[];
-  onRespond: (requestId: string, status: 'accepted' | 'declined') => void;
+  onRespond: (requestId: string, status: 'accepted' | 'declined') => Promise<{ ok: boolean; message: string }>;
   onDone: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
 }
 
 // One request at a time with its full context, so each yes/no gets real attention
 // and there's never a pile of cards to scroll through.
-export function ReviewRequestsScreen({ pending, onRespond, onDone }: ReviewRequestsScreenProps) {
+export function ReviewRequestsScreen({ pending, onRespond, onDone, onOpenProfile }: ReviewRequestsScreenProps) {
   const [deferred, setDeferred] = useState<string[]>([]);
   const [total] = useState(pending.length);
+  const [checkingRequestId, setCheckingRequestId] = useState<string | null>(null);
+  const [responseMessage, setResponseMessage] = useState<string | null>(null);
   const queue = [
     ...pending.filter((view) => !deferred.includes(view.request.id)),
     ...pending.filter((view) => deferred.includes(view.request.id)),
@@ -47,14 +50,17 @@ export function ReviewRequestsScreen({ pending, onRespond, onDone }: ReviewReque
       title="Ride requests"
     >
       <IncomingRequestCard
+        checking={checkingRequestId === current.request.id}
         conflictDay={current.conflictDay}
         fullDay={current.fullDay}
         key={current.request.id}
-        onAccept={() => onRespond(current.request.id, 'accepted')}
-        onDecline={() => onRespond(current.request.id, 'declined')}
+        onAccept={() => void respond(current.request.id, 'accepted')}
+        onDecline={() => void respond(current.request.id, 'declined')}
+        onOpenProfile={onOpenProfile}
         request={current.request}
         sharedDays={current.sharedDays}
       />
+      {responseMessage && <Text style={styles.response}>{responseMessage}</Text>}
       {queue.length > 1 && (
         <Pressable
           accessibilityRole="button"
@@ -72,6 +78,20 @@ export function ReviewRequestsScreen({ pending, onRespond, onDone }: ReviewReque
       </Text>
     </Screen>
   );
+
+  async function respond(requestId: string, status: 'accepted' | 'declined') {
+    if (checkingRequestId) return;
+    setCheckingRequestId(requestId);
+    setResponseMessage(null);
+    try {
+      const result = await onRespond(requestId, status);
+      if (!result.ok) setResponseMessage(result.message);
+    } catch (error) {
+      setResponseMessage(error instanceof Error ? error.message : 'The request could not be checked. Please retry.');
+    } finally {
+      setCheckingRequestId(null);
+    }
+  }
 }
 
 const styles = StyleSheet.create({
@@ -102,6 +122,12 @@ const styles = StyleSheet.create({
   remaining: {
     color: colors.textMuted,
     fontSize: 13,
+    textAlign: 'center',
+  },
+  response: {
+    color: colors.warning,
+    fontSize: 13,
+    lineHeight: 18,
     textAlign: 'center',
   },
 });

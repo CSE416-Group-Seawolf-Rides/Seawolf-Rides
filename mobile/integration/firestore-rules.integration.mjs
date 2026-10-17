@@ -7,7 +7,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { Timestamp, disableNetwork, doc, enableNetwork, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
+import { Timestamp, disableNetwork, doc, enableNetwork, getDoc, getDocFromCache, serverTimestamp, setDoc } from 'firebase/firestore';
 
 import { buildCommuteSchedule, toPrivacyArea } from '../src/commute/commuteModel.ts';
 import { loadUserData, savePrimaryCommute, saveUserData } from '../src/persistence/userDataRepository.ts';
@@ -235,4 +235,35 @@ test('the M2 sample stays publicly readable while other top-level commutes are d
   );
   assert.equal(sample.exists(), true);
   await assertFails(getDoc(doc(guest, 'commutes/private')));
+});
+
+function matchingSetup(uid = 'wolfie') {
+  return { schemaVersion: 1, ownerId: uid, revision: 'v1', commuteKey: 'saved-commute-key',
+    mode: 'driver', active: true, optIn: true, campusLot: 'tabler', weekdays: ['mon'],
+    pointId: 'stony-brook-station', startWindow: { earliest: 420, latest: 480 },
+    arrivalWindow: { earliest: 480, latest: 540 }, seatsRequested: 1,
+    maxDetourSeconds: 600, maxExtraRideSeconds: 600, accessWalkSeconds: 0, egressWalkSeconds: 0,
+    maxAccessWalkSeconds: 300, maxEgressWalkSeconds: 300, updatedAt: serverTimestamp() };
+}
+test('matching setup is owner-only, campus-verified and survives reload with a new revision', async () => {
+  const owner = authenticatedUser('wolfie'); const other = authenticatedUser('other');
+  const reference = doc(owner, 'matchingSetups/wolfie');
+  await assertSucceeds(setDoc(reference, matchingSetup()));
+  assert.equal((await getDoc(reference)).data().pointId, 'stony-brook-station');
+  await assertFails(getDoc(doc(other, 'matchingSetups/wolfie')));
+  await assertFails(setDoc(doc(other, 'matchingSetups/wolfie'), matchingSetup()));
+  await assertFails(setDoc(reference, { ...matchingSetup(), active: false }));
+  await assertSucceeds(setDoc(reference, { ...matchingSetup(), revision: 'v2', active: false }));
+  assert.equal((await getDoc(reference)).data().active, false);
+  const unverified = authenticatedUser('unverified', { email: 'a@stonybrook.edu', email_verified: false });
+  await assertFails(setDoc(doc(unverified, 'matchingSetups/unverified'), matchingSetup('unverified')));
+});
+test('matching rules reject malformed nested inputs, extra fields and forged ownership', async () => {
+  const owner = authenticatedUser('wolfie');
+  for (const override of [
+    { ownerId: 'other' }, { pointId: 'approximate-area' }, { campusLot: 'other' },
+    { startWindow: { earliest: 500, latest: 400 } }, { arrivalWindow: { earliest: 0, latest: 1440 } },
+    { maxDetourSeconds: -1 }, { maxExtraRideSeconds: 1.5 }, { weekdays: ['mon', 'mon'] },
+    { weekdays: ['not-a-day'] }, { seatsRequested: 7 }, { active: 'true' }, { unexpected: true },
+  ]) await assertFails(setDoc(doc(owner, 'matchingSetups/wolfie'), { ...matchingSetup(), ...override }));
 });

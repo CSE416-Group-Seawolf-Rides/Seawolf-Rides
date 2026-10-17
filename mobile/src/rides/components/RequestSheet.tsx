@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton } from '../../components/AppButton';
 import { formatTime, lotTitle, Weekday, weekdays } from '../../commute/commuteModel';
 import { colors, radii, spacing } from '../../theme';
+import type { DatedRideProposalV1 } from '../datedRideProposal';
 import { DriverOffer } from '../rideModel';
 
 interface RequestSheetProps {
@@ -13,6 +14,7 @@ interface RequestSheetProps {
   sharedDays: Weekday[];
   // Pre-selected days; defaults to every shared day.
   initialDays?: Weekday[];
+  proposal?: DatedRideProposalV1;
   onSend: (days: Weekday[]) => void;
   onClose: () => void;
 }
@@ -22,11 +24,19 @@ export function RequestSheet({
   offer,
   sharedDays,
   initialDays,
+  proposal,
   onSend,
   onClose,
 }: RequestSheetProps) {
   const insets = useSafeAreaInsets();
   const [days, setDays] = useState<Weekday[]>(initialDays ?? sharedDays);
+  const proposalTime = (epoch: number) => new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: '2-digit', timeZone: proposal?.occurrence.timeZone,
+  }).format(new Date(epoch * 1000));
+  const proposalDate = proposal && new Intl.DateTimeFormat('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${proposal.occurrence.localDate}T12:00:00Z`));
 
   function toggle(day: Weekday) {
     Haptics.selectionAsync();
@@ -44,13 +54,24 @@ export function RequestSheet({
           <Text accessibilityRole="header" style={styles.title}>
             Ride with {offer.driverName}
           </Text>
-          <Text style={styles.subtitle}>
-            Pickup ~{formatTime(offer.pickupTime)} · Arrive {formatTime(offer.arriveBy)} at{' '}
-            {lotTitle(offer.campusLot)} ·{' '}
-            {offer.leaveAt === null ? 'No ride home' : `Leave ${formatTime(offer.leaveAt)}`}
-          </Text>
+          {proposal ? (
+            <View style={styles.proposalSummary}>
+              <Text style={styles.proposalLabel}>DATED TO CAMPUS PROPOSAL</Text>
+              <Text style={styles.subtitle}>{proposalDate} · {proposal.occurrence.timeZone}</Text>
+              <Text style={styles.proposalFact}>{proposal.agreed.pickup.label}</Text>
+              <Text style={styles.proposalFact}>{proposal.agreed.requestedSeats} passenger seat{proposal.agreed.requestedSeats === 1 ? '' : 's'} · {proposal.agreed.campusDropoff.label}</Text>
+              <Text style={styles.proposalFact}>Estimated pickup {proposalTime(proposal.routingEstimates.plan.pickup)} · campus {proposalTime(proposal.routingEstimates.plan.vehicleCampusArrival)}</Text>
+              <Text style={styles.proposalNote}>Only this date and TO CAMPUS trip were evaluated. This does not request other weekdays or a return ride.</Text>
+            </View>
+          ) : (
+            <Text style={styles.subtitle}>
+              Pickup ~{formatTime(offer.pickupTime)} · Arrive {formatTime(offer.arriveBy)} at{' '}
+              {lotTitle(offer.campusLot)} ·{' '}
+              {offer.leaveAt === null ? 'No ride home' : `Leave ${formatTime(offer.leaveAt)}`}
+            </Text>
+          )}
 
-          <Text style={styles.label}>Which days?</Text>
+          {!proposal && <><Text style={styles.label}>Which days?</Text>
           <View style={styles.days}>
             {weekdays
               .filter((weekday) => sharedDays.includes(weekday.value))
@@ -71,16 +92,17 @@ export function RequestSheet({
                   </Pressable>
                 );
               })}
-          </View>
+          </View></>}
 
           <Text style={styles.privacy}>
-            {offer.driverName} will see your first name, area, and schedule. The exact pickup spot is
-            shared only after they accept.
+            {proposal
+              ? 'Local prototype: this exact public pickup and dated schedule are included in the request so the driver can accept the evaluated proposal.'
+              : `${offer.driverName} will see your first name, area, and schedule. The exact pickup spot is shared only after they accept.`}
           </Text>
 
           <AppButton
-            disabled={days.length === 0}
-            label={`Send request${days.length > 0 ? ` for ${days.length} day${days.length === 1 ? '' : 's'}` : ''}`}
+            disabled={!proposal && days.length === 0}
+            label={proposal ? 'Send dated request' : `Send request${days.length > 0 ? ` for ${days.length} day${days.length === 1 ? '' : 's'}` : ''}`}
             onPress={() => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               onSend(days);
@@ -127,6 +149,27 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     marginTop: -spacing.sm,
+  },
+  proposalSummary: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  proposalLabel: {
+    color: colors.accentDark,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  proposalFact: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  proposalNote: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   label: {
     color: colors.text,

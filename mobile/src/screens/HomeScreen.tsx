@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '../components/Card';
+import { AppButton } from '../components/AppButton';
 import { Screen } from '../components/Screen';
 import { SetUpCommuteCard } from '../components/SetUpCommuteCard';
 import { CommuteSchedule, Weekday } from '../commute/commuteModel';
@@ -25,9 +26,11 @@ import { colors, radii, spacing } from '../theme';
 // A day in the next week the user rides but has no driver for yet.
 export interface OpenDayView {
   day: Weekday;
+  localDate: string;
   label: string;
   pending: boolean;
   matches: DriverMatch[];
+  requiresEvaluation?: boolean;
 }
 
 interface HomeScreenProps {
@@ -49,8 +52,9 @@ interface HomeScreenProps {
   requestableDaysFor: (offerId: string) => Weekday[];
   onPressDay: (day: Weekday) => void;
   onReviewRequests: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
   onOpenOffer: (offerId: string) => void;
-  onSeeAllDrivers: (day: Weekday) => void;
+  onSeeAllDrivers: (day: Weekday, localDate: string) => void;
   onSendRequest: (offerId: string, days: Weekday[]) => void;
   onOpenTrip?: () => void;
   onMessageTrip?: () => void;
@@ -78,6 +82,7 @@ export function HomeScreen({
   requestableDaysFor,
   onPressDay,
   onReviewRequests,
+  onOpenProfile,
   onOpenOffer,
   onSeeAllDrivers,
   onSendRequest,
@@ -126,6 +131,7 @@ export function HomeScreen({
           <RequestsSummaryCard
             days={requestDays}
             onReview={onReviewRequests}
+            onOpenProfile={onOpenProfile}
             requests={pendingRequests.map((view) => view.request)}
           />
         </View>
@@ -134,7 +140,7 @@ export function HomeScreen({
       {commute && ridesSomeDays && activeDay && (
         <View style={styles.section}>
           <SectionHeader
-            onSeeAll={() => onSeeAllDrivers(activeDay.day)}
+            onSeeAll={() => onSeeAllDrivers(activeDay.day, activeDay.localDate)}
             subtitle={
               openDays.length === 1
                 ? `${activeDay.label} still needs a driver.`
@@ -171,7 +177,13 @@ export function HomeScreen({
               })}
             </ScrollView>
           )}
-          {activeDay.matches.length === 0 ? (
+          {activeDay.requiresEvaluation ? (
+            <Card style={styles.matchingSetupCard}>
+              <Text style={styles.matchingSetupTitle}>Check this dated trip</Text>
+              <Text style={styles.matchingSetupText}>Choose a public meeting point and your schedule flexibility before live road routing compares the synthetic drivers.</Text>
+              <AppButton label={`Find matches for ${activeDay.label}`} onPress={() => onSeeAllDrivers(activeDay.day, activeDay.localDate)} />
+            </Card>
+          ) : activeDay.matches.length === 0 ? (
             <EmptyNote
               text={`No drivers go on ${activeDay.label} yet. New drivers show up here as they join.`}
             />
@@ -181,7 +193,7 @@ export function HomeScreen({
               matches={activeDay.matches}
               onOpen={onOpenOffer}
               onRequest={(match) => setRequesting({ match, day: activeDay.day })}
-              onSeeAll={() => onSeeAllDrivers(activeDay.day)}
+              onSeeAll={() => onSeeAllDrivers(activeDay.day, activeDay.localDate)}
               statusFor={(offerId) => statusFor(offerId, activeDay.day)}
             />
           )}
@@ -387,4 +399,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     textAlign: 'center',
   },
+  matchingSetupCard: { gap: spacing.md },
+  matchingSetupTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  matchingSetupText: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
 });

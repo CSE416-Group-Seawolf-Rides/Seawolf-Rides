@@ -1,3 +1,4 @@
+import { DevelopmentOnly } from '../../../mvp/DevelopmentOnly';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 
@@ -6,24 +7,28 @@ import { incomingForCommute } from '../../../rides/rideModel';
 import { useRides } from '../../../rides/RidesProvider';
 import { ReviewRequestsScreen } from '../../../screens/ReviewRequestsScreen';
 
-export default function ReviewRequestsRoute() {
+function ReviewRequestsRoute() {
   const { commute } = useSession();
-  const { outgoing, incoming, respondToRequest } = useRides();
+  const { outgoing, incoming, respondToRequest, driverOccurrences } = useRides();
 
   return (
     <ReviewRequestsScreen
       onDone={() => router.back()}
-      onRespond={(requestId, status) => {
-        Haptics.notificationAsync(
-          status === 'accepted'
+      onOpenProfile={(participantId, name) => router.push({ pathname: '/profile/[participantId]', params: { participantId, name } })}
+      onRespond={async (requestId, status) => {
+        const result = await respondToRequest(requestId, status);
+        await Haptics.notificationAsync(
+          result.ok
             ? Haptics.NotificationFeedbackType.Success
             : Haptics.NotificationFeedbackType.Warning,
         );
-        respondToRequest(requestId, status);
+        return result;
       }}
-      pending={incomingForCommute(commute, incoming, outgoing).filter(
+      pending={incomingForCommute(commute, incoming, outgoing, driverOccurrences).filter(
         (view) => view.request.status === 'pending',
       )}
     />
   );
 }
+
+export default function DevelopmentRoute() { return <DevelopmentOnly><ReviewRequestsRoute /></DevelopmentOnly>; }

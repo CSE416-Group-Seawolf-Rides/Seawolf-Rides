@@ -16,7 +16,9 @@ export interface PrototypeChatMessage {
 export interface PrototypeConversation {
   preview: ChatPreview;
   messages: PrototypeChatMessage[];
+  /** Stable identity of the other participant; distinct from chat/request/offer IDs. */
+  participantId: string;
   // The match this chat belongs to. Chats with no match are the demo user's history.
   offerId?: string;
-  riderId?: string;
+  requestId?: string;
 }

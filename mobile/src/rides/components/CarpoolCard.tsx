@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../../components/Avatar';
 import { describeWeekdays, formatTime } from '../../commute/commuteModel';
+import { participantIdForOffer, participantIdForRequest, resolvePublicProfile } from '../../profiles/publicProfiles';
 import { colors, radii, spacing } from '../../theme';
 import { Carpool } from '../rideModel';
 import { StatusPill } from './StatusPill';
@@ -18,6 +19,8 @@ interface CarpoolCardProps {
 export function CarpoolCard({ carpool, onOpen, onWithdraw }: CarpoolCardProps) {
   const driving = carpool.kind === 'driver';
   const name = driving ? carpool.offer.driverName : carpool.rider.riderName;
+  const participantId = driving ? participantIdForOffer(carpool.offer) : participantIdForRequest(carpool.rider);
+  const profile = resolvePublicProfile(participantId, name);
   const waitingOnly = driving && carpool.days.length === 0;
 
   let relation: string;
@@ -43,7 +46,7 @@ export function CarpoolCard({ carpool, onOpen, onWithdraw }: CarpoolCardProps) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
-        <Avatar name={name} />
+        <Avatar name={name} participantId={participantId} sampleAvatar={profile.sampleAvatar} />
         <View style={styles.copy}>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{name}</Text>

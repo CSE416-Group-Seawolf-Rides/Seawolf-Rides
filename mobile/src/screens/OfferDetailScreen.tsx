@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '../components/AppButton';
 import { Avatar } from '../components/Avatar';
@@ -13,6 +13,7 @@ import { PickupSpotCard } from '../rides/components/PickupSpotCard';
 import { RequestSheet } from '../rides/components/RequestSheet';
 import { StatusPill } from '../rides/components/StatusPill';
 import { describeArrivalFit, DriverMatch, RequestStatus } from '../rides/rideModel';
+import { participantIdForOffer, resolvePublicProfile } from '../profiles/publicProfiles';
 import { colors, spacing } from '../theme';
 
 interface OfferDetailScreenProps {
@@ -29,6 +30,7 @@ interface OfferDetailScreenProps {
   onCancelRequest: () => void;
   onMessage?: () => void;
   onSetUpCommute: () => void;
+  onOpenProfile: (participantId: string, displayName: string) => void;
 }
 
 export function OfferDetailScreen({
@@ -44,21 +46,26 @@ export function OfferDetailScreen({
   onCancelRequest,
   onMessage,
   onSetUpCommute,
+  onOpenProfile,
 }: OfferDetailScreenProps) {
   const [requesting, setRequesting] = useState(false);
   const [confirmingStop, setConfirmingStop] = useState(false);
   const { offer, sharedDays, arrivalGap } = match;
   const fit = describeArrivalFit(arrivalGap);
+  const participantId = participantIdForOffer(offer);
+  const profile = resolvePublicProfile(participantId, offer.driverName);
 
   return (
     <Screen onBack={onBack} title={offer.driverName}>
+      <Pressable accessibilityLabel={`View ${offer.driverName}'s public profile`} accessibilityRole="button" onPress={() => onOpenProfile(participantId, offer.driverName)} style={({ pressed }) => pressed && styles.pressed}>
       <Card style={styles.profile}>
-        <Avatar name={offer.driverName} size={64} />
+        <Avatar name={offer.driverName} participantId={participantId} sampleAvatar={profile.sampleAvatar} size={64} />
         <View style={styles.profileCopy}>
           <Text style={styles.area}>{offer.startAreaLabel}</Text>
           <Text style={styles.verified}>Stony Brook verified · {offer.vehicle}</Text>
         </View>
       </Card>
+      </Pressable>
 
       <Card style={styles.details}>
         <Text style={styles.cardTitle}>Their commute</Text>
@@ -185,6 +192,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
   },
+  pressed: { opacity: 0.62 },
   area: {
     color: colors.text,
     fontSize: 18,

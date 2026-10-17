@@ -5,6 +5,7 @@ import type { DriverOffer, PastTrip, RiderRequest } from './rideModel';
 export const driverOfferFixtures: DriverOffer[] = [
   {
     id: 'alex',
+    participantId: 'demo-driver-alex',
     driverName: 'Alex',
     startAreaLabel: 'Lake Grove area',
     campusLot: 'tabler',
@@ -19,6 +20,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'sarah',
+    participantId: 'demo-driver-sarah',
     driverName: 'Sarah',
     startAreaLabel: 'Centereach area',
     campusLot: 'westSide',
@@ -33,6 +35,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'priya',
+    participantId: 'demo-driver-priya',
     driverName: 'Priya',
     startAreaLabel: 'Selden area',
     campusLot: 'roth',
@@ -46,6 +49,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'marcus',
+    participantId: 'demo-driver-marcus',
     driverName: 'Marcus',
     startAreaLabel: 'Port Jefferson area',
     campusLot: 'lot40',
@@ -59,6 +63,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'jenna',
+    participantId: 'demo-driver-jenna',
     driverName: 'Jenna',
     startAreaLabel: 'Smithtown area',
     campusLot: 'eastSide',
@@ -72,6 +77,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'dan',
+    participantId: 'demo-driver-dan',
     driverName: 'Dan',
     startAreaLabel: 'Hauppauge area',
     campusLot: 'tabler',
@@ -85,6 +91,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'omar',
+    participantId: 'demo-driver-omar',
     driverName: 'Omar',
     startAreaLabel: 'Ronkonkoma area',
     campusLot: 'lot40',
@@ -98,6 +105,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'lena',
+    participantId: 'demo-driver-lena',
     driverName: 'Lena',
     startAreaLabel: 'Setauket area',
     campusLot: 'eastSide',
@@ -111,6 +119,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'jordan',
+    participantId: 'demo-driver-jordan',
     driverName: 'Jordan',
     startAreaLabel: 'Coram area',
     campusLot: 'westSide',
@@ -124,6 +133,7 @@ export const driverOfferFixtures: DriverOffer[] = [
   },
   {
     id: 'hannah',
+    participantId: 'demo-driver-hannah',
     driverName: 'Hannah',
     startAreaLabel: 'Commack area',
     campusLot: 'roth',
@@ -141,6 +151,7 @@ export const driverOfferFixtures: DriverOffer[] = [
 export const riderRequestFixtures: RiderRequest[] = [
   {
     id: 'dev',
+    participantId: 'demo-rider-dev',
     riderName: 'Dev',
     startAreaLabel: 'Centereach area',
     campusLot: 'tabler',
@@ -153,6 +164,7 @@ export const riderRequestFixtures: RiderRequest[] = [
   },
   {
     id: 'maya',
+    participantId: 'demo-rider-maya',
     riderName: 'Maya',
     startAreaLabel: 'Lake Ronkonkoma area',
     campusLot: 'westSide',
@@ -161,9 +173,19 @@ export const riderRequestFixtures: RiderRequest[] = [
     leaveAt: 16 * 60,
     addedMinutes: 11,
     pickupSpot: 'Ronkonkoma LIRR station, north lot',
+    // MTA LIRR GTFS stop 179 (RON), retrieved 2026-10-15. This synthetic
+    // confirmed pin intentionally identifies the station, not an inferred home.
+    confirmedPickup: {
+      coordinate: { latitude: 40.80808613, longitude: -73.10594023 },
+      label: 'Ronkonkoma LIRR station public pickup',
+      fixtureSource: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip',
+    },
+    pickupWindow: { earliest: 8 * 60, latest: 8 * 60 + 35 },
+    pickupServiceSeconds: 2 * 60,
   },
   {
     id: 'chris',
+    participantId: 'demo-rider-chris',
     riderName: 'Chris',
     startAreaLabel: 'Stony Brook area',
     campusLot: 'roth',
@@ -172,9 +194,18 @@ export const riderRequestFixtures: RiderRequest[] = [
     leaveAt: 17 * 60 + 30,
     addedMinutes: 3,
     pickupSpot: 'Stony Brook LIRR station',
+    // MTA LIRR GTFS stop 14 (BK), retrieved 2026-10-15.
+    confirmedPickup: {
+      coordinate: { latitude: 40.92032252, longitude: -73.12854943 },
+      label: 'Stony Brook LIRR station public pickup',
+      fixtureSource: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip',
+    },
+    pickupWindow: { earliest: 8 * 60 + 30, latest: 9 * 60 + 5 },
+    pickupServiceSeconds: 2 * 60,
   },
   {
     id: 'sam',
+    participantId: 'demo-rider-sam',
     riderName: 'Sam',
     startAreaLabel: 'Mount Sinai area',
     campusLot: 'eastSide',
@@ -186,6 +217,7 @@ export const riderRequestFixtures: RiderRequest[] = [
   },
   {
     id: 'nia',
+    participantId: 'demo-rider-nia',
     riderName: 'Nia',
     startAreaLabel: 'Holbrook area',
     campusLot: 'tabler',
@@ -194,6 +226,16 @@ export const riderRequestFixtures: RiderRequest[] = [
     leaveAt: 16 * 60 + 30,
     addedMinutes: 14,
     pickupSpot: 'Holbrook Country Club Plaza',
+    // Explicit synthetic pin at the mapped Holbrook Country Club building
+    // centroid (OpenStreetMap way 468631235), retrieved through Photon
+    // 2026-10-15. It is not represented as a guessed plaza entrance.
+    confirmedPickup: {
+      coordinate: { latitude: 40.7980319, longitude: -73.0657497 },
+      label: 'Holbrook Country Club mapped building pickup pin',
+      fixtureSource: 'https://www.openstreetmap.org/way/468631235',
+    },
+    pickupWindow: { earliest: 8 * 60 + 5, latest: 8 * 60 + 40 },
+    pickupServiceSeconds: 2 * 60,
     note: 'Happy to chip in for gas.',
   },
 ];
