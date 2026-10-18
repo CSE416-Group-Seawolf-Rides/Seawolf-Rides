@@ -277,7 +277,7 @@ export function CommuteCalendarSheet({
                     </Text>
                   )}
                   {day?.arriveBy != null && (
-                    <Text>Arrive around {formatTime(day.arriveBy)} · New York time</Text>
+                    <Text>Arrive by {formatTime(day.arriveBy)} · New York time</Text>
                   )}
                   {!commute.days.some((d) => d.day === weekdayForDate(date)) && (
                     <Text style={styles.muted}>

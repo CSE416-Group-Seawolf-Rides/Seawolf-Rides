@@ -10,8 +10,8 @@ test('weekly suggestions use the next future occurrence of each weekday in New Y
   assert.equal(nextForecastDate('wed', now), '2026-10-21');
 });
 test('morning and evening suggestions use their own forecast durations, retaining editable minute values', () => {
-  assert.equal(suggestedStartMinute(540, 45 * 60), 495);
-  assert.equal(suggestedStartMinute(21 * 60 + 15, 25 * 60), 20 * 60 + 50);
+  assert.equal(suggestedStartMinute(540, 45 * 60), 492);
+  assert.equal(suggestedStartMinute(21 * 60 + 15, 25 * 60), 20 * 60 + 47);
   assert.equal(
     suggestedStartMinute(10, 30 * 60),
     null,

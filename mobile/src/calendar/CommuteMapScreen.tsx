@@ -8,7 +8,7 @@ import { useSession } from '../auth/SessionProvider';
 import { useRideRequests } from '../mvp/rideRequestClient';
 import { useAcceptedPickup } from './acceptedPickups';
 import { localDateAt, CAMPUS_POINTS } from '../mvp/settings';
-import { METERS_PER_MILE } from '../commute/commuteModel';
+import { METERS_PER_MILE, riderDropoffTitle } from '../commute/commuteModel';
 import { AppButton } from '../components/AppButton';
 import { useHomeClock } from '../rides/useHomeClock';
 import { colors, spacing, radii } from '../theme';
@@ -31,9 +31,11 @@ export function CommuteMapScreen() {
       </View>
     );
   const campus = CAMPUS_POINTS.find((p) => p.id === commute.campusLot);
+  const campusCoordinate = pickup.pickup?.campus ?? campus?.coordinate;
+  const campusLabel = ride?.campusLabel ?? campus?.label;
   const points = [
     commute.startPoint ?? commute.startArea.center,
-    ...(campus ? [campus.coordinate] : []),
+    ...(campusCoordinate ? [campusCoordinate] : []),
     ...(pickup.pickup ? [pickup.pickup.driverStart, pickup.pickup.riderPickup] : []),
   ];
   const latitudes = points.map((p) => p.latitude),
@@ -68,8 +70,8 @@ export function CommuteMapScreen() {
             pinColor={colors.accent}
           />
         )}
-        {campus && (
-          <Marker coordinate={campus.coordinate} title={campus.label} pinColor={colors.success} />
+        {campusCoordinate && (
+          <Marker coordinate={campusCoordinate} title={campusLabel ?? 'Campus'} pinColor={colors.success} />
         )}
         {pickup.pickup && (
           <>
@@ -92,7 +94,7 @@ export function CommuteMapScreen() {
         <Text style={styles.title}>Your commute</Text>
         {selectedDate && <Text>{selectedDate}</Text>}
         <Text>
-          {commute.startArea.label} → {campus?.label ?? 'Campus'}
+          {commute.startArea.label} → {campusLabel ?? (profile?.role === 'rider' ? riderDropoffTitle(commute) : 'Campus')}
         </Text>
         <Text style={styles.muted}>
           The shaded area is what others see before acceptance. Your exact pin is private.

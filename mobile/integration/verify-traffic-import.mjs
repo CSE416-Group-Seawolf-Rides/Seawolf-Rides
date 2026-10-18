@@ -18,6 +18,10 @@ try {
   assert.equal(chats.size, 1);
   const chatId = chats.docs[0].id;
   assert.equal(chats.docs[0].data().messageCount, 3);
+  assert.equal((await db.doc('users/dropoff-rider/commutes/primary').get()).data().riderDropoffPreference, 'any');
+  const dropoffRide = await db.collection('rideRequests').where('riderId', '==', 'dropoff-rider').get();
+  assert.equal(dropoffRide.docs[0].data().campusLabel, 'West Side');
+  assert.equal(dropoffRide.docs[0].data().status, 'ACCEPTED');
   const rides = await db.collection('rideRequests').where('riderId', '==', 'traffic-rider').get();
   assert.equal(rides.size, 1);
   const ride = rides.docs[0];

@@ -71,6 +71,7 @@ service cloud.firestore {
           'startPoint',
           'discoveryEnabled',
           'campusLot',
+          'riderDropoffPreference',
           'days',
           'seats',
           'updatedAt'
@@ -86,6 +87,7 @@ service cloud.firestore {
           && request.resource.data.startPoint.latitude >= -90 && request.resource.data.startPoint.latitude <= 90
           && request.resource.data.startPoint.longitude is number
           && request.resource.data.startPoint.longitude >= -180 && request.resource.data.startPoint.longitude <= 180))
+        && (!request.resource.data.keys().hasAny(['riderDropoffPreference']) || request.resource.data.riderDropoffPreference == 'any')
         && validPrivacyArea()
         && request.resource.data.campusLot in [
           'westSide',

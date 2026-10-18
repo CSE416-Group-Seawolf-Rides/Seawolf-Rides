@@ -28,8 +28,10 @@ function router(missingEvidence = false) {
     calls,
     timeDependent: true,
     async route(points, options) {
-      calls.push({ points, departure: options.departureEpochSeconds });
-      const duration = calls.length === 1 ? 1800 : calls.length === 2 ? 600 : 1500;
+            const arrival = options.arrivalEpochSeconds;
+      calls.push({ points, departure: options.departureEpochSeconds, arrival });
+      const duration = points.length === 3 ? 2100 : calls.length === 2 ? 1800 : calls.length === 3 ? 600 : 1500;
+      const departure = options.departureEpochSeconds ?? arrival - duration;
       return {
         status: 'SUCCESS',
         route: {
@@ -41,26 +43,28 @@ function router(missingEvidence = false) {
             : {
                 model: 'TRAFFIC_FORECAST',
                 computedAtEpochSeconds: now,
-                departureEpochSeconds: options.departureEpochSeconds,
+                departureEpochSeconds: departure,
               },
           snappedWaypoints: points.map((input) => ({ input, distanceMeters: 0 })),
-          legs: [{ durationSeconds: duration, distanceMeters: 10000 }],
+          legs: points.length === 3 ? [600,1500].map((durationSeconds) => ({ durationSeconds, distanceMeters: 5000 })) : [{ durationSeconds: duration, distanceMeters: 10000 }],
         },
       };
     },
   };
 }
-test('scheduled traffic uses driver departure for baseline and pickup, then adds driving plus boarding before the next leg', async () => {
+test('arrival seed proposes a departure, then actual traffic legs include driving and boarding', async () => {
   const routing = router(),
     date = '2026-10-19',
-    start = localMinuteToEpoch(date, 480);
+    start = localMinuteToEpoch(date, 500);
   const result = await evaluateCalendarPair(driver, rider, date, routing, now);
   assert.equal(result.status, 'FEASIBLE');
   assert.deepEqual(
     routing.calls.map((c) => c.departure),
-    [start, start, start + 600 + 120],
+    [undefined, start, start, start + 600 + 120],
   );
-  assert.ok(routing.calls.every((c) => c.points.length === 2));
+  assert.equal(routing.calls[0].arrival, localMinuteToEpoch(date, 535));
+  assert.equal(routing.calls[0].points.length, 3);
+  assert.ok(routing.calls.slice(1).every((c) => c.points.length === 2));
   assert.equal(result.plan.pickup, start + 600);
   assert.equal(result.plan.vehicleCampusArrival, start + 2220);
   assert.equal(result.metrics.driverExtraDurationSeconds, 420);
@@ -76,8 +80,8 @@ test('future weekdays across daylight saving use the selected New York departure
   const result = await evaluateCalendarPair(driver, rider, '2026-11-02', routing, now);
   assert.equal(result.status, 'FEASIBLE');
   assert.equal(
-    routing.calls[0].departure,
-    Date.parse('2026-11-02T08:00:00-05:00') / 1000,
+    routing.calls[1].departure,
+    Date.parse('2026-11-02T08:20:00-05:00') / 1000,
   );
 });
 test('traffic metadata cannot silently become static timing and provider failure remains UNKNOWN', async () => {
@@ -104,8 +108,8 @@ test('traffic metadata cannot silently become static timing and provider failure
   );
   assert.equal(
     calls.length,
-    2,
-    'failed pickup does not trigger a speculative campus request',
+    1,
+    'failed arrival seed does not issue more requests',
   );
 });
 
@@ -147,4 +151,14 @@ test('traffic expiry prompts refresh exactly at the shared two-minute boundary, 
     false,
   );
   assert.equal(trafficForecastIsStale(undefined, now), false);
+});
+
+
+test('traffic proposal accounts for saved rider readiness before requesting the actual timed legs', async () => {
+  const routing = router();
+  const result = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, startAt: 512 } }, '2026-10-19', routing, now);
+  assert.equal(result.status, 'FEASIBLE');
+  assert.equal(result.plan.pickup, localMinuteToEpoch('2026-10-19', 512));
+  assert.equal(result.plan.vehicleCampusArrival, localMinuteToEpoch('2026-10-19', 539));
+  assert.equal(routing.calls.length, 4);
 });

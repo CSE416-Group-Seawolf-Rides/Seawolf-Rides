@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { verifyDropoff } from './dropoff-checks.mjs';
 import { verifyChat } from './chat-checks.mjs';
 import { verifySymmetricRequests } from './symmetric-request-checks.mjs';
 import { test } from 'node:test';
@@ -77,20 +78,11 @@ const server = createServer((req, res) => {
     return;
   }
   assert.equal(url.searchParams.get('traffic'), 'true');
-  const duration =
-    arrival !== undefined
-      ? new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/New_York',
-          hour: 'numeric',
-          hourCycle: 'h23',
-        }).format(arrival * 1000) === '09'
-        ? 2700
-        : 1500
-      : points[0].latitude === pickup.latitude
-        ? 1500
-        : points[1].latitude === pickup.latitude
-          ? 600
-          : 1800;
+  const hour = arrival === undefined ? null : Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(arrival * 1000));
+  const duration = points.length === 3 ? 2100 : arrival !== undefined
+    ? (hour >= 7 && hour <= 10 ? 2700 : 1500)
+    : points[0].latitude === pickup.latitude ? 1500
+    : points[1].latitude === pickup.latitude ? 600 : 1800;
   if (arrival !== undefined) {
     assert.equal(url.searchParams.has('departAt'), false);
     departure = arrival - duration;
@@ -106,7 +98,7 @@ const server = createServer((req, res) => {
   res.end(
     JSON.stringify({ routes: [{ summary, legs: points.slice(1).map((point, i) => ({
       summary: { ...summary, lengthInMeters: summary.lengthInMeters / (points.length - 1),
-        travelTimeInSeconds: duration / (points.length - 1) }, points: [points[i], point],
+        travelTimeInSeconds: points.length === 3 ? [600, 1500][i] : duration }, points: [points[i], point],
     })) }] }),
   );
 });
@@ -194,13 +186,13 @@ test(
       assert.ok(first.nextCursor);
       assert.equal(first.incomplete, true);
       const match = first.matches[0],
-        departure = localMinuteToEpoch(date, 480);
+        departure = localMinuteToEpoch(date, 500);
       assert.equal(match.driverId, driver.uid);
       assert.equal(match.eta.model, 'TRAFFIC_FORECAST');
       assert.equal(match.eta.provider, 'TomTom');
       assert.deepEqual(
         calls.map((c) => c.departure),
-        [departure, departure, departure + 720],
+        [departure, departure, departure, departure + 720],
       );
       assert.equal(match.plan.vehicleCampusArrival, departure + 2220);
       assert.equal(match.plan.pickup, departure + 600);
@@ -218,7 +210,7 @@ test(
       assert.equal(second.nextCursor, null);
       assert.equal(
         calls.length,
-        3,
+        4,
         'same departure and points reuse cache across candidates',
       );
       const ownDriver = await action(driver, 'findCommuteMatches', {
@@ -227,7 +219,7 @@ test(
       assert.equal(ownDriver.matches[0].riderId, rider.uid);
       assert.equal(
         calls.length,
-        3,
+        4,
         'driver and rider views use one cached road model',
       );
       await verifyChat(t, { driver, rider, outsider, match, date, action, db, calls });
@@ -277,11 +269,11 @@ test(
       });
       assert.equal(
         later.matches[0].eta.departureEpochSeconds,
-        localMinuteToEpoch(next, 480),
+        localMinuteToEpoch(next, 500),
       );
       assert.equal(
         calls.length,
-        6,
+        8,
         'same points on another date cannot reuse a prior forecast',
       );
       const cached = await db.collection('_m3RouteCache').get();
@@ -354,10 +346,10 @@ test(
       assert.equal(morning.model, 'TRAFFIC_FORECAST');
       assert.equal(morning.localDate, nextForecastDate(day, Date.now() / 1000));
       assert.equal(morning.durationSeconds, 2700);
-      assert.equal(morning.suggestedStartAt, 495);
+      assert.equal(morning.suggestedStartAt, 492);
       assert.equal(
         calls.at(-1).arrival,
-        localMinuteToEpoch(morning.localDate, 540),
+        localMinuteToEpoch(morning.localDate, 537),
       );
       assert.equal(
         (await db.doc('_m3Routing/tomtomBudget').get()).data().count,
@@ -376,10 +368,10 @@ test(
         arriveBy: 1275,
       });
       assert.equal(evening.durationSeconds, 1500);
-      assert.equal(evening.suggestedStartAt, 1250);
+      assert.equal(evening.suggestedStartAt, 1247);
       assert.equal(
         calls.at(-1).arrival,
-        localMinuteToEpoch(evening.localDate, 1275),
+        localMinuteToEpoch(evening.localDate, 1272),
       );
       for (const invalid of [
         { ...input, day: 'invalid' },
@@ -414,6 +406,7 @@ test(
       await verifySymmetricRequests(t, { client, action, db, date, start, pickup, outsider,
         calls, setProviderFails: (value) => { providerFails = value; },
       });
+      await verifyDropoff(t, { client, action, date, start, pickup });
       const quotaCache = await db.collection('_m3RouteCache').get();
       await Promise.all(quotaCache.docs.map((entry) => entry.ref.update({ expiresAtMs: 0 })));
       await db.doc('_m3Routing/tomtomBudget').set({ month, count: 17999 });

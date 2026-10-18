@@ -1,6 +1,6 @@
-import { localDateAt, weekdayForDate } from '../mvp/settings';
+import { CAMPUS_POINTS, localDateAt, weekdayForDate } from '../mvp/settings';
 import { shiftDate } from '../calendar/commuteCalendar';
-import type { Weekday } from './commuteModel';
+import type { DaySchedule, CommuteDraft, Weekday } from './commuteModel';
 
 export interface CommuteStartEstimate {
   durationSeconds: number;
@@ -16,4 +16,11 @@ export function nextForecastDate(day: Weekday, now: number): string {
     if (weekdayForDate(date) === day) return date;
   }
   throw new Error('Choose a valid weekday.');
+}
+
+/** Any has no single route endpoint. Both users still forecast their driving days. */
+export function forecastableDays(draft: Pick<CommuteDraft, 'campusLot' | 'riderDropoffPreference' | 'days'>): DaySchedule[] {
+  if (!CAMPUS_POINTS.some((point) => point.id === draft.campusLot)) return [];
+  return draft.days.filter((day) => day.arriveBy !== null &&
+    (draft.riderDropoffPreference !== 'any' || day.mode === 'drive'));
 }

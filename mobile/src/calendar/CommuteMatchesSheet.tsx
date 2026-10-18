@@ -611,6 +611,7 @@ function MatchTimes({
   if (request?.status === 'PENDING' || request?.status === 'ACCEPTED')
     match = { ...match, driverId: request.driverId, riderId: request.riderId, plan: request.plan };
   return (
+    <>
     <View style={styles.times}>
       {[
         ['Departure', match.plan.departure],
@@ -628,6 +629,12 @@ function MatchTimes({
         </View>
       ))}
     </View>
+    {match.dropoffLabel && <Text style={styles.muted}>Drop-off · {request?.status === 'PENDING' || request?.status === 'ACCEPTED' ? request.campusLabel : match.dropoffLabel}
+      {match.dropoffPreferenceMatch === false ? ` · Preferred: ${match.preferredDropoffLabel}` : match.preferredDropoffLabel === 'Any' ? ' · Any' : ''}
+    </Text>}
+    {match.savedDriverDeparture !== undefined && match.savedDriverDeparture !== match.plan.departure &&
+      <Text style={styles.muted}>Driver’s usual departure · {rideTime(match.savedDriverDeparture)} · Review proposed time above</Text>}
+    </>
   );
 }
 const styles = StyleSheet.create({

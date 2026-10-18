@@ -49,6 +49,6 @@ export async function searchCalendar(localDate: string, cursor?: string) {
       { timeout: 120000 },
     )({ localDate, ...(cursor ? { cursor } : {}) })
   ).data;
-  if (result.policyVersion !== 2) throw new Error('Restart your local backend to load arrival-window matching, then search again.');
+  if (result.policyVersion !== 3) throw new Error('Restart your local backend to load buffered arrivals and drop-off preferences, then search again.');
   return result;
 }

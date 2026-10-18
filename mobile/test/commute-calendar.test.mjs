@@ -108,14 +108,14 @@ test('exact point and discovery preference survive edit/save; old approximate-on
     }),
   );
 });
-test('uses the saved driver departure and rider ready-from time', async () => {
+test('proposes a departure for buffered arrival while respecting rider readiness', async () => {
   const result = await evaluateCalendarPair(driver, rider, date, router, now);
   assert.equal(result.status, 'FEASIBLE');
   assert.equal(
     result.plan.vehicleCampusArrival,
-    localMinuteToEpoch(date, 480) + 2220,
+    localMinuteToEpoch(date, 537),
   );
-  assert.equal(result.plan.departure, localMinuteToEpoch(date, 480));
+  assert.equal(result.plan.departure, localMinuteToEpoch(date, 500));
   assert.equal(result.plan.pickup, result.plan.departure + 600);
   assert.equal(result.metrics.driverExtraDurationSeconds, 420);
   assert.equal(
@@ -203,7 +203,7 @@ test('saved morning timing survives persistence and blocks pickups before rider 
   );
   const notReady = await evaluateCalendarPair(
     driver,
-    { ...rider, day: { ...rider.day, startAt: 510 } },
+    { ...rider, day: { ...rider.day, startAt: 538 } },
     date,
     router,
     now,
@@ -248,65 +248,17 @@ test('preferred arrival target discovery is inclusive at ±30 minutes and reject
     }
   }
 });
-test('actual proposed arrivals can be early or late within both people’s inclusive windows', async () => {
-  for (const [startAt, status] of [
-    [473, 'FEASIBLE'],
-    [472, 'INFEASIBLE'],
-    [533, 'FEASIBLE'],
-    [534, 'INFEASIBLE'],
-  ]) {
-    const result = await evaluateCalendarPair(
-      { ...driver, day: { ...driver.day, startAt } },
-      rider,
-      date,
-      router,
-      now,
-    );
-    assert.equal(result.status, status, `driver departure minute ${startAt}`);
-    if (status === 'FEASIBLE')
-      assert.equal(
-        result.plan.vehicleCampusArrival,
-        localMinuteToEpoch(date, startAt + 37),
-      );
+test('saved departures are reviewable references; proposals arrive at most five minutes early and never late', async () => {
+  for (const startAt of [473, 500, 533, 534]) {
+    const result = await evaluateCalendarPair({ ...driver, day: { ...driver.day, startAt } }, rider, date, router, now);
+    assert.equal(result.status, 'FEASIBLE');
+    assert.equal(result.plan.vehicleCampusArrival, localMinuteToEpoch(date, 537));
+    assert.equal(result.plan.departure, localMinuteToEpoch(date, 500));
   }
-  // Same ETA must satisfy the other participant's own window and saved return.
-  const lateDriver = { ...driver, day: { ...driver.day, startAt: 533 } };
-  assert.equal(
-    (
-      await evaluateCalendarPair(
-        lateDriver,
-        { ...rider, day: { ...rider.day, arriveBy: 510 } },
-        date,
-        router,
-        now,
-      )
-    ).status,
-    'INFEASIBLE',
-  );
-  assert.equal(
-    (
-      await evaluateCalendarPair(
-        lateDriver,
-        { ...rider, day: { ...rider.day, leaveAt: 569 } },
-        date,
-        router,
-        now,
-      )
-    ).status,
-    'INFEASIBLE',
-  );
-  assert.equal(
-    (
-      await evaluateCalendarPair(
-        lateDriver,
-        { ...rider, day: { ...rider.day, leaveAt: 570 } },
-        date,
-        router,
-        now,
-      )
-    ).status,
-    'FEASIBLE',
-  );
+  const noSharedWindow = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 550 } }, date, router, now);
+  assert.equal(noSharedWindow.status, 'INFEASIBLE');
+  const returnBound = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, leaveAt: 534 } }, date, router, now);
+  assert.equal(returnBound.status, 'INFEASIBLE');
 });
 test('invalid saved arrival/start times and nonfinite current times remain UNKNOWN', async () => {
   for (const value of [NaN, Infinity, -1, 1440, 500.5]) {
@@ -362,7 +314,7 @@ test('pages rank actual arrival first, detour second, stable identities last and
     ['z', 'c', 'a', 'b', 'd'],
   );
   const first = {
-    policyVersion: 2,
+    policyVersion: 3,
     searchRevision: 'same',
     totalCandidatePlans: 5,
     checkedCandidatePlans: 2,

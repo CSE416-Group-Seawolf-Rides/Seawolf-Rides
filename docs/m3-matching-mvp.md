@@ -1,6 +1,6 @@
 # M3 real-user matching
 
-The calendar branch now uses saved-week inputs and preferred arrival ±30 minutes. Follow [the calendar guide](commute-calendar.md) for the current Home flow, paged discovery and ranking. The explicit `matchingSetups` API documented below remains for existing requests and regression tests.
+The calendar branch now uses saved-week inputs, Any/drop-off preferences and buffered no-late arrival proposals; ±30 minutes remains a discovery rule only. See [the current drop-off/arrival policy](dropoff-arrival.md). Follow [the calendar guide](commute-calendar.md) for the current Home flow, paged discovery and ranking. The explicit `matchingSetups` API documented below remains for existing requests and regression tests.
 
 PR #12 integrates the routing/map work from `feat/map-implementation` with the canonical evaluator/ranker merged in #11. Home and Map now use saved matching inputs and an authenticated callable service. No synthetic candidates enter this flow.
 

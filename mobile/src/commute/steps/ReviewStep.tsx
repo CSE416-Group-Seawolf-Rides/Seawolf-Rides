@@ -12,6 +12,7 @@ import {
   isScheduleValid,
   hasMorningTimes,
   lotTitle,
+  riderDropoffTitle,
   weekdays,
 } from '../commuteModel';
 import { useCommuteDraft } from '../CommuteDraftProvider';
@@ -80,7 +81,8 @@ export function ReviewStep({
       </View>
 
       <Section onEdit={() => onEdit('campus')} title="On campus">
-        <Text style={styles.value}>{draft.campusLot ? lotTitle(draft.campusLot) : '—'}</Text>
+        <Text style={styles.value}>{role === 'rider' ? riderDropoffTitle(draft) : draft.campusLot ? lotTitle(draft.campusLot) : '—'}</Text>
+        {role === 'both' && draft.riderDropoffPreference === 'any' && <Text>Drop-off when riding: Any</Text>}
       </Section>
 
       <Section onEdit={() => onEdit('timing')} title="Departure">

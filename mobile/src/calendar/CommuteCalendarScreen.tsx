@@ -294,7 +294,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     {nextScheduled.day.startAt != null
                       ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
                       : ''}
-                    Arrive around {formatTime(nextScheduled.day.arriveBy!)} · New York time
+                    Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New York time
                   </Text>
                   <Text style={styles.nextDetail}>
                     {nextScheduled.day.mode === 'drive'

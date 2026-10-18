@@ -19,8 +19,8 @@ test('vehicle photos are bounded JPEG data rather than a temporary device path o
     assert.equal(vehicleIsComplete({ ...details, photoBase64 }, 'driver'), false);
 });
 test('suggested departure comes from the supplied direct-road duration and rounds earlier', () => {
-  assert.equal(suggestedStartMinute(540, 1800), 510);
-  assert.equal(suggestedStartMinute(540, 1801), 505);
+  assert.equal(suggestedStartMinute(540, 1800), 507);
+  assert.equal(suggestedStartMinute(540, 1801), 506);
   for (const invalid of [NaN, Infinity, -1, 0]) assert.equal(suggestedStartMinute(540, invalid), null);
   assert.equal(suggestedStartMinute(20, 1800), null);
   assert.equal(suggestedStartMinute(Infinity, 1800), null);

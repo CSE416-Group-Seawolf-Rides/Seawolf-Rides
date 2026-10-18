@@ -17,6 +17,7 @@ import {
   type Weekday,
   type Coordinates,
 } from '../commuteModel';
+import { forecastableDays } from '../commuteForecast';
 import type { CommuteStartEstimate } from '../commuteForecast';
 
 export function MorningTimingStep({
@@ -39,18 +40,20 @@ export function MorningTimingStep({
   const [open, setOpen] = useState<Weekday>();
   const [attempt, setAttempt] = useState(0);
   const inbound = draft.days.filter((d) => d.arriveBy !== null);
+  const estimateDays = forecastableDays(draft);
+  const canEstimate = estimateDays.length > 0;
   const requestKey = JSON.stringify({
     startPoint: draft.startPoint,
-    campusLot: draft.campusLot,
-    days: inbound.map(({ day, arriveBy }) => ({ day, arriveBy })),
+    campusLot: canEstimate ? draft.campusLot : undefined,
+    days: estimateDays.map(({ day, arriveBy }) => ({ day, arriveBy })),
   });
   const requestId = `${requestKey}:${attempt}`;
   const current = progressState?.id === requestId ? progressState : undefined;
   const currentEstimates = current?.estimates ?? {};
   const error = current?.error;
   const busy =
-    draft.startPoint && draft.campusLot && !current?.done
-      ? (current?.nextDay ?? inbound[0]?.day)
+    draft.startPoint && canEstimate && !current?.done
+      ? (current?.nextDay ?? estimateDays[0]?.day)
       : undefined;
   // Each day is a separate bounded operation under the shared server scheduler.
   // No polling/retry loop; user edits to departure never trigger a provider call.
@@ -130,6 +133,7 @@ export function MorningTimingStep({
       canContinue={hasMorningTimes(draft.days) && !draft.days.some(getDayError)}
       onContinue={onContinue}
     >
+      {!canEstimate && <Text>Set when you’re ready for pickup. Travel time will use the driver’s proposed campus drop-off when you find matches.</Text>}
       {busy && (
         <Text>
           Estimating {weekdays.find((day) => day.value === busy)?.name} travel
@@ -139,7 +143,7 @@ export function MorningTimingStep({
       {available && (
         <>
           <Text>
-            Suggestions cover the direct trip to campus. Passenger pickup
+            Suggestions aim about three minutes before your arrival time on the direct trip to campus. Passenger pickup
             detours are calculated when you find matches. Your saved times stay
             editable.
           </Text>
@@ -161,8 +165,8 @@ export function MorningTimingStep({
       )}
       {error && <Text accessibilityRole="alert">{error}</Text>}
       {!busy &&
-        draft.startPoint &&
-        (error || Object.keys(currentEstimates).length < inbound.length) && (
+        draft.startPoint && canEstimate &&
+        (error || Object.keys(currentEstimates).length < estimateDays.length) && (
           <AppButton
             variant="secondary"
             label="Retry travel estimates"
@@ -178,9 +182,10 @@ export function MorningTimingStep({
         return (
           <Card key={day.day}>
             <Text>
-              {weekdays.find((d) => d.value === day.day)?.name} · Arrive around{' '}
+              {weekdays.find((d) => d.value === day.day)?.name} · Arrive by{' '}
               {formatTime(day.arriveBy!)}
             </Text>
+            {!estimateDays.some((d) => d.day === day.day) && <Text>Choose when you’re ready. The campus drop-off and travel times will be shown with each match.</Text>}
             {forecast && (
               <Text>
                 About {Math.ceil(forecast.durationSeconds / 60)} minutes ·{' '}

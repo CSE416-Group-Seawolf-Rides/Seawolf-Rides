@@ -1,3 +1,4 @@
+import { ARRIVAL_BUFFER_SECONDS } from '../../mobile/src/commute/arrivalPolicy';
 import { nextForecastDate } from '../../mobile/src/commute/commuteForecast';
 import { suggestedStartMinute } from '../../mobile/src/commute/morningTiming';
 import { weekdays, type Weekday } from '../../mobile/src/commute/commuteModel';
@@ -69,7 +70,7 @@ export const estimateCommuteStart = onCall(
     let arrival: number | undefined;
     try {
       arrival = localDate
-        ? localMinuteToEpoch(localDate, data.arriveBy)
+        ? localMinuteToEpoch(localDate, data.arriveBy) - ARRIVAL_BUFFER_SECONDS
         : undefined;
     } catch {
       throw new HttpsError(

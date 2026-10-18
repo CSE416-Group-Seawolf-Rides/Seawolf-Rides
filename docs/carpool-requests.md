@@ -52,3 +52,5 @@ Manual check: open calendar from Map, select/save a date, close without changing
 
 
 Potential matches can now use **Send chat** before sending a ride request. Both people continue the conversation from Inbox; messages do not accept/reschedule rides or expose exact pickup points. See [local chat API, privacy and two-account walkthrough](local-chat.md).
+
+Drop-off preferences and proposed departure/arrival times now follow [buffered arrival policy](dropoff-arrival.md). Different campus preferences do not exclude a match by themselves; new accepted snapshots retain the driver's actual proposed stop.

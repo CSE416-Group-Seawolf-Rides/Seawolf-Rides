@@ -167,6 +167,8 @@ export function parseCommuteDocument(value: unknown, expectedOwnerId: string): C
     throw new Error('The persisted commute contains an invalid campus destination.');
   }
 
+  if (value.riderDropoffPreference !== undefined && value.riderDropoffPreference !== 'any')
+    throw new Error('The rider drop-off preference is invalid.');
   const seats = value.seats;
   if (
     seats !== undefined &&
@@ -210,6 +212,7 @@ export function parseCommuteDocument(value: unknown, expectedOwnerId: string): C
       label,
     },
     campusLot: campusLot as CampusLotId,
+    ...(value.riderDropoffPreference === 'any' ? { riderDropoffPreference: 'any' as const } : {}),
     days: parseDays(value.days),
     ...(seats === undefined ? {} : { seats: seats as number }),
   };

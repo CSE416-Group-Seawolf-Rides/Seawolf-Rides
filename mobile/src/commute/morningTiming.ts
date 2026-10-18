@@ -1,4 +1,5 @@
-/** Direct-trip suggestion, rounded earlier to five minutes; supplied duration may include traffic. */
+import { ARRIVAL_BUFFER_SECONDS } from './arrivalPolicy';
+/** Aim three minutes early; round down one minute to stay within a 2–5-minute buffer. */
 export function suggestedStartMinute(
   arriveBy: number,
   durationSeconds: number,
@@ -11,6 +12,6 @@ export function suggestedStartMinute(
     durationSeconds <= 0
   )
     return null;
-  const minute = Math.floor((arriveBy - durationSeconds / 60) / 5) * 5;
+  const minute = Math.floor(arriveBy - (durationSeconds + ARRIVAL_BUFFER_SECONDS) / 60);
   return minute >= 0 && minute < arriveBy ? minute : null;
 }
