@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createRideRequest, respondToRideRequest, cancelRideRequest, previewAcceptedRide } = require('../lib/functions/src/rideRequests');
+const { startMatchChat, sendChatMessage } = require('../lib/functions/src/chat');
 test('ride actions fail closed outside the demo emulator, before account or database access', async () => {
   const keys = [
     'FUNCTIONS_EMULATOR',
@@ -11,11 +12,16 @@ test('ride actions fail closed outside the demo emulator, before account or data
   const before = keys.map((key) => process.env[key]);
   try {
     for (const key of keys) delete process.env[key];
-    for (const action of [createRideRequest, respondToRideRequest, cancelRideRequest, previewAcceptedRide])
+    for (const action of [createRideRequest, respondToRideRequest, cancelRideRequest, previewAcceptedRide, startMatchChat, sendChatMessage])
       await assert.rejects(action.run({ auth: { uid: 'test' }, data: {} }), {
         code: 'failed-precondition',
       });
     process.env.FUNCTIONS_EMULATOR = 'true';
+    process.env.GCLOUD_PROJECT = 'demo-seawolf-rides';
+    process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:9095';
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
+    for (const action of [startMatchChat, sendChatMessage])
+      await assert.rejects(action.run({ data: {} }), { code: 'permission-denied' });
     process.env.GCLOUD_PROJECT = 'seawolf-rides';
     process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:9095';
     process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099';

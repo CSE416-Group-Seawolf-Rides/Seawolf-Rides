@@ -49,3 +49,6 @@ The preview uses the shared scheduler/cache and configured OSRM or TomTom adapte
 **Directions to pickup in Maps** hands that exact pickup to the phone's Maps app (Apple Maps on iOS, Google Maps URL elsewhere), where navigation can be started. Maps calculates its own route/ETA from the user's current location; it does not import the carpool schedule or automatically continue through campus. Full in-app GPS, rerouting, tracking, and background navigation remain deferred.
 
 Manual check: open calendar from Map, select/save a date, close without changing tabs; accept a real two-account trip; driver opens the person's carpool to see the exact pickup pin, then trip details to load the road route. Repeat as rider, and try Maps directions. Device layout, map gestures, and external navigation handoff require a physical-device check.
+
+
+Potential matches can now use **Send chat** before sending a ride request. Both people continue the conversation from Inbox; messages do not accept/reschedule rides or expose exact pickup points. See [local chat API, privacy and two-account walkthrough](local-chat.md).

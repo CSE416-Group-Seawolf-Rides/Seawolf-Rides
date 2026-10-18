@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { router } from 'expo-router';
+import { startMatchChat } from '../chat/chatClient';
 import {
   ActivityIndicator,
   Animated,
@@ -45,7 +47,7 @@ export function CommuteMatchesSheet({
   uid,
   ownPoint,
   result,
-  busy,
+  busy: parentBusy,
   nowEpochSeconds,
   requesting,
   cancellingId,
@@ -83,6 +85,23 @@ export function CommuteMatchesSheet({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const [chatBusy, setChatBusy] = useState(false);
+  const chatLock = useRef(false);
+  const [chatError, setChatError] = useState('');
+  const busy = parentBusy || chatBusy;
+  const openChat = async (candidate: CalendarMatch) => {
+    if (chatLock.current || parentBusy) return;
+    chatLock.current = true;
+    setChatBusy(true);
+    setChatError('');
+    try {
+      const thread = await startMatchChat(candidate, date);
+      chatLock.current = false;
+      dismiss(() => { onClose(); router.push(`/inbox/${thread.id}`); });
+    } catch (failure) {
+      setChatError(failure instanceof Error ? failure.message : 'Could not start chat. Please retry.');
+    } finally { chatLock.current = false; setChatBusy(false); }
+  };
   const [visible, setVisible] = useState(true);
   const [pageSize, setPageSize] = useState<MatchPageSize>(5);
   const [page, setPage] = useState(0);
@@ -131,13 +150,13 @@ export function CommuteMatchesSheet({
   };
   const dismiss = (action: () => void) => {
     // Never dismiss while a persisted request is being sent.
-    if (requesting || !visible) return;
+    if (requesting || chatLock.current || !visible) return;
     afterDismiss.current = action;
     if (Platform.OS === 'ios') setVisible(false);
     else finishDismiss();
   };
   const closeDetails = () => {
-    if (requesting) return;
+    if (requesting || chatLock.current) return;
     Animated.timing(detailSlide, {
       toValue: 1,
       duration: 200,
@@ -247,7 +266,7 @@ export function CommuteMatchesSheet({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close matches"
-          disabled={requesting}
+          disabled={requesting || chatBusy}
           onPress={() => dismiss(onClose)}
           style={styles.backdrop}
         />
@@ -274,7 +293,7 @@ export function CommuteMatchesSheet({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Close matches"
-                disabled={requesting}
+                disabled={requesting || chatBusy}
                 onPress={() => dismiss(onClose)}
                 style={styles.iconButton}
               >
@@ -316,7 +335,7 @@ export function CommuteMatchesSheet({
                 <View accessibilityLiveRegion="polite" style={styles.loading}>
                   <ActivityIndicator color={colors.accent} />
                   <Text style={styles.muted}>
-                    {requesting ? 'Saving request…' : 'Finding matches…'}
+                    {chatBusy ? 'Opening chat…' : requesting ? 'Saving request…' : 'Finding matches…'}
                   </Text>
                 </View>
               )}
@@ -355,6 +374,8 @@ export function CommuteMatchesSheet({
                     </Text>
                     <MatchTimes match={best} uid={uid} request={active} />
                     {requestActions(best, true)}
+                    <AppButton label={chatBusy ? 'Opening chat…' : 'Send chat'} variant="secondary"
+                      disabled={busy} onPress={() => void openChat(best)} />
                     <AppButton
                       label="View more"
                       accessibilityLabel={`View more about ${item.name}`}
@@ -410,6 +431,7 @@ export function CommuteMatchesSheet({
                   {message}
                 </Text>
               )}
+              {chatError && <Text accessibilityRole="alert">{chatError}</Text>}
               {pager('bottom')}
             </ScrollView>
           </View>
@@ -418,7 +440,7 @@ export function CommuteMatchesSheet({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Back to matches"
-                disabled={requesting}
+                disabled={requesting || chatBusy}
                 onPress={closeDetails}
                 style={styles.backdrop}
               />
@@ -448,7 +470,7 @@ export function CommuteMatchesSheet({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Back to matches"
-                    disabled={requesting}
+                    disabled={requesting || chatBusy}
                     onPress={closeDetails}
                     style={styles.iconButton}
                   >
@@ -554,6 +576,9 @@ export function CommuteMatchesSheet({
                     </Card>
                   )}
                   {requestActions(match)}
+                  <AppButton label={chatBusy ? 'Opening chat…' : 'Send chat'} variant="secondary"
+                    disabled={busy} onPress={() => void openChat(match)} />
+                  {chatError && <Text accessibilityRole="alert">{chatError}</Text>}
                   {message && (
                     <Text accessibilityLiveRegion="polite" style={styles.status}>
                       {message}
@@ -562,7 +587,7 @@ export function CommuteMatchesSheet({
                   <AppButton
                     label="Back to matches"
                     variant="secondary"
-                    disabled={requesting}
+                    disabled={requesting || chatBusy}
                     onPress={closeDetails}
                   />
                 </ScrollView>

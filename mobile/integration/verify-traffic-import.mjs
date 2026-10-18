@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator, getDoc, doc } from 'firebase/firestore';
+import { getFirestore, connectFirestoreEmulator, getDoc, getDocs, collection, query, orderBy, doc } from 'firebase/firestore';
 if (
   process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:9095' ||
   process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:9099'
@@ -14,6 +14,10 @@ const { getFirestore: adminFirestore } = require('firebase-admin/firestore');
 const admin = initializeAdmin({ projectId: 'demo-seawolf-rides' });
 try {
   const db = adminFirestore(admin);
+  const chats = await db.collection('chats').get();
+  assert.equal(chats.size, 1);
+  const chatId = chats.docs[0].id;
+  assert.equal(chats.docs[0].data().messageCount, 3);
   const rides = await db.collection('rideRequests').where('riderId', '==', 'traffic-rider').get();
   assert.equal(rides.size, 1);
   const ride = rides.docs[0];
@@ -49,6 +53,11 @@ try {
       await signInWithEmailAndPassword(auth, `${uid}@stonybrook.edu`, 'Emulator-test-only-123!');
       assert.equal((await getDoc(doc(client, 'rideRequests', ride.id))).data().status, 'ACCEPTED');
       assert.equal((await getDoc(doc(client, 'ridePickups', ride.id))).exists(), true);
+      assert.equal((await getDoc(doc(client, 'chats', chatId))).data().messageCount, 3);
+      const messages = await getDocs(query(collection(client, 'chats', chatId, 'messages'), orderBy('sequence')));
+      assert.deepEqual(messages.docs.map((d) => d.data().sequence), [1, 2, 3]);
+      assert.equal(messages.docs.at(-1).data().text, 'Thanks!');
+
     } finally {
       await deleteApp(app);
     }
@@ -75,7 +84,7 @@ try {
     }
   }
   console.log(
-    'PASS: traffic-derived accepted timing, both accounts, private pickups, commitments and demo request counter survive import.',
+    'PASS: traffic-derived accepted timing, both accounts, private pickups, commitments demo request counter and both-account chat messages survive import.',
   );
 } finally {
   await deleteAdmin(admin);

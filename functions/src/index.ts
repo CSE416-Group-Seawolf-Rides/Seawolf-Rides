@@ -95,3 +95,5 @@ export const findCompatibleDrivers = onCall(
 export { findCommuteMatches, setCommuteDay } from './calendarMatching';
 export { saveVehicleDetails } from './vehicle';
 export { estimateCommuteStart } from './commuteEstimate';
+
+export { startMatchChat, sendChatMessage } from './chat';

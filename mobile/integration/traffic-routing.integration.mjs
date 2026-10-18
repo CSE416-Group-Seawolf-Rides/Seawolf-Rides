@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { verifyChat } from './chat-checks.mjs';
 import { verifySymmetricRequests } from './symmetric-request-checks.mjs';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
@@ -229,6 +230,7 @@ test(
         3,
         'driver and rider views use one cached road model',
       );
+      await verifyChat(t, { driver, rider, outsider, match, date, action, db, calls });
       await action(driver, 'saveVehicleDetails', vehicleFixture(driver.uid));
       const pending = await action(rider, 'createRideRequest', {
         source: 'CALENDAR',

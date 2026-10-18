@@ -165,6 +165,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Chat participants are established by the trusted matching callable.
+    match /chats/{chatId} {
+      allow read: if isVerifiedStonyBrookUser()
+        && request.auth.uid in resource.data.participantIds;
+      allow write: if false;
+      match /messages/{messageId} {
+        allow read: if isVerifiedStonyBrookUser()
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds;
+        allow write: if false;
+      }
+    }
+
     // Exact routing points are released only after acceptance, to that ride's participants.
     match /ridePickups/{requestId} {
       allow read: if isVerifiedStonyBrookUser()
