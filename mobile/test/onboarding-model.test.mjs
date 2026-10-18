@@ -23,16 +23,19 @@ test('riders who set up now build a commute without a seats step', () => {
   const draft = { ...emptyOnboardingDraft, role: 'rider', plan: 'now' };
 
   assert.deepEqual(getOnboardingFlow(draft), [
-    'role', 'name', 'plan', 'start', 'campus', 'schedule', 'review',
+    'role', 'name', 'plan', 'start', 'campus', 'schedule', 'timing', 'review',
   ]);
 });
 
 test('drivers who set up now are asked about seats before reviewing', () => {
   const draft = { ...emptyOnboardingDraft, role: 'driver', plan: 'now' };
 
-  assert.equal(getNextStep(draft, 'schedule'), 'seats');
+  assert.equal(getNextStep(draft, 'schedule'), 'timing');
+  assert.equal(getNextStep(draft, 'timing'), 'seats');
   assert.equal(getNextStep(draft, 'seats'), 'review');
-  assert.equal(getNextStep(draft, 'review'), 'done');
+  assert.equal(getNextStep(draft, 'review'), 'vehicle');
+  assert.equal(getNextStep(draft, 'vehicle'), 'done');
+  assert.equal(getNextStep({ ...draft, role: 'both' }, 'review'), 'vehicle');
 });
 
 test('progress moves forward one segment per step', () => {

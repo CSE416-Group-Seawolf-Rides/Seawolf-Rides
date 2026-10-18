@@ -22,6 +22,7 @@ import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
 
 import { prepareCalendarPair } from './calendarMatching';
+import { vehicleIsComplete } from '../../mobile/src/vehicle/vehicleModel';
 
 const digest = (parts: string[]) =>
   createHash('sha256').update(JSON.stringify(parts)).digest('hex');
@@ -231,6 +232,9 @@ export async function commitAcceptance(
     if (request.status === 'ACCEPTED') return result(snapshot);
     if (request.status !== 'PENDING')
       throw new HttpsError('failed-precondition', 'This request is already declined.');
+    const vehicle = await tx.get(db.doc(`users/${driverId}/vehicles/primary`));
+    if (!vehicleIsComplete(vehicle.data(), driverId))
+      throw new HttpsError('failed-precondition', 'Finish setting up your vehicle before accepting a passenger.', { reason: 'VEHICLE_REQUIRED' });
     if (
       request.riderId !== prepared.value.riderId ||
       request.driverId !== prepared.value.driverId ||
@@ -343,6 +347,9 @@ export const respondToRideRequest = onCall(options, async (call) => {
         tx.update(ref, { status: 'DECLINED', updatedAt: now() });
         return { id: ref.id, status: 'DECLINED' };
       });
+    const vehicle = await getFirestore().doc(`users/${uid}/vehicles/primary`).get();
+    if (!vehicleIsComplete(vehicle.data(), uid))
+      throw new HttpsError('failed-precondition', 'Finish setting up your vehicle before accepting a passenger.', { reason: 'VEHICLE_REQUIRED' });
     const prepared = await withMatchingRouting((routing) =>
       preparePair(
         saved.riderId,

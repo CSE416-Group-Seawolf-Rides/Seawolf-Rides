@@ -95,6 +95,8 @@ try {
   }
   assert.ok((await db.collection('users/calendar-a-driver/commuteDays').get()).size > 0);
   assert.ok((await db.doc('users/calendar-a-driver/commutes/primary').get()).data().startPoint);
+  assert.equal((await db.doc('users/calendar-a-driver/vehicles/primary').get()).data().plate, 'DEMO 123');
+  assert.equal((await db.doc('users/calendar-a-driver/vehicles/primary').get()).data().photoBase64, '/9j/AA==');
   console.log(
     'PASS: accounts, commutes, pending/declined requests, accepted ride and reservations survive restart/import; both clients read accepted status.',
   );

@@ -17,6 +17,8 @@ interface ChoiceSheetProps {
   choices: Choice[];
   cancelLabel?: string;
   onClose: () => void;
+  onDismiss?: () => void;
+  visible?: boolean;
 }
 
 // A bottom sheet for decisions with consequences: each choice says what will happen
@@ -27,11 +29,13 @@ export function ChoiceSheet({
   choices,
   cancelLabel = 'Never mind',
   onClose,
+  onDismiss,
+  visible = true,
 }: ChoiceSheetProps) {
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible>
+    <Modal animationType="fade" onRequestClose={onClose} onDismiss={onDismiss} transparent visible={visible}>
       <View style={styles.backdrop}>
         <Pressable accessibilityLabel="Close" onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>

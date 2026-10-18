@@ -8,6 +8,8 @@ import { Screen } from '../components/Screen';
 import { decideRideRequest, useRideRequests } from './rideRequestClient';
 import { useAcceptedPickup } from '../calendar/acceptedPickups';
 import type { RideRequest } from './rideRequestModel';
+import { useVehicle } from '../vehicle/vehicleClient';
+import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 
 const time = (epoch: number) =>
   new Date(epoch * 1000).toLocaleTimeString('en-US', {
@@ -28,14 +30,22 @@ function ConfirmedPickup({ ride }: { ride: RideRequest }) {
 export function RideRequestsScreen() {
   const { user } = useSession();
   const requests = useRideRequests(user?.id);
+  const vehicle = useVehicle(user?.id);
+  const [vehicleRequired, setVehicleRequired] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const decide = async (item: RideRequest, decision: 'ACCEPTED' | 'DECLINED') => {
+    if (decision === 'ACCEPTED' && !vehicle.vehicle) {
+      if (vehicle.loaded) setVehicleRequired(true);
+      else setError(vehicle.error ?? 'Wait for your vehicle details to load.');
+      return;
+    }
     setBusy(item.id);
     setError(null);
     try {
       await decideRideRequest(item.id, decision);
     } catch (caught) {
+      if (caught && typeof caught === 'object' && 'details' in caught && (caught.details as { reason?: string })?.reason === 'VEHICLE_REQUIRED') setVehicleRequired(true);
       setError(caught instanceof Error ? caught.message : 'Could not save your decision. Retry.');
     } finally {
       setBusy(null);
@@ -91,7 +101,7 @@ export function RideRequestsScreen() {
       </Card>
     ));
   return (
-    <Screen title="Rides" subtitle="Shared dated requests · local M3 demonstration">
+    <Screen title="Rides" subtitle="Shared dated requests · local M3 demonstration" afterContent={<VehicleRequiredSheet visible={vehicleRequired} onClose={() => setVehicleRequired(false)} />}>
       {!requests.loaded && <Text>Loading your rides and requests…</Text>}
       {(requests.error || error) && (
         <Text accessibilityLiveRegion="polite">{requests.error || error}</Text>

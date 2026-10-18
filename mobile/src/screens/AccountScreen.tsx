@@ -11,6 +11,8 @@ import { CommuteSchedule, PRIVACY_RADIUS_MILES } from '../commute/commuteModel';
 import { CommuteSummaryCard } from '../commute/components/CommuteSummaryCard';
 import { CommuteRole, roleLabels, roleOptions } from '../onboarding/onboardingModel';
 import { colors, radii, spacing } from '../theme';
+import { router } from 'expo-router';
+import { useVehicle } from '../vehicle/vehicleClient';
 
 interface AccountScreenProps {
   user: AuthUser;
@@ -43,6 +45,7 @@ export function AccountScreen({
   const [pickupReminders, setPickupReminders] = useState(true);
   const displayName = firstName ?? user.email;
   const drives = role !== 'rider';
+  const vehicle = useVehicle(user.id);
 
   return (
     <Screen title="Account">
@@ -75,7 +78,7 @@ export function AccountScreen({
           onPress={() => setSheet('role')}
           value={roleLabels[role]}
         />
-        {drives && <SettingsRow icon="car-outline" label="Your vehicle" last soon />}
+        {drives && <SettingsRow icon="car-outline" label="Your vehicle" last value={vehicle.vehicle ? 'Details added' : 'Finish setup'} onPress={() => router.push('/vehicle-setup')} />}
       </SettingsGroup>
 
       <SettingsGroup title="Notifications">

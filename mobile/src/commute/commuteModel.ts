@@ -3,7 +3,7 @@ import type { CommuteRole } from '../onboarding/onboardingModel';
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 export type DayMode = 'drive' | 'ride' | 'either';
 export type CampusLotId = 'westSide' | 'eastSide' | 'tabler' | 'roth' | 'lot40' | 'other';
-export type CommuteStepId = 'start' | 'campus' | 'schedule' | 'seats' | 'review';
+export type CommuteStepId = 'start' | 'campus' | 'schedule' | 'timing' | 'seats' | 'review';
 export type TripLeg = 'arriveBy' | 'leaveAt';
 
 export interface Coordinates {
@@ -256,8 +256,8 @@ export function countTrips(days: DaySchedule[]): number {
 
 export function getCommuteSteps(role: CommuteRole): CommuteStepId[] {
   return role === 'rider'
-    ? ['start', 'campus', 'schedule', 'review']
-    : ['start', 'campus', 'schedule', 'seats', 'review'];
+    ? ['start', 'campus', 'schedule', 'timing', 'review']
+    : ['start', 'campus', 'schedule', 'timing', 'seats', 'review'];
 }
 
 export function getNextCommuteStep(role: CommuteRole, current: CommuteStepId): CommuteStepId {

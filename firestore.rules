@@ -13,6 +13,12 @@ service cloud.firestore {
       return isVerifiedStonyBrookUser() && request.auth.uid == userId;
     }
 
+    // Vehicle photos and plates are private. Only the trusted demo callable writes them.
+    match /users/{userId}/vehicles/{vehicleId} {
+      allow read: if owns(userId) && vehicleId == 'primary';
+      allow write: if false;
+    }
+
     function validProfile() {
       return request.resource.data.keys().hasOnly([
           'schemaVersion',

@@ -22,7 +22,7 @@ export default function OnboardingReviewRoute() {
       onEdit={(step) => router.navigate(`/onboarding/${step}`)}
       onSave={async () => {
         await saveCommute(buildCommuteSchedule(commuteDraft, role));
-        router.push('/onboarding/done');
+        router.push(role === 'rider' ? '/onboarding/done' : '/onboarding/vehicle');
       }}
       progress={getStepProgress(draft, 'review')}
       role={role}

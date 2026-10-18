@@ -15,6 +15,8 @@ import { dayModeLabels, formatTime, type Weekday } from '../commute/commuteModel
 import { localDateAt, weekdayForDate } from '../mvp/settings';
 import { useRideRequests, sendRideRequest } from '../mvp/rideRequestClient';
 import type { CalendarSearchResult } from './calendarMatching';
+import { useVehicle } from '../vehicle/vehicleClient';
+import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 import { useHomeClock } from '../rides/useHomeClock';
 import { colors, spacing } from '../theme';
 
@@ -39,6 +41,8 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const overrides = useCalendarOverrides(user?.id);
   const requests = useRideRequests(user?.id);
+  const vehicle = useVehicle(user?.id);
+  const [vehicleRequired, setVehicleRequired] = useState(false);
   const [searchResult, setResult] = useState<CalendarSearchResult | null>(null);
   const [resultKey, setResultKey] = useState('');
   const basis = JSON.stringify([selected, commute, overrides.days]);
@@ -98,7 +102,9 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
       eyebrow={dateLabel(today).toUpperCase()}
       title={`${greeting}, ${profile?.firstName ?? 'there'}`}
       afterContent={
-        calendarOpen && commute && profile && user ? (
+        <>
+        <VehicleRequiredSheet visible={vehicleRequired} onClose={() => setVehicleRequired(false)} />
+        {calendarOpen && commute && profile && user ? (
           <CommuteCalendarSheet
             initialDate={selected}
             today={today}
@@ -115,15 +121,16 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
               router.push('/commute-setup');
             }}
           />
-        ) : undefined
+        ) : undefined}
+        </>
       }
     >
       {!commute ? (
-        <Card>
-          <Text style={styles.heading}>Your Next Trip</Text>
-          <Text style={styles.muted}>No trip planned yet.</Text>
-          <Text>Save your usual commute to see your week and find matches.</Text>
-          <AppButton label="Set up my commute" onPress={() => router.push('/commute-setup')} />
+        <Card style={styles.nextTrip}>
+          <Text style={styles.nextEyebrow}>Your Next Trip</Text>
+          <Text style={styles.nextDetail}>No trip planned yet.</Text>
+          <Text style={styles.nextDetail}>Save your usual commute to see your week and find matches.</Text>
+          <AppButton variant="secondary" label="Set up my commute" onPress={() => router.push('/commute-setup')} />
         </Card>
       ) : (
         <>
@@ -152,20 +159,20 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
               />
             </Card>
           ) : (
-            <Card>
-              <Text style={styles.heading}>Your Next Trip</Text>
+            <Card style={styles.nextTrip}>
+              <Text style={styles.nextEyebrow}>Your Next Trip</Text>
               {nextScheduled ? (
                 <>
-                  <Text style={styles.heading}>
+                  <Text style={styles.nextHeadline}>
                     {dateLabel(nextScheduled.date)} · {dayModeLabels[nextScheduled.day.mode]}
                   </Text>
-                  <Text>
+                  <Text style={styles.nextDetail}>
                     {nextScheduled.day.startAt != null
                       ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
                       : ''}
                     Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New York time
                   </Text>
-                  <Text style={styles.muted}>
+                  <Text style={styles.nextDetail}>
                     {nextScheduled.day.mode === 'drive'
                       ? 'No passenger confirmed yet.'
                       : nextScheduled.day.mode === 'ride'
@@ -173,7 +180,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                         : 'No ride confirmed yet. You can drive or ride.'}
                   </Text>
                   {nextScheduled.day.startAt == null && (
-                    <Text style={styles.muted}>
+                    <Text style={styles.nextDetail}>
                       Add your morning start time in your usual commute before matching.
                     </Text>
                   )}
@@ -193,7 +200,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                       void search(nextScheduled.date);
                     }}
                   >
-                    <Text style={styles.calendarText}>
+                    <Text style={[styles.calendarText, styles.nextDetail]}>
                       {busy
                         ? 'Finding matches…'
                         : nextScheduled.day.mode === 'drive'
@@ -202,12 +209,12 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                             ? 'Find drivers'
                             : 'Find drivers or passengers'}
                     </Text>
-                    <Ionicons name="arrow-forward" size={16} color={colors.accent} />
+                    <Ionicons name="arrow-forward" size={16} color={colors.accentSoft} />
                   </Pressable>
                 </>
               ) : (
                 <>
-                  <Text style={styles.muted}>
+                  <Text style={styles.nextDetail}>
                     No trip to campus is planned in the next 30 days.
                   </Text>
                   <AppButton
@@ -467,10 +474,13 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     }}
                   />
                 ) : (
-                  <Text>
-                    The rider can find your driver listing and send a request. Review incoming
-                    requests in Rides.
-                  </Text>
+                  <>
+                    <Text>Riders send the request; you review and accept it in Rides.</Text>
+                    <AppButton label="Review ride requests" disabled={busy || !vehicle.loaded} onPress={() => {
+                      if (!vehicle.vehicle) { setVehicleRequired(true); return; }
+                      router.navigate('/rides');
+                    }} />
+                  </>
                 )}
               </Card>
             );

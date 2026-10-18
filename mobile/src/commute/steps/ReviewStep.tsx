@@ -83,6 +83,10 @@ export function ReviewStep({
         <Text style={styles.value}>{draft.campusLot ? lotTitle(draft.campusLot) : '—'}</Text>
       </Section>
 
+      <Section onEdit={() => onEdit('timing')} title="Morning departure / pickup readiness">
+        <Text>Review or change your morning times, including road-based suggestions.</Text>
+      </Section>
+
       <Section onEdit={() => onEdit('schedule')} title="Your week">
         {draft.days.map((schedule) => (
           <View key={schedule.day} style={styles.dayRow}>

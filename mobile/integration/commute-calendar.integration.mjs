@@ -9,6 +9,7 @@ import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/
 import { localDateAt, weekdayForDate, localMinuteToEpoch } from '../src/mvp/settings.ts';
 import { toPrivacyArea } from '../src/commute/commuteModel.ts';
 import { shiftDate } from '../src/calendar/commuteCalendar.ts';
+import { vehicleFixture } from './matching-fixtures.mjs';
 if (
   process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:9095' ||
   process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:9099'
@@ -140,6 +141,9 @@ test(
         }),
         { code: 'permission-denied' },
       );
+      const estimate = await action(driver, 'estimateCommuteStart', { startPoint: point, campusLot: 'westSide' });
+      assert.deepEqual(estimate, { durationSeconds: 1800 });
+      await assert.rejects(action(driver, 'estimateCommuteStart', { startPoint: { latitude: 91, longitude: 0 }, campusLot: 'westSide' }), { code: 'functions/invalid-argument' });
       const search = await action(rider, 'findCommuteMatches', {
         localDate: date,
       });
@@ -224,6 +228,16 @@ test(
         }),
         { code: 'functions/permission-denied' },
       );
+      await assert.rejects(action(driver, 'respondToRideRequest', { requestId: pending.id, decision: 'ACCEPTED' }),
+        error => error.code === 'functions/failed-precondition' && error.details?.reason === 'VEHICLE_REQUIRED');
+      assert.equal((await db.doc(`rideRequests/${pending.id}`).get()).data().status, 'PENDING');
+      assert.equal((await db.collection('_rideCommitments').where('requestId', '==', pending.id).get()).size, 0);
+      await assert.rejects(action(rider, 'saveVehicleDetails', vehicleFixture(driver.uid)), { code: 'functions/invalid-argument' });
+      await assert.rejects(action(driver, 'saveVehicleDetails', { ...vehicleFixture(driver.uid), verified: true }), { code: 'functions/invalid-argument' });
+      await action(driver, 'saveVehicleDetails', vehicleFixture(driver.uid));
+      assert.equal((await getDoc(doc(driver.db, 'users', driver.uid, 'vehicles', 'primary'))).data().plate, 'DEMO 123');
+      await assert.rejects(getDoc(doc(rider.db, 'users', driver.uid, 'vehicles', 'primary')), { code: 'permission-denied' });
+      await assert.rejects(setDoc(doc(driver.db, 'users', driver.uid, 'vehicles', 'primary'), vehicleFixture(driver.uid)), { code: 'permission-denied' });
       assert.equal(
         (
           await action(driver, 'respondToRideRequest', {

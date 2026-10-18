@@ -5,7 +5,7 @@ export type CommuteRole = 'driver' | 'rider' | 'both';
 export type CommutePlan = 'now' | 'later';
 
 export type OnboardingStepId = 'role' | 'name' | 'plan';
-export type OnboardingFlowStep = OnboardingStepId | CommuteStepId;
+export type OnboardingFlowStep = OnboardingStepId | CommuteStepId | 'vehicle';
 
 export interface OnboardingDraft {
   role?: CommuteRole;
@@ -70,6 +70,7 @@ export function getOnboardingFlow(draft: OnboardingDraft): OnboardingFlowStep[] 
   const steps: OnboardingFlowStep[] = ['role', 'name', 'plan'];
   if (draft.plan === 'now' && draft.role) {
     steps.push(...getCommuteSteps(draft.role));
+    if (draft.role !== 'rider') steps.push('vehicle');
   }
   return steps;
 }

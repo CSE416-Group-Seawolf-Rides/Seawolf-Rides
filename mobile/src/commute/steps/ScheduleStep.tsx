@@ -10,9 +10,6 @@ import {
   countTrips,
   DaySchedule,
   DEFAULT_ARRIVE_BY,
-  DEFAULT_START_AT,
-  setStartTime,
-  hasMorningTimes,
   DEFAULT_LEAVE_AT,
   getDayError,
   hasSameTimes,
@@ -38,7 +35,7 @@ interface ScheduleStepProps {
 
 interface OpenField {
   target: Weekday | 'all';
-  leg: TripLeg | 'startAt';
+  leg: TripLeg;
 }
 
 const legCopy: Record<TripLeg, { label: string; none: string; add: string; default: number }> = {
@@ -95,40 +92,6 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
     );
   }
 
-  function renderStart(target: Weekday | 'all', schedule: DaySchedule) {
-    if (schedule.arriveBy === null) return null;
-    const mode =
-      target === 'all'
-        ? role === 'both'
-          ? 'either'
-          : role === 'driver'
-            ? 'drive'
-            : 'ride'
-        : schedule.mode;
-    return (
-      <>
-        <TimeField
-          label={
-            mode === 'drive'
-              ? 'Leave your starting point at'
-              : mode === 'ride'
-                ? 'Ready for pickup from'
-                : 'Ready to head out at'
-          }
-          emptyLabel="Choose time"
-          minutes={schedule.startAt ?? null}
-          defaultMinutes={DEFAULT_START_AT}
-          expanded={openField?.target === target && openField.leg === 'startAt'}
-          noneLabel="Clear start time"
-          addLabel="Choose a start time"
-          onToggle={() => toggleField({ target, leg: 'startAt' })}
-          onChange={(minutes) => setDays(setStartTime(days, target, minutes))}
-        />
-        <View style={styles.divider} />
-      </>
-    );
-  }
-
   function toggleByDay(value: boolean) {
     Haptics.selectionAsync();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -161,7 +124,7 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
   return (
     <FlowStep
       continueLabel={continueLabel}
-      canContinue={isScheduleValid(days) && hasMorningTimes(days)}
+      canContinue={isScheduleValid(days.map((day) => ({ ...day, startAt: undefined })))}
       onContinue={onContinue}
       progress={progress}
       reaction={
@@ -169,7 +132,7 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
           ? `${days.length} day${days.length === 1 ? '' : 's'} a week — up to ${trips} trip${trips === 1 ? '' : 's'} you could share.`
           : null
       }
-      subtitle="Set your morning start, campus arrival deadline, and return time. Driving: when you leave to pick someone up. Riding: when you can be ready at your pickup point."
+      subtitle="Pick your campus arrival deadline and return time. Next, we’ll help you choose when to head out."
       title="Build your week"
     >
       <View style={styles.section}>
@@ -188,11 +151,10 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
       {days.length > 0 && !byDay && first && (
         <Card style={styles.timesCard}>
           <Text style={styles.sectionTitle}>Your morning trip</Text>
-          {renderStart('all', first)}
           {renderField('all', 'arriveBy', first.arriveBy)}
           <View style={styles.divider} />
           {renderField('all', 'leaveAt', first.leaveAt)}
-          {getDayError(first) && <Text style={styles.error}>{getDayError(first)}</Text>}
+          {getDayError({ ...first, startAt: undefined }) && <Text style={styles.error}>{getDayError({ ...first, startAt: undefined })}</Text>}
         </Card>
       )}
 
@@ -208,13 +170,9 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
         </View>
       )}
 
-      {days.some((day) => day.arriveBy !== null && day.startAt == null) && (
-        <Text style={styles.error}>Choose your morning start time for each trip to campus.</Text>
-      )}
-
       {(byDay || role === 'both') &&
         days.map((schedule) => {
-          const error = byDay ? getDayError(schedule) : null;
+          const error = byDay ? getDayError({ ...schedule, startAt: undefined }) : null;
           return (
             <Card key={schedule.day} style={styles.dayCard}>
               <Text style={styles.dayTitle}>{dayName(schedule.day)}</Text>
@@ -227,7 +185,6 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
               )}
               {byDay && (
                 <>
-                  {renderStart(schedule.day, schedule)}
                   {renderField(schedule.day, 'arriveBy', schedule.arriveBy)}
                   <View style={styles.divider} />
                   {renderField(schedule.day, 'leaveAt', schedule.leaveAt)}
