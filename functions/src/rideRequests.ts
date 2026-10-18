@@ -21,6 +21,7 @@ import type {
 import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
 
+import { chatIdFor, linkRequestChat } from './chatThreads';
 import { prepareCalendarPair } from './calendarMatching';
 import { requestInitiator, requestRecipient } from '../../mobile/src/mvp/rideRequestModel';
 import { isValidRouteCoordinate } from '../../mobile/src/routing/types';
@@ -209,12 +210,12 @@ function result(snapshot: DocumentSnapshot): RideRequestResult {
     ...(value.attemptId ? { attemptId: value.attemptId } : {}),
   };
 }
-async function creationState(tx: Transaction, id: string, reverseId: string, attemptId?: string) {
+async function creationState(tx: Transaction, id: string, reverseId: string, chatId: string, attemptId?: string) {
   const db = getFirestore();
   const refs = [db.doc(`rideRequests/${id}`), db.doc(`rideRequests/${reverseId}`)];
   if (attemptId) refs.push(db.doc(`_rideRequestAttempts/${digest([id, attemptId])}`));
-  const [own, reverse, operation] = await tx.getAll(...refs);
-  return { own, reverse, operation };
+  const [thread, own, reverse, operation] = await tx.getAll(db.doc(`chats/${chatId}`), ...refs);
+  return { own, reverse, operation, thread };
 }
 /** Remember coalesced sends too: retrying a losing crossed send must not reopen it later. */
 function existingCreation(
@@ -243,7 +244,8 @@ function existingCreation(
   if (!existing?.exists) return undefined;
   if (operation && !operation.exists)
     tx.create(operation.ref, { requestId: existing.id, attemptId, initiatorId, createdAt: now() });
-  return result(existing);
+  const chatId = linkRequestChat(tx, state.thread, existing.data() as RideRequest, existing.id);
+  return { ...result(existing), chatId };
 }
 async function commitCreation(
   id: string,
@@ -258,6 +260,7 @@ async function commitCreation(
       tx,
       id,
       requestIdFor(prepared.value.driverId, prepared.value.riderId, prepared.value.localDate),
+      chatIdFor(prepared.value.driverId, prepared.value.riderId),
       attemptId,
     );
     const changed =
@@ -296,7 +299,8 @@ async function commitCreation(
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    return { id, status: 'PENDING', ...(attemptId ? { attemptId } : {}) };
+    const chatId = linkRequestChat(tx, state.thread, prepared.value, id, true);
+    return { id, status: 'PENDING', chatId, ...(attemptId ? { attemptId } : {}) };
   });
 }
 /** All reservations and the accepted status commit together. No network/routing in retry callbacks. */
@@ -394,6 +398,7 @@ export const createRideRequest = onCall(options, async (request) => {
         tx,
         id,
         requestIdFor(data.driverId, riderId, data.localDate),
+        chatIdFor(data.driverId, riderId),
         data.attemptId,
       );
       return {

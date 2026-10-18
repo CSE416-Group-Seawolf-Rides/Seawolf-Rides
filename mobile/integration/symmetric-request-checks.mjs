@@ -1,3 +1,4 @@
+import { verifyRequestChat } from './chat-checks.mjs';
 import assert from 'node:assert/strict';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { shiftDate } from '../src/calendar/commuteCalendar.ts';
@@ -35,6 +36,7 @@ export async function verifySymmetricRequests(
   const driver = await client('symmetric-driver', 'driver', start, date);
   const rider = await client('symmetric-rider', 'rider', pickup, date);
   const pair = [driver, rider];
+  let firstAcceptedInput;
   const inputFor = async (localDate, attemptId) => {
     const result = await action(driver, 'findCommuteMatches', { localDate });
     const match = result.matches.find((m) => m.driverId === driver.uid && m.riderId === rider.uid);
@@ -82,6 +84,7 @@ export async function verifySymmetricRequests(
           { code: 'functions/invalid-argument' },
         );
         const value = await action(driver, 'createRideRequest', input);
+        await verifyRequestChat({ driver, rider, outsider, value });
         const pending = (await getDoc(doc(rider.db, 'rideRequests', value.id))).data();
         assert.equal(pending.initiatorId, driver.uid);
         await assert.rejects(respond(driver, value, 'ACCEPTED'), {
@@ -94,6 +97,7 @@ export async function verifySymmetricRequests(
         );
         assert.equal((await cancel(driver, value)).status, 'CANCELLED');
         await Promise.all(updates);
+        await verifyRequestChat({ driver, rider, outsider, value, status: 'CANCELLED' });
         assert.equal(
           (await cancel(driver, value)).status,
           'CANCELLED',
@@ -118,8 +122,10 @@ export async function verifySymmetricRequests(
       'resend gets a fresh proposal, stale actions cannot affect it, passenger can accept without a vehicle',
       async () => {
         const input = await inputFor(date, 'symmetric-driver-proposal-2');
+        firstAcceptedInput = input;
         const value = await action(driver, 'createRideRequest', input);
         assert.equal(value.status, 'PENDING');
+        await verifyRequestChat({ driver, rider, outsider, value });
         await assert.rejects(action(driver, 'previewAcceptedRide', { requestId: value.id }), {
           code: 'functions/failed-precondition',
         });
@@ -140,6 +146,7 @@ export async function verifySymmetricRequests(
         );
         await respond(rider, value, 'ACCEPTED');
         await Promise.all(updates);
+        await verifyRequestChat({ driver, rider, outsider, value, status: 'ACCEPTED' });
         await assert.rejects(cancel(driver, value), { code: 'functions/failed-precondition' });
         const previewInput = { requestId: value.id };
         const beforePreview = calls.length;
@@ -214,6 +221,10 @@ export async function verifySymmetricRequests(
         );
         await respond(rider, again, 'DECLINED');
         assert.equal((await db.doc(`rideRequests/${again.id}`).get()).data().status, 'DECLINED');
+        await verifyRequestChat({ driver, rider, outsider, value: again, status: 'DECLINED' });
+        const threadBeforeRetry = (await db.doc(`chats/${again.chatId}`).get()).data();
+        await action(driver, 'createRideRequest', firstAcceptedInput);
+        assert.deepEqual((await db.doc(`chats/${again.chatId}`).get()).data(), threadBeforeRetry, 'an old duplicate must not replace the latest date context');
         await action(driver, 'saveVehicleDetails', vehicleFixture(driver.uid));
       },
     );
@@ -261,6 +272,7 @@ export async function verifySymmetricRequests(
           }),
         ]);
         assert.equal(both[0].id, both[1].id);
+        assert.equal(both[0].chatId, both[1].chatId);
         assert.equal(both[0].attemptId, both[1].attemptId);
         assert.equal(both[0].status, 'PENDING');
         const reverse = await action(rider, 'createRideRequest', {
@@ -270,6 +282,7 @@ export async function verifySymmetricRequests(
           attemptId: 'symmetric-reversed-proposal-8',
         });
         assert.equal(reverse.id, both[0].id);
+        assert.equal(reverse.chatId, both[0].chatId);
         const proposals = await db
           .collection('rideRequests')
           .where('localDate', '==', input.localDate)

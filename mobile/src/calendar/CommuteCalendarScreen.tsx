@@ -143,7 +143,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     setRequesting(true);
     setMessage(null);
     try {
-      await sendRideRequest({
+      const request = await sendRideRequest({
         source: 'CALENDAR',
         proposedPlan: {
           departure: match.plan.departure,
@@ -157,7 +157,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
         riderRevision: match.riderRevision,
         driverRevision: match.driverRevision,
       });
-      setMessage('Request updated. Follow its status in Rides.');
+      return request;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not send this request.');
     } finally {
@@ -215,7 +215,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                 setVehicleRequired(true);
               }}
               onCancel={(request) => void cancelMatch(request)}
-              onRequest={(match) => void requestMatch(match)}
+              onRequest={requestMatch}
               onClose={() => setMatchesOpen(false)}
               onReviewRequests={() => {
                 setMatchesOpen(false);

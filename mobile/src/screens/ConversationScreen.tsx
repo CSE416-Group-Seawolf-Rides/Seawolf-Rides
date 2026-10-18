@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +18,7 @@ import { colors, radii, spacing } from '../theme';
 
 interface ConversationScreenProps {
   conversation: PrototypeConversation;
+  contextCard?: ReactNode;
   onBack: () => void;
   onOpenProfile: (participantId: string, displayName: string) => void;
   onSendMessage?: (text: string) => Promise<void>;
@@ -27,7 +28,7 @@ interface ConversationScreenProps {
   onLoadEarlier?: () => void;
 }
 
-export function ConversationScreen({ conversation, onBack, onOpenProfile, onSendMessage, loading, error, hasEarlier, onLoadEarlier }: ConversationScreenProps) {
+export function ConversationScreen({ conversation, onBack, onOpenProfile, onSendMessage, loading, error, hasEarlier, onLoadEarlier, contextCard }: ConversationScreenProps) {
   const scroll = useRef<ScrollView>(null);
   const followLatest = useRef(true);
   const [draft, setDraft] = useState('');
@@ -85,7 +86,7 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile, onSend
         >
           <Text style={styles.backText}>‹ Back</Text>
         </Pressable>
-        <Pressable disabled={!!onSendMessage} accessibilityLabel={`View ${conversation.preview.participantName}'s profile`} accessibilityRole="button" onPress={() => onOpenProfile(conversation.participantId, conversation.preview.participantName)} style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}>
+        <Pressable disabled={loading || !!error} accessibilityLabel={`View ${conversation.preview.participantName}'s profile`} accessibilityRole="button" onPress={() => onOpenProfile(conversation.participantId, conversation.preview.participantName)} style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}>
           <Avatar name={profile.displayName} participantId={profile.participantId} sampleAvatar={profile.sampleAvatar} size={40} />
           <View style={styles.headerCopy}>
             <Text style={styles.name}>{conversation.preview.participantName}</Text>
@@ -108,6 +109,8 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile, onSend
       >
         {loading && <Text>Loading conversation…</Text>}
         {error && <Text accessibilityRole="alert">{error}</Text>}
+        {!loading && !error && contextCard}
+        {onSendMessage && !loading && !error && messages.length === 0 && <Text style={styles.emptyPrompt}>Start the conversation!</Text>}
         {hasEarlier && <AppButton label="Load earlier messages" variant="secondary" onPress={() => { followLatest.current = false; onLoadEarlier?.(); }} />}
         {!onSendMessage && <View style={styles.prototypeNotice}>
           <Text style={styles.prototypeText}>
@@ -210,6 +213,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: spacing.lg,
   },
+  emptyPrompt: { color: colors.textMuted, opacity: 0.65, fontStyle: 'italic', textAlign: 'center', marginVertical: spacing.xl },
   prototypeNotice: {
     alignSelf: 'center',
     backgroundColor: colors.surfaceMuted,

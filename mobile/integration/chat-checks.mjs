@@ -29,6 +29,10 @@ export async function verifyChat(t, { driver, rider, outsider, match, date, acti
     assert.deepEqual(thread.participantIds, [driver.uid, rider.uid].sort());
     assert.equal(thread.names[rider.uid], rider.uid);
     assert.equal(thread.messageCount, 0);
+    assert.equal(thread.requestId, undefined);
+    assert.equal(thread.trip.pickup, match.plan.pickup);
+    assert.equal(thread.trip.vehicleCampusArrival, match.plan.vehicleCampusArrival);
+    assert.equal((await getDocs(collection(rider.db, 'chats', a.id, 'messages'))).size, 0, 'empty prompt is not a stored message');
     assert.equal(thread.driverStart, undefined);
     assert.equal(thread.riderPickup, undefined);
     assert.equal(thread.startPoint, undefined);
@@ -62,4 +66,26 @@ export async function verifyChat(t, { driver, rider, outsider, match, date, acti
     }
     assert.equal(calls.length, before, 'sending messages must not call a router');
   });
+}
+
+/** A request is enough to create a shared Inbox entry, even before the first text. */
+export async function verifyRequestChat({ driver, rider, outsider, value, count = 0, status = 'PENDING' }) {
+  assert.match(value.chatId, /^[a-f0-9]{64}$/);
+  for (const account of [driver, rider]) {
+    const thread = (await getDoc(doc(account.db, 'chats', value.chatId))).data();
+    assert.equal(thread.requestId, value.id);
+    assert.equal(thread.messageCount, count, 'linking a request must preserve actual messages');
+    assert.deepEqual(thread.participantIds, [driver.uid, rider.uid].sort());
+    const request = (await getDoc(doc(account.db, 'rideRequests', thread.requestId))).data();
+    assert.equal(request.status, status, 'context reads the current shared request status');
+    assert.deepEqual(thread.trip, { driverId: request.driverId, riderId: request.riderId,
+      localDate: request.localDate, campusLabel: request.campusLabel,
+      departure: request.plan.departure, pickup: request.plan.pickup,
+      vehicleCampusArrival: request.plan.vehicleCampusArrival });
+    const inbox = await getDocs(query(collection(account.db, 'chats'), where('participantIds', 'array-contains', account.uid)));
+    assert.ok(inbox.docs.some((d) => d.id === value.chatId));
+    const messages = await getDocs(collection(account.db, 'chats', value.chatId, 'messages'));
+    assert.equal(messages.size, count, 'never insert automatic request/placeholder text');
+  }
+  if (outsider) await assert.rejects(getDoc(doc(outsider.db, 'chats', value.chatId)), { code: 'permission-denied' });
 }

@@ -28,6 +28,7 @@ import {
   requestCanCancel,
   requestRecipient,
   type RideRequest,
+  type RideRequestResult,
 } from '../mvp/rideRequestModel';
 import { rideTime } from '../mvp/ridePresentation';
 import { trafficForecastIsStale } from '../routing/types';
@@ -76,7 +77,7 @@ export function CommuteMatchesSheet({
   requests: RideRequest[];
   onLoadMore: () => void;
   onRetry: () => void;
-  onRequest: (match: CalendarMatch) => void;
+  onRequest: (match: CalendarMatch) => Promise<RideRequestResult | undefined>;
   onReviewRequests: () => void;
   vehicleLoaded: boolean;
   vehicleReady: boolean;
@@ -101,6 +102,15 @@ export function CommuteMatchesSheet({
     } catch (failure) {
       setChatError(failure instanceof Error ? failure.message : 'Could not start chat. Please retry.');
     } finally { chatLock.current = false; setChatBusy(false); }
+  };
+  const requestAndChat = async (candidate: CalendarMatch) => {
+    if (chatLock.current || parentBusy) return;
+    chatLock.current = true;
+    try {
+      const request = await onRequest(candidate);
+      chatLock.current = false;
+      if (request?.chatId) dismiss(() => { onClose(); router.push(`/inbox/${request.chatId}`); });
+    } finally { chatLock.current = false; }
   };
   const [visible, setVisible] = useState(true);
   const [pageSize, setPageSize] = useState<MatchPageSize>(5);
@@ -215,7 +225,7 @@ export function CommuteMatchesSheet({
             setDriverOption(candidate.driverId);
             setDetailId(candidate.driverId === uid ? candidate.riderId : candidate.driverId);
           } else if (candidate.driverId === uid && !vehicleReady) dismiss(onVehicleRequired);
-          else onRequest(candidate);
+          else void requestAndChat(candidate);
         }}
       />
     );

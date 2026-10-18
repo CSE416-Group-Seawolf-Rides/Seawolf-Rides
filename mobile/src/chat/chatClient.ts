@@ -3,6 +3,7 @@ import { collection, doc, limitToLast, onSnapshot, orderBy, query, where } from 
 import { httpsCallable } from 'firebase/functions';
 import { getFirebaseFirestore, getFirebaseFunctions } from '../firebase/firebase';
 import type { CalendarMatch } from '../calendar/calendarMatching';
+import type { RideRequest } from '../mvp/rideRequestModel';
 import type { ChatMessage, ChatThread } from './chatModel';
 
 export async function startMatchChat(match: CalendarMatch, localDate: string) {
@@ -23,7 +24,7 @@ export function useChats(uid?: string) {
     if (!uid) return;
     return onSnapshot(query(collection(getFirebaseFirestore(), 'chats'), where('participantIds', 'array-contains', uid)),
       (snapshot) => setState({ uid, loaded: true, items: snapshot.docs.map((d) => ({ ...d.data(), id: d.id }) as ChatThread)
-        .filter((thread) => thread.messageCount > 0)
+        .filter((thread) => thread.messageCount > 0 || !!thread.requestId)
         .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)) }),
       () => setState({ uid, loaded: true, items: [], error: 'Could not load your conversations.' }));
   }, [uid]);
@@ -66,4 +67,18 @@ export function useChat(chatId: string, uid?: string) {
     : state.key === key ? state : { messages: [], threadLoaded: false, messagesLoaded: false };
   return { ...current, hasEarlier: (current.thread?.messageCount ?? 0) > current.messages.length,
     loadEarlier: () => setWindow({ chatId, size: size + 50 }) };
+}
+
+/** Status comes from the original request, so accepts/cancels update on both clients. */
+export function useChatRequest(requestId: string | undefined, uid?: string) {
+  const key = `${uid}:${requestId}`;
+  const [state, setState] = useState<{ key: string; request?: RideRequest; error?: string }>({ key: '' });
+  useEffect(() => {
+    if (!uid || !requestId) return;
+    return onSnapshot(doc(getFirebaseFirestore(), 'rideRequests', requestId), (snapshot) => {
+      setState({ key, ...(snapshot.exists() ? { request: { ...snapshot.data(), id: snapshot.id } as RideRequest }
+        : { error: 'Trip context is unavailable.' }) });
+    }, () => setState({ key, error: 'Could not load trip context.' }));
+  }, [requestId, uid, key]);
+  return !requestId ? { loading: false } : state.key === key ? { request: state.request, error: state.error, loading: false } : { loading: true };
 }

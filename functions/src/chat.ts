@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { prepareCalendarPair, requireLocalDemo } from './calendarMatching';
 import { checkDemoDate } from '../../mobile/src/calendar/commuteCalendar';
 import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
+import { chatIdFor, chatTrip } from './chatThreads';
 import { record } from '../../mobile/src/mvp/settings';
 
 const options = { region: 'us-central1', timeoutSeconds: 120, maxInstances: 1, concurrency: 4 };
@@ -37,7 +37,7 @@ export const startMatchChat = onCall(options, async (call) => {
     const otherId = uid === driverId ? riderId : driverId;
     if (!(await eligible(otherId))) throw new HttpsError('permission-denied', 'This account is unavailable.');
     const participants = [data.driverId, data.riderId].sort();
-    const id = createHash('sha256').update(JSON.stringify(participants)).digest('hex');
+    const id = chatIdFor(driverId, riderId);
     const db = getFirestore();
     const ref = db.doc(`chats/${id}`);
     // Existing conversations remain available even after plans change; no repeat routing.
@@ -57,7 +57,7 @@ export const startMatchChat = onCall(options, async (call) => {
       tx.create(ref, {
         schemaVersion: 1, participantIds: participants,
         names: { [driverId]: prepared.value.driverName, [riderId]: prepared.value.riderName },
-        localDate: data.localDate, campusLabel: prepared.value.campusLabel,
+        localDate: data.localDate, campusLabel: prepared.value.campusLabel, trip: chatTrip(prepared.value),
         createdAt: time, updatedAt: time, messageCount: 0, lastMessage: '',
       });
     });

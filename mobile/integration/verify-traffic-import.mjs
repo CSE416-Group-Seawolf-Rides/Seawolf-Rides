@@ -15,9 +15,14 @@ const admin = initializeAdmin({ projectId: 'demo-seawolf-rides' });
 try {
   const db = adminFirestore(admin);
   const chats = await db.collection('chats').get();
-  assert.equal(chats.size, 1);
-  const chatId = chats.docs[0].id;
-  assert.equal(chats.docs[0].data().messageCount, 3);
+  const original = chats.docs.find((d) => d.data().participantIds.includes('traffic-rider'));
+  assert.ok(original);
+  const chatId = original.id;
+  assert.equal(original.data().messageCount, 3);
+  const requestOnly = chats.docs.find((d) => d.data().participantIds.includes('symmetric-rider'));
+  assert.ok(requestOnly);
+  assert.equal(requestOnly.data().messageCount, 0);
+  assert.equal((await db.doc(`rideRequests/${requestOnly.data().requestId}`).get()).data().status, 'CANCELLED');
   assert.equal((await db.doc('users/dropoff-rider/commutes/primary').get()).data().riderDropoffPreference, 'any');
   const dropoffRide = await db.collection('rideRequests').where('riderId', '==', 'dropoff-rider').get();
   assert.equal(dropoffRide.docs[0].data().campusLabel, 'West Side');
@@ -83,6 +88,10 @@ try {
         'CANCELLED',
       );
       assert.equal((await getDoc(doc(client, 'ridePickups', byDate[0].id))).exists(), true);
+      const restoredThread = (await getDoc(doc(client, 'chats', requestOnly.id))).data();
+      assert.equal(restoredThread.requestId, byDate[3].id);
+      assert.equal(restoredThread.messageCount, 0);
+      assert.equal((await getDocs(collection(client, 'chats', requestOnly.id, 'messages'))).size, 0);
     } finally {
       await deleteApp(app);
     }

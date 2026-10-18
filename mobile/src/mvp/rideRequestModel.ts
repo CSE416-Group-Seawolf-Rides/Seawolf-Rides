@@ -41,6 +41,8 @@ export interface CreateRideRequestInput {
   direction: 'TO_CAMPUS';
 }
 export interface RideRequestResult {
+  /** Shared conversation opened by a successful request creation/retry. */
+  chatId?: string;
   id: string;
   status: RideRequestStatus;
   attemptId?: string;

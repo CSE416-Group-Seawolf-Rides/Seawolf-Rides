@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { verifyDropoff } from './dropoff-checks.mjs';
-import { verifyChat } from './chat-checks.mjs';
+import { verifyChat, verifyRequestChat } from './chat-checks.mjs';
 import { verifySymmetricRequests } from './symmetric-request-checks.mjs';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
@@ -237,6 +237,8 @@ test(
           vehicleCampusArrival: match.plan.vehicleCampusArrival,
         },
       });
+      await verifyRequestChat({ driver, rider, outsider, value: pending, count: 3 });
+      assert.equal((await db.collection('chats').get()).size, 1, 'inquiry upgrades to a request in the same conversation');
       await assert.rejects(
         getDoc(doc(outsider.db, 'rideRequests', pending.id)),
         {
@@ -247,6 +249,7 @@ test(
         requestId: pending.id,
         decision: 'ACCEPTED',
       });
+      await verifyRequestChat({ driver, rider, outsider, value: pending, count: 3, status: 'ACCEPTED' });
       for (const account of [driver, rider]) {
         const accepted = (
           await getDoc(doc(account.db, 'rideRequests', pending.id))
