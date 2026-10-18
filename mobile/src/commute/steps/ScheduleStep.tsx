@@ -132,7 +132,7 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
           ? `${days.length} day${days.length === 1 ? '' : 's'} a week — up to ${trips} trip${trips === 1 ? '' : 's'} you could share.`
           : null
       }
-      subtitle="Pick your preferred campus arrival time and return time. Matches may arrive up to 30 minutes earlier or later, for you to agree on. Next, choose when to head out."
+      subtitle="Pick when you need to arrive on campus and your return time. Estimates aim a few minutes early. Next, choose when to head out."
       title="Build your week"
     >
       <View style={styles.section}>

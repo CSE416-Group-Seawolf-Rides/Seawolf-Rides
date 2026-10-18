@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../../components/AppButton';
 import type { CommuteRole } from '../../onboarding/onboardingModel';
 import { colors, radii, spacing } from '../../theme';
-import { CommuteSchedule, dayModeLabels, formatTime, lotTitle, weekdays } from '../commuteModel';
+import { CommuteSchedule, dayModeLabels, formatTime, lotTitle, riderDropoffTitle, weekdays } from '../commuteModel';
 import { PrivacyAreaMap } from './PrivacyAreaMap';
 
 interface CommuteSummaryCardProps {
@@ -41,9 +41,10 @@ export function CommuteSummaryCard({ commute, role, onEdit }: CommuteSummaryCard
           )}
         </View>
         <Text style={styles.route}>
-          {commute.startArea.label} → {lotTitle(commute.campusLot)}
+          {commute.startArea.label} → {role === 'rider' ? riderDropoffTitle(commute) : lotTitle(commute.campusLot)}
         </Text>
 
+        {role === 'both' && commute.riderDropoffPreference === 'any' && <Text>Drop-off when riding: Any</Text>}
         <View style={styles.week}>
           {commute.days.map((plan) => (
             <View key={plan.day} style={styles.dayRow}>

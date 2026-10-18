@@ -23,7 +23,8 @@ import {
 } from '../../mobile/src/mvp/settings';
 import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
 import type { RoutingAdapter } from '../../mobile/src/routing/types';
-import { eligible, withMatchingRouting } from './matchingRuntime';
+import { eligible, withMatchingRouting, trafficRoutingEnabled } from './matchingRuntime';
+import { ARRIVAL_BUFFER_SECONDS } from '../../mobile/src/commute/arrivalPolicy';
 import { DemoBusyError, DEMO_CANDIDATE_LIMIT } from './demoRouting';
 
 const commitmentId = (uid: string, date: string) =>
@@ -205,7 +206,6 @@ export const findCommuteMatches = onCall(options, async (call) => {
     // Discover the complete opted-in metadata set before spending any public routing budget.
     const snapshot = await getFirestore()
       .collectionGroup('commutes')
-      .where('campusLot', '==', own.participant.commute.campusLot)
       .where('discoveryEnabled', '==', true)
       .orderBy(FieldPath.documentId())
       .get();
@@ -251,10 +251,13 @@ export const findCommuteMatches = onCall(options, async (call) => {
         proposals.push({ driver: b, rider: a, other: b });
     }
     // Closest saved targets are checked first; final ranking uses actual evaluated arrivals.
+    const preferencePenalty = (proposal: typeof proposals[number]) =>
+      proposal.rider.commute.riderDropoffPreference === 'any' || proposal.rider.commute.campusLot === 'other' || proposal.rider.commute.campusLot === proposal.driver.commute.campusLot ? 0 : 1;
     proposals.sort(
       (a, b) =>
         Math.abs(a.other.day.arriveBy! - own.participant.day.arriveBy!) -
           Math.abs(b.other.day.arriveBy! - own.participant.day.arriveBy!) ||
+        preferencePenalty(a) - preferencePenalty(b) ||
         (a.driver.uid < b.driver.uid
           ? -1
           : a.driver.uid > b.driver.uid
@@ -265,7 +268,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
     const searchRevision = createHash('sha256')
       .update(
         JSON.stringify([
-          date,
+          'buffered-arrival-dropoff-v3', date, trafficRoutingEnabled() ? 'tomtom-v1' : 'osrm',
           own.participant.revision,
           proposals.map((p) => [
             p.driver.uid,
@@ -276,6 +279,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
         ]),
       )
       .digest('hex');
+    const pageLimit = trafficRoutingEnabled() ? 1 : DEMO_CANDIDATE_LIMIT;
     let offset = 0;
     if (call.data.cursor !== undefined) {
       let cursor: { offset: number; revision: string };
@@ -289,7 +293,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
           Object.keys(cursor).sort().join(',') !== 'offset,revision' ||
           !Number.isSafeInteger(cursor.offset) ||
           cursor.offset < 0 ||
-          cursor.offset % DEMO_CANDIDATE_LIMIT !== 0 ||
+          cursor.offset % pageLimit !== 0 ||
           typeof cursor.revision !== 'string' ||
           !/^[a-f0-9]{64}$/.test(cursor.revision)
         )
@@ -309,10 +313,10 @@ export const findCommuteMatches = onCall(options, async (call) => {
       if (offset > proposals.length)
         throw new HttpsError('invalid-argument', 'Invalid search page.');
     }
-    const page = proposals.slice(offset, offset + DEMO_CANDIDATE_LIMIT);
+    const page = proposals.slice(offset, offset + pageLimit);
     const checked = offset + page.length;
     const result: CalendarSearchResult = {
-      policyVersion: 2,
+      policyVersion: 3,
       searchRevision,
       totalCandidatePlans: proposals.length,
       checkedCandidatePlans: checked,
@@ -327,7 +331,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
       unknownCount: offset === 0 ? unreadable : 0,
       incompatibleCount: 0,
     };
-    // At most two arrangements/four uncached routes per explicitly requested page.
+    // Two static pairs or one traffic pair (arrival seed plus three timed routes), within the four-request budget.
     if (page.length)
       await withMatchingRouting(async (routing) => {
         for (const { driver, rider, other } of page) {
@@ -351,6 +355,11 @@ export const findCommuteMatches = onCall(options, async (call) => {
               ? evaluation.plan.vehicleCampusArrival
               : evaluation.plan.riderDestinationArrival;
           result.matches.push({
+            eta: evaluation.eta,
+            dropoffLabel: CAMPUS_POINTS.find((point) => point.id === driver.commute.campusLot)?.label,
+            preferredDropoffLabel: rider.commute.riderDropoffPreference === 'any' || rider.commute.campusLot === 'other' ? 'Any' : CAMPUS_POINTS.find((point) => point.id === rider.commute.campusLot)?.label,
+            dropoffPreferenceMatch: preferencePenalty({ driver, rider, other }) === 0,
+            savedDriverDeparture: localMinuteToEpoch(date, driver.day.startAt!),
             driverId: driver.uid,
             riderId: rider.uid,
             driverRevision: driver.revision,
@@ -362,12 +371,12 @@ export const findCommuteMatches = onCall(options, async (call) => {
             addedDrivingSeconds: evaluation.metrics.driverExtraDurationSeconds,
             arrivalDifferenceSeconds: Math.abs(
               ownArrival -
-                localMinuteToEpoch(date, own.participant.day.arriveBy!),
+                (localMinuteToEpoch(date, own.participant.day.arriveBy!) - ARRIVAL_BUFFER_SECONDS),
             ),
             metrics: evaluation.metrics,
           });
         }
-      });
+      }, true);
     // Never return results based on inputs edited during routing.
     const fresh = await loadCalendarParticipant(uid, date);
     if (
@@ -460,7 +469,7 @@ export async function prepareCalendarPair(
       seats: 1,
       pickupLabel: r.participant.commute.startArea.label,
       campusLabel: CAMPUS_POINTS.find(
-        (p) => p.id === r.participant.commute.campusLot,
+        (p) => p.id === d.participant.commute.campusLot,
       )!.label,
       plan: evaluated.plan,
       metrics: evaluated.metrics,
@@ -468,7 +477,10 @@ export async function prepareCalendarPair(
   return {
     value,
     snapshots: [...r.snapshots, ...d.snapshots],
+    participants: { driver: d.participant, rider: r.participant },
+    eta: evaluated.eta,
     privatePickup: {
+      campus: CAMPUS_POINTS.find((p) => p.id === d.participant.commute.campusLot)!.coordinate,
       driverStart: d.participant.commute.startPoint!,
       riderPickup: r.participant.commute.startPoint!,
     },

@@ -182,20 +182,22 @@ test('real recommendation → pending request → driver acceptance streams to b
   };
   const id = requestIdFor(rider.uid, driver.uid, localDate);
   const pendingUpdates = [watchStatus(rider, id, 'PENDING'), watchStatus(driver, id, 'PENDING')];
-  assert.equal((await action(rider, 'createRideRequest', input)).status, 'PENDING');
+  const created = await action(rider, 'createRideRequest', input);
+  assert.equal(created.status, 'PENDING');
+  assert.match(created.chatId, /^[a-f0-9]{64}$/);
   await Promise.all(pendingUpdates);
   assert.equal(
     (await db.doc(`_rideCommitments/${commitmentIdFor(driver.uid, localDate)}`).get()).exists,
     false,
   );
-  assert.deepEqual(await action(rider, 'createRideRequest', input), { id, status: 'PENDING' });
+  assert.deepEqual(await action(rider, 'createRideRequest', input), { id, status: 'PENDING', chatId: created.chatId });
   await assert.rejects(respond(rider, id, 'ACCEPTED'), { code: 'functions/permission-denied' });
   const acceptedUpdates = [watchStatus(rider, id, 'ACCEPTED'), watchStatus(driver, id, 'ACCEPTED')];
   assert.deepEqual(await respond(driver, id, 'ACCEPTED'), { id, status: 'ACCEPTED' });
   const values = await Promise.all(acceptedUpdates);
   assert.equal(values[0].plan.pickup, values[1].plan.pickup);
   assert.deepEqual(await respond(driver, id, 'ACCEPTED'), { id, status: 'ACCEPTED' });
-  assert.deepEqual(await action(rider, 'createRideRequest', input), { id, status: 'ACCEPTED' });
+  assert.deepEqual(await action(rider, 'createRideRequest', input), { id, status: 'ACCEPTED', chatId: created.chatId });
   await assert.rejects(respond(driver, id, 'DECLINED'), { code: 'functions/failed-precondition' });
   for (const uid of [driver.uid, rider.uid]) {
     const commitment = (
@@ -251,7 +253,7 @@ test('only participants read requests, only the chosen driver decides, clients c
     code: 'functions/invalid-argument',
   });
   await assert.rejects(action(rider, 'createRideRequest', { ...input, riderId: stranger.uid }), {
-    code: 'functions/invalid-argument',
+    code: 'functions/permission-denied',
   });
   const updates = [watchStatus(driver, id, 'DECLINED'), watchStatus(rider, id, 'DECLINED')];
   assert.equal((await respond(driver, id, 'DECLINED')).status, 'DECLINED');

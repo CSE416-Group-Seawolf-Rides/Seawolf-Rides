@@ -1,5 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppButton } from '../../components/AppButton';
+import type { RideRequest } from '../rideRequestModel';
 import { Avatar } from '../../components/Avatar';
 import { Card } from '../../components/Card';
 import { weekdays } from '../../commute/commuteModel';
@@ -11,18 +13,20 @@ export function LiveCarpoolCard({
   carpool,
   uid,
   onOpen,
+  onCancel,
+  busyId,
 }: {
   carpool: LiveCarpool;
   uid: string;
   onOpen: () => void;
+  onCancel: (ride: RideRequest) => void;
+  busyId: string | null;
 }) {
   const daysFor = (driving: boolean) =>
     weekdays
       .filter((day) =>
         carpool.accepted.some(
-          (r) =>
-            (r.driverId === uid) === driving &&
-            weekdayForDate(r.localDate) === day.value,
+          (r) => (r.driverId === uid) === driving && weekdayForDate(r.localDate) === day.value,
         ),
       )
       .map((d) => d.short)
@@ -31,22 +35,18 @@ export function LiveCarpoolCard({
     riding = daysFor(false);
   const next = carpool.accepted[0] ?? carpool.pending[0];
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open carpool with ${carpool.name}`}
-      onPress={onOpen}
-    >
-      <Card style={styles.card}>
+    <Card style={styles.card}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open carpool with ${carpool.name}`}
+        onPress={onOpen}
+      >
         <View style={styles.row}>
           <Avatar name={carpool.name} />
           <View style={styles.copy}>
             <Text style={styles.name}>{carpool.name}</Text>
-            {riding ? (
-              <Text style={styles.relation}>Drives you · {riding}</Text>
-            ) : null}
-            {driving ? (
-              <Text style={styles.relation}>Rides with you · {driving}</Text>
-            ) : null}
+            {riding ? <Text style={styles.relation}>Drives you · {riding}</Text> : null}
+            {driving ? <Text style={styles.relation}>Rides with you · {driving}</Text> : null}
             {!carpool.accepted.length && (
               <Text style={styles.pending}>Waiting for their answer</Text>
             )}
@@ -66,8 +66,17 @@ export function LiveCarpoolCard({
             {carpool.pending.map((r) => rideDate(r.localDate)).join(', ')}
           </Text>
         )}
-      </Card>
-    </Pressable>
+      </Pressable>
+      {carpool.pending.map((request) => (
+        <AppButton
+          key={request.id}
+          variant="secondary"
+          label={busyId === request.id ? 'Cancelling…' : `Cancel request · ${rideDate(request.localDate)}`}
+          disabled={!!busyId}
+          onPress={() => onCancel(request)}
+        />
+      ))}
+    </Card>
   );
 }
 const styles = StyleSheet.create({

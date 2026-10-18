@@ -1,6 +1,6 @@
 # M3 real-user matching
 
-The calendar branch now uses saved-week inputs and preferred arrival ±30 minutes. Follow [the calendar guide](commute-calendar.md) for the current Home flow, paged discovery and ranking. The explicit `matchingSetups` API documented below remains for existing requests and regression tests.
+The calendar branch now uses saved-week inputs, Any/drop-off preferences and buffered no-late arrival proposals; ±30 minutes remains a discovery rule only. See [the current drop-off/arrival policy](dropoff-arrival.md). Follow [the calendar guide](commute-calendar.md) for the current Home flow, paged discovery and ranking. The explicit `matchingSetups` API documented below remains for existing requests and regression tests.
 
 PR #12 integrates the routing/map work from `feat/map-implementation` with the canonical evaluator/ranker merged in #11. Home and Map now use saved matching inputs and an authenticated callable service. No synthetic candidates enter this flow.
 
@@ -74,8 +74,8 @@ No device UI smoke test or live OSRM verification is claimed by automated tests.
 
 ## Preserved work and later milestones
 
-The three ZIP snapshots and native Google Navigation dependency/plugin/screens were removed. Their original content remains in PR #12's Git history. Existing map/routing helpers, regression tests and multi-rider work remain available. Simulations remain development-only and no longer automatically accept requests. The main Rides tab uses shared server-owned requests and accepted rides; Inbox messaging remains deferred.
+The three ZIP snapshots and native Google Navigation dependency/plugin/screens were removed. Their original content remains in PR #12's Git history. Existing map/routing helpers, regression tests and multi-rider work remain available. Simulations remain development-only and no longer automatically accept requests. The main Rides tab uses shared server-owned requests and accepted rides; Inbox now supports [participant-only local demo chat](local-chat.md) started from a real potential match.
 
-The local demo now supports [persisted dated requests, participant authorization and atomic acceptance](local-ride-requests.md). Rides shows shared PENDING, ACCEPTED and DECLINED records. Next: cancellation/release, recurring requests, messaging/history, multi-rider insertion/waiting semantics, and return trips. Navigation, tracking and payments remain later work.
+The local demo now supports [persisted dated requests, participant authorization and atomic acceptance](local-ride-requests.md). Rides shows shared PENDING, ACCEPTED and DECLINED records. Pending request cancellation, ride history and local text chat are now available; accepted-ride cancellation/release, recurring requests, multi-rider insertion/waiting semantics, and return trips remain future work. Navigation, tracking and payments remain later work.
 
 The public demo profile caps candidate work, caches routes and coordinates all matching/preview traffic across invocations. See [the scheduling and crash-recovery contract](public-osrm-demo.md).

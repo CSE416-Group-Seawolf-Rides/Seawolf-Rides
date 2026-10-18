@@ -15,7 +15,7 @@ import {
 } from '../../mobile/src/persistence/userDataModel';
 import { DemoBusyError, DEMO_CANDIDATE_LIMIT, FUNCTION_TIMEOUT_SECONDS } from './demoRouting';
 import { eligible, load, withMatchingRouting } from './matchingRuntime';
-export { createRideRequest, respondToRideRequest } from './rideRequests';
+export { createRideRequest, respondToRideRequest, cancelRideRequest, previewAcceptedRide } from './rideRequests';
 
 initializeApp();
 export const findCompatibleDrivers = onCall(
@@ -95,3 +95,5 @@ export const findCompatibleDrivers = onCall(
 export { findCommuteMatches, setCommuteDay } from './calendarMatching';
 export { saveVehicleDetails } from './vehicle';
 export { estimateCommuteStart } from './commuteEstimate';
+
+export { startMatchChat, sendChatMessage, getChatMatch } from './chat';

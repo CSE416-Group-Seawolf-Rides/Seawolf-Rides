@@ -35,6 +35,7 @@ export interface CommuteDraft {
   startPoint?: Coordinates;
   discoveryEnabled?: boolean;
   campusLot?: CampusLotId;
+  riderDropoffPreference?: 'any';
   days: DaySchedule[];
   seats: number;
 }
@@ -45,6 +46,8 @@ export interface CommuteSchedule {
   startPoint?: Coordinates;
   discoveryEnabled?: boolean;
   campusLot: CampusLotId;
+  /** A rider may accept any supported campus stop; driver parking remains concrete. */
+  riderDropoffPreference?: 'any';
   days: DaySchedule[];
   seats?: number;
 }
@@ -236,7 +239,7 @@ export function getDayError(schedule: DaySchedule): string | null {
       schedule.startAt >= 1440 ||
       (schedule.arriveBy !== null && schedule.startAt >= latestStartMinute(schedule)))
   ) {
-    return 'Your start must be before the latest arrival in your 30-minute window.';
+    return 'Choose a valid departure or pickup readiness time.';
   }
   return null;
 }
@@ -286,6 +289,7 @@ export function buildCommuteSchedule(draft: CommuteDraft, role: CommuteRole): Co
         ? { discoveryEnabled: true }
         : {}),
     campusLot: draft.campusLot,
+    ...(draft.riderDropoffPreference === 'any' && role !== 'driver' ? { riderDropoffPreference: 'any' as const } : {}),
     days,
     seats: role === 'rider' ? undefined : draft.seats,
   };
@@ -300,6 +304,7 @@ export function commuteToDraft(schedule: CommuteSchedule | null): CommuteDraft {
     startPoint: schedule.startPoint,
     discoveryEnabled: schedule.discoveryEnabled,
     campusLot: schedule.campusLot,
+    riderDropoffPreference: schedule.riderDropoffPreference,
     days: schedule.days,
     seats: schedule.seats ?? DEFAULT_SEATS,
   };
@@ -316,7 +321,7 @@ export function describeLeg(minutes: number | null, leg: TripLeg): string {
     return leg === 'arriveBy' ? 'No ride there' : 'No ride back';
   }
   return leg === 'arriveBy'
-    ? `Arrive around ${formatTime(minutes)}`
+    ? `Arrive by ${formatTime(minutes)}`
     : `Leave at ${formatTime(minutes)}`;
 }
 
@@ -329,4 +334,8 @@ export function describeWeekdays(days: Weekday[]): string {
 
 export function describeDays(days: DaySchedule[]): string {
   return describeWeekdays(days.map((schedule) => schedule.day));
+}
+
+export function riderDropoffTitle(commute: { campusLot?: CampusLotId; riderDropoffPreference?: 'any' }) {
+  return commute.riderDropoffPreference === 'any' || commute.campusLot === 'other' ? 'Any' : commute.campusLot ? lotTitle(commute.campusLot) : '—';
 }

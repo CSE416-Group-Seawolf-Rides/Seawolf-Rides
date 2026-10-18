@@ -282,3 +282,14 @@ test('matching rules reject malformed nested inputs, extra fields and forged own
     { weekdays: ['not-a-day'] }, { seatsRequested: 7 }, { active: 'true' }, { unexpected: true },
   ]) await assertFails(setDoc(doc(owner, 'matchingSetups/wolfie'), { ...matchingSetup(), ...override }));
 });
+
+test('rider Any preference is owner-only, validated and persisted independently of driver parking', async () => {
+  const database = authenticatedUser('wolfie');
+  const ref = doc(database, 'users', 'wolfie', 'commutes', 'primary');
+  await assertSucceeds(setDoc(ref, { ...commute, riderDropoffPreference: 'any' }));
+  const value = (await getDoc(ref)).data();
+  assert.equal(value.campusLot, 'tabler');
+  assert.equal(value.riderDropoffPreference, 'any');
+  await assertFails(setDoc(ref, { ...commute, riderDropoffPreference: 'surprise' }));
+  await assertFails(getDoc(doc(authenticatedUser('other'), 'users', 'wolfie', 'commutes', 'primary')));
+});

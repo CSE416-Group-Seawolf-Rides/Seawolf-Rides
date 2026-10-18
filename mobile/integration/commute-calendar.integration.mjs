@@ -209,11 +209,11 @@ test(
       const match = search.matches[0];
       assert.equal(match.driverId, driver.uid);
       assert.equal(match.riderId, rider.uid);
-      assert.equal(match.plan.departure, localMinuteToEpoch(date, 480));
+      assert.equal(match.plan.departure, localMinuteToEpoch(date, 500));
       const riderDoc = db.doc(`users/${rider.uid}/commutes/primary`);
       const savedDays = (await riderDoc.get()).data().days;
       await riderDoc.update({
-        days: savedDays.map((d) => ({ ...d, startAt: 510 })),
+        days: savedDays.map((d) => ({ ...d, startAt: 538 })),
       });
       const tooEarly = await action(rider, 'findCommuteMatches', {
         localDate: date,
@@ -439,7 +439,7 @@ test(
         ['paging-rider', 'rider', 480, 540],
         ['paging-a', 'driver', 480, 540],
         ['paging-b', 'driver', 503, 540],
-        ['paging-c', 'driver', 505, 550],
+        ['paging-c', 'driver', 505, 544],
         ['paging-far', 'driver', 503, 571],
       ]) {
         const account = id === pageRider.uid ? pageRider : await client(id);
@@ -474,7 +474,7 @@ test(
       const first = await action(pageRider, 'findCommuteMatches', {
         localDate: pageDate,
       });
-      assert.equal(first.policyVersion, 2);
+      assert.equal(first.policyVersion, 3);
       assert.equal(
         first.totalCandidatePlans,
         3,
@@ -489,7 +489,7 @@ test(
       );
       assert.deepEqual(
         first.matches.map((m) => m.driverId),
-        ['paging-b', 'paging-a'],
+        ['paging-a', 'paging-b'],
       );
       const second = await action(pageRider, 'findCommuteMatches', {
         localDate: pageDate,
@@ -501,11 +501,11 @@ test(
       const all = mergeCalendarPages(first, second);
       assert.deepEqual(
         all.matches.map((m) => m.driverId),
-        ['paging-b', 'paging-c', 'paging-a'],
+        ['paging-a', 'paging-b', 'paging-c'],
       );
       assert.deepEqual(
         all.matches.map((m) => m.arrivalDifferenceSeconds),
-        [0, 120, 1380],
+        [0, 0, 120],
       );
       for (const match of all.matches) {
         assert.equal(match.plan.pickup - match.plan.departure, 600);

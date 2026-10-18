@@ -71,6 +71,7 @@ service cloud.firestore {
           'startPoint',
           'discoveryEnabled',
           'campusLot',
+          'riderDropoffPreference',
           'days',
           'seats',
           'updatedAt'
@@ -86,6 +87,7 @@ service cloud.firestore {
           && request.resource.data.startPoint.latitude >= -90 && request.resource.data.startPoint.latitude <= 90
           && request.resource.data.startPoint.longitude is number
           && request.resource.data.startPoint.longitude >= -180 && request.resource.data.startPoint.longitude <= 180))
+        && (!request.resource.data.keys().hasAny(['riderDropoffPreference']) || request.resource.data.riderDropoffPreference == 'any')
         && validPrivacyArea()
         && request.resource.data.campusLot in [
           'westSide',
@@ -163,6 +165,18 @@ service cloud.firestore {
       allow read: if isVerifiedStonyBrookUser()
         && request.auth.uid in resource.data.participantIds;
       allow write: if false;
+    }
+
+    // Chat participants are established by the trusted matching callable.
+    match /chats/{chatId} {
+      allow read: if isVerifiedStonyBrookUser()
+        && request.auth.uid in resource.data.participantIds;
+      allow write: if false;
+      match /messages/{messageId} {
+        allow read: if isVerifiedStonyBrookUser()
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds;
+        allow write: if false;
+      }
     }
 
     // Exact routing points are released only after acceptance, to that ride's participants.

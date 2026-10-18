@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, codex/m3-demo-routing-limit]
+    branches: [main, codex/m3-demo-routing-limit, codex/commute-calendar-private-locations]
   pull_request_review:
     types: [submitted]
 

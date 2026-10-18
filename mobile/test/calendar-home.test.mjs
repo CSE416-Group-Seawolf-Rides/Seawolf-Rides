@@ -141,19 +141,19 @@ test('an unmatched rider commute remains available until the end of its arrival 
     ],
   };
   assert.equal(
-    nextScheduledCommute(commute, 'rider', date, {}, at(date, 550)).date,
+    nextScheduledCommute(commute, 'rider', date, {}, at(date, 539)).date,
     date,
   );
   assert.equal(
-    weekAgenda([], 'me', at(date, 550), date, commute, 'rider', {})[0].date,
+    weekAgenda([], 'me', at(date, 539), date, commute, 'rider', {})[0].date,
     date,
   );
   assert.notEqual(
-    nextScheduledCommute(commute, 'rider', date, {}, at(date, 570)).date,
+    nextScheduledCommute(commute, 'rider', date, {}, at(date, 540)).date,
     date,
   );
   assert.equal(
-    weekAgenda([], 'me', at(date, 570), date, commute, 'rider', {}).length,
+    weekAgenda([], 'me', at(date, 540), date, commute, 'rider', {}).length,
     0,
   );
 });

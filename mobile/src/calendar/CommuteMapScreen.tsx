@@ -1,20 +1,26 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
+import { CommuteCalendarSheet } from './CommuteCalendarSheet';
+import { useCalendarOverrides } from './calendarClient';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Circle, Marker } from 'react-native-maps';
 import { useSession } from '../auth/SessionProvider';
 import { useRideRequests } from '../mvp/rideRequestClient';
 import { useAcceptedPickup } from './acceptedPickups';
 import { localDateAt, CAMPUS_POINTS } from '../mvp/settings';
-import { METERS_PER_MILE } from '../commute/commuteModel';
+import { METERS_PER_MILE, riderDropoffTitle } from '../commute/commuteModel';
 import { AppButton } from '../components/AppButton';
 import { useHomeClock } from '../rides/useHomeClock';
 import { colors, spacing, radii } from '../theme';
 export function CommuteMapScreen() {
-  const { commute, user } = useSession();
+  const { commute, user, profile } = useSession();
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const overrides = useCalendarOverrides(user?.id);
   const requests = useRideRequests(user?.id);
   const { now } = useHomeClock();
   const ride = requests.items
-    .filter((r) => r.status === 'ACCEPTED' && r.localDate >= localDateAt(now.getTime() / 1000))
+    .filter((r) => r.status === 'ACCEPTED' && (selectedDate ? r.localDate === selectedDate : r.localDate >= localDateAt(now.getTime() / 1000)))
     .sort((a, b) => a.localDate.localeCompare(b.localDate))[0];
   const pickup = useAcceptedPickup(ride);
   if (!commute)
@@ -25,9 +31,11 @@ export function CommuteMapScreen() {
       </View>
     );
   const campus = CAMPUS_POINTS.find((p) => p.id === commute.campusLot);
+  const campusCoordinate = pickup.pickup?.campus ?? campus?.coordinate;
+  const campusLabel = ride?.campusLabel ?? campus?.label;
   const points = [
     commute.startPoint ?? commute.startArea.center,
-    ...(campus ? [campus.coordinate] : []),
+    ...(campusCoordinate ? [campusCoordinate] : []),
     ...(pickup.pickup ? [pickup.pickup.driverStart, pickup.pickup.riderPickup] : []),
   ];
   const latitudes = points.map((p) => p.latitude),
@@ -62,8 +70,8 @@ export function CommuteMapScreen() {
             pinColor={colors.accent}
           />
         )}
-        {campus && (
-          <Marker coordinate={campus.coordinate} title={campus.label} pinColor={colors.success} />
+        {campusCoordinate && (
+          <Marker coordinate={campusCoordinate} title={campusLabel ?? 'Campus'} pinColor={colors.success} />
         )}
         {pickup.pickup && (
           <>
@@ -84,15 +92,16 @@ export function CommuteMapScreen() {
       </MapView>
       <View style={styles.card}>
         <Text style={styles.title}>Your commute</Text>
+        {selectedDate && <Text>{selectedDate}</Text>}
         <Text>
-          {commute.startArea.label} → {campus?.label ?? 'Campus'}
+          {commute.startArea.label} → {campusLabel ?? (profile?.role === 'rider' ? riderDropoffTitle(commute) : 'Campus')}
         </Text>
         <Text style={styles.muted}>
           The shaded area is what others see before acceptance. Your exact pin is private.
         </Text>
         {ride && (
           <Text>
-            Next accepted ride: {ride.localDate} ·{' '}
+            {selectedDate ? 'Confirmed ride' : 'Next accepted ride'}: {ride.localDate} ·{' '}
             {ride.driverId === user?.id ? ride.riderName : ride.driverName}
           </Text>
         )}
@@ -100,9 +109,30 @@ export function CommuteMapScreen() {
         <AppButton
           label="Open my calendar"
           variant="secondary"
-          onPress={() => router.navigate('/home')}
+          onPress={() => setCalendarOpen(true)}
         />
       </View>
+      {calendarOpen && user && profile && (
+        <CommuteCalendarSheet
+          initialDate={selectedDate ?? ride?.localDate ?? localDateAt(now.getTime() / 1000)}
+          today={localDateAt(now.getTime() / 1000)}
+          commute={commute}
+          role={profile.role}
+          uid={user.id}
+          overrides={overrides.days}
+          requests={requests.items}
+          ready={overrides.loaded && requests.loaded}
+          onClose={() => setCalendarOpen(false)}
+          onSelect={(date) => {
+            setSelectedDate(date);
+            setCalendarOpen(false);
+          }}
+          onEditCommute={() => {
+            setCalendarOpen(false);
+            router.push('/commute-setup');
+          }}
+        />
+      )}
     </View>
   );
 }

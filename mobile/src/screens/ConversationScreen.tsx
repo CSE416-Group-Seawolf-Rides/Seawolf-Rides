@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { AppButton } from '../components/AppButton';
 import { Avatar } from '../components/Avatar';
 import { resolvePublicProfile } from '../profiles/publicProfiles';
 import { PrototypeChatMessage, PrototypeConversation } from '../prototypeData/types';
@@ -17,22 +18,45 @@ import { colors, radii, spacing } from '../theme';
 
 interface ConversationScreenProps {
   conversation: PrototypeConversation;
+  contextCard?: ReactNode;
   onBack: () => void;
   onOpenProfile: (participantId: string, displayName: string) => void;
+  onSendMessage?: (text: string) => Promise<void>;
+  loading?: boolean;
+  error?: string;
+  hasEarlier?: boolean;
+  onLoadEarlier?: () => void;
 }
 
-export function ConversationScreen({ conversation, onBack, onOpenProfile }: ConversationScreenProps) {
+export function ConversationScreen({ conversation, onBack, onOpenProfile, onSendMessage, loading, error, hasEarlier, onLoadEarlier, contextCard }: ConversationScreenProps) {
+  const scroll = useRef<ScrollView>(null);
+  const followLatest = useRef(true);
   const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const locked = useRef(false);
+  const [sendError, setSendError] = useState('');
   const [localMessages, setLocalMessages] = useState<PrototypeChatMessage[]>([]);
   const messages = [...conversation.messages, ...localMessages];
-  const profile = resolvePublicProfile(conversation.participantId, conversation.preview.participantName);
+  const profile = onSendMessage
+    ? { displayName: conversation.preview.participantName, participantId: conversation.participantId, sampleAvatar: undefined }
+    : resolvePublicProfile(conversation.participantId, conversation.preview.participantName);
 
-  function sendLocalMessage() {
+  async function sendMessage() {
     const text = draft.trim();
-    if (!text) {
+    if (!text || locked.current) {
       return;
     }
 
+    if (onSendMessage) {
+      followLatest.current = true;
+      locked.current = true;
+      setSending(true);
+      setSendError('');
+      try { await onSendMessage(text); setDraft(''); }
+      catch (failure) { setSendError(failure instanceof Error ? failure.message : 'Could not send. Retry your message.'); }
+      finally { locked.current = false; setSending(false); }
+      return;
+    }
     // Frontend-only prototype behavior: this message is never persisted.
     setLocalMessages((current) => [
       ...current,
@@ -62,7 +86,7 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile }: Conv
         >
           <Text style={styles.backText}>‹ Back</Text>
         </Pressable>
-        <Pressable accessibilityLabel={`View ${conversation.preview.participantName}'s profile`} accessibilityRole="button" onPress={() => onOpenProfile(conversation.participantId, conversation.preview.participantName)} style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}>
+        <Pressable disabled={loading || !!error} accessibilityLabel={`View ${conversation.preview.participantName}'s profile`} accessibilityRole="button" onPress={() => onOpenProfile(conversation.participantId, conversation.preview.participantName)} style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}>
           <Avatar name={profile.displayName} participantId={profile.participantId} sampleAvatar={profile.sampleAvatar} size={40} />
           <View style={styles.headerCopy}>
             <Text style={styles.name}>{conversation.preview.participantName}</Text>
@@ -72,15 +96,27 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile }: Conv
       </View>
 
       <ScrollView
+        ref={scroll}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        scrollEventThrottle={100}
+        onScroll={({ nativeEvent }) => {
+          followLatest.current = nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height >= nativeEvent.contentSize.height - 80;
+        }}
+        onContentSizeChange={() => { if (followLatest.current) scroll.current?.scrollToEnd({ animated: false }); }}
         contentContainerStyle={styles.messages}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.prototypeNotice}>
+        {loading && <Text>Loading conversation…</Text>}
+        {error && <Text accessibilityRole="alert">{error}</Text>}
+        {!loading && !error && contextCard}
+        {onSendMessage && !loading && !error && messages.length === 0 && <Text style={styles.emptyPrompt}>Start the conversation!</Text>}
+        {hasEarlier && <AppButton label="Load earlier messages" variant="secondary" onPress={() => { followLatest.current = false; onLoadEarlier?.(); }} />}
+        {!onSendMessage && <View style={styles.prototypeNotice}>
           <Text style={styles.prototypeText}>
             Prototype conversation · messages are stored only on this screen.
           </Text>
-        </View>
+        </View>}
         {messages.map((message) => {
           const mine = message.sender === 'me';
           return (
@@ -99,10 +135,13 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile }: Conv
         })}
       </ScrollView>
 
+      {sendError ? <Text accessibilityRole="alert" style={{ color: colors.accent, padding: spacing.md }}>{sendError}</Text> : null}
       <View style={styles.composer}>
         <TextInput
           accessibilityLabel="Message"
           multiline
+          maxLength={2000}
+          editable={!sending && !loading && !error}
           onChangeText={setDraft}
           placeholder="Message"
           placeholderTextColor={colors.textMuted}
@@ -110,17 +149,17 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile }: Conv
           value={draft}
         />
         <Pressable
-          accessibilityLabel="Send local prototype message"
+          accessibilityLabel={onSendMessage ? "Send message" : "Send local prototype message"}
           accessibilityRole="button"
-          disabled={!draft.trim()}
-          onPress={sendLocalMessage}
+          disabled={!draft.trim() || sending || loading || !!error}
+          onPress={() => void sendMessage()}
           style={({ pressed }) => [
             styles.sendButton,
             pressed && styles.pressed,
             !draft.trim() && styles.sendDisabled,
           ]}
         >
-          <Text style={styles.sendText}>Send</Text>
+          <Text style={styles.sendText}>{sending ? "Sending…" : "Send"}</Text>
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -174,6 +213,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: spacing.lg,
   },
+  emptyPrompt: { color: colors.textMuted, opacity: 0.65, fontStyle: 'italic', textAlign: 'center', marginVertical: spacing.xl },
   prototypeNotice: {
     alignSelf: 'center',
     backgroundColor: colors.surfaceMuted,

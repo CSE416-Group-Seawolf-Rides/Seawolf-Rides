@@ -4,7 +4,7 @@ export interface RouteCoordinate {
 }
 
 export interface RoutingProviderIdentity {
-  id: 'osrm';
+  id: 'osrm' | 'tomtom';
   name: string;
   baseUrl: string;
 }
@@ -48,6 +48,12 @@ export interface RoadRoute {
   distanceMeters: number;
   durationSeconds: number;
   provider: RoutingProviderIdentity;
+  /** Provider request time; a scheduled traffic forecast is not an observed future delay. */
+  estimate?: {
+    model: 'STATIC_ROAD' | 'TRAFFIC_FORECAST';
+    computedAtEpochSeconds: number;
+    departureEpochSeconds?: number;
+  };
   snappedWaypoints: SnappedWaypoint[];
   /** Ordered legs between each supplied waypoint, including typed guidance steps. */
   legs: RouteLeg[];
@@ -74,10 +80,15 @@ export type RoutingResult =
     };
 
 export interface RouteRequestOptions {
+  departureEpochSeconds?: number;
+  /** Arrival-based suggestions use exactly one of arrival or departure. */
+  arrivalEpochSeconds?: number;
   signal?: AbortSignal;
 }
 
 export interface RoutingAdapter {
+  /** Requires a dated departure (matching) or arrival (onboarding suggestion). */
+  timeDependent?: boolean;
   route(
     coordinates: readonly RouteCoordinate[],
     options?: RouteRequestOptions,
@@ -96,5 +107,19 @@ export function isValidRouteCoordinate(value: unknown): value is RouteCoordinate
     Number.isFinite(candidate.longitude) &&
     candidate.longitude >= -180 &&
     candidate.longitude <= 180
+  );
+}
+
+/** Maximum cached traffic forecast age; static road estimates have a separate policy. */
+export const TRAFFIC_ESTIMATE_MAX_AGE_SECONDS = 120;
+export function trafficForecastIsStale(
+  estimate: { model: string; computedAtEpochSeconds: number } | undefined,
+  now: number,
+): boolean {
+  return (
+    estimate?.model === 'TRAFFIC_FORECAST' &&
+    (!Number.isSafeInteger(estimate.computedAtEpochSeconds) ||
+      !Number.isFinite(now) ||
+      now - estimate.computedAtEpochSeconds >= TRAFFIC_ESTIMATE_MAX_AGE_SECONDS)
   );
 }

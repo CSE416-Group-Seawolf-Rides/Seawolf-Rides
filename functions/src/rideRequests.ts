@@ -21,7 +21,10 @@ import type {
 import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
 
+import { chatIdFor, linkRequestChat } from './chatThreads';
 import { prepareCalendarPair } from './calendarMatching';
+import { requestInitiator, requestRecipient } from '../../mobile/src/mvp/rideRequestModel';
+import { isValidRouteCoordinate } from '../../mobile/src/routing/types';
 import { vehicleIsComplete } from '../../mobile/src/vehicle/vehicleModel';
 
 const digest = (parts: string[]) =>
@@ -44,11 +47,13 @@ function localOnly() {
 }
 const uidValue = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 128 && !value.includes('/');
+const validAttempt = (value: unknown): value is string =>
+  typeof value === 'string' && /^[A-Za-z0-9_-]{16,80}$/.test(value);
 function input(value: unknown): CreateRideRequestInput {
   if (
     !record(value) ||
     Object.keys(value)
-      .filter((k) => k !== 'source' && k !== 'proposedPlan')
+      .filter((k) => !['source', 'proposedPlan', 'riderId', 'attemptId'].includes(k))
       .sort()
       .join(',') !== 'direction,driverId,driverRevision,localDate,riderRevision' ||
     (value.source !== undefined && value.source !== 'CALENDAR') ||
@@ -59,6 +64,8 @@ function input(value: unknown): CreateRideRequestInput {
         !Object.values(value.proposedPlan).every(Number.isSafeInteger))) ||
     (value.source !== 'CALENDAR' && value.proposedPlan !== undefined) ||
     !uidValue(value.driverId) ||
+    (value.riderId !== undefined && !uidValue(value.riderId)) ||
+    (value.attemptId !== undefined && !validAttempt(value.attemptId)) ||
     typeof value.localDate !== 'string' ||
     value.direction !== 'TO_CAMPUS' ||
     typeof value.riderRevision !== 'string' ||
@@ -196,45 +203,131 @@ async function assertUncommitted(tx: Transaction, value: PreparedPair['value']) 
   return refs;
 }
 function result(snapshot: DocumentSnapshot): RideRequestResult {
-  return { id: snapshot.id, status: snapshot.data()!.status };
+  const value = snapshot.data()!;
+  return {
+    id: snapshot.id,
+    status: value.status,
+    ...(value.attemptId ? { attemptId: value.attemptId } : {}),
+  };
 }
-async function commitCreation(id: string, prepared: PreparedPair): Promise<RideRequestResult> {
+async function creationState(tx: Transaction, id: string, reverseId: string, chatId: string, attemptId?: string) {
+  const db = getFirestore();
+  const refs = [db.doc(`rideRequests/${id}`), db.doc(`rideRequests/${reverseId}`)];
+  if (attemptId) refs.push(db.doc(`_rideRequestAttempts/${digest([id, attemptId])}`));
+  const [thread, own, reverse, operation] = await tx.getAll(db.doc(`chats/${chatId}`), ...refs);
+  return { own, reverse, operation, thread };
+}
+/** Remember coalesced sends too: retrying a losing crossed send must not reopen it later. */
+function existingCreation(
+  tx: Transaction,
+  state: Awaited<ReturnType<typeof creationState>>,
+  initiatorId: string,
+  attemptId?: string,
+  forced?: DocumentSnapshot,
+): RideRequestResult | undefined {
+  const { own, reverse, operation } = state;
+  const activeReverse = reverse.exists && ['PENDING', 'ACCEPTED'].includes(reverse.data()!.status);
+  const previousOperation = operation?.exists
+    ? [own, reverse].find((snapshot) => snapshot.id === operation.data()!.requestId)
+    : undefined;
+  let existing: DocumentSnapshot | undefined;
+  if (activeReverse) existing = reverse;
+  else if (forced) existing = forced;
+  else if (own.exists && own.data()!.status !== 'CANCELLED') existing = own;
+  else if (previousOperation) existing = previousOperation;
+  else if (own.exists && own.data()!.attemptId === attemptId) existing = own;
+  if (operation?.exists && !previousOperation?.exists)
+    throw new HttpsError(
+      'failed-precondition',
+      'The previous request record is unavailable. Reload your rides.',
+    );
+  if (!existing?.exists) return undefined;
+  if (operation && !operation.exists)
+    tx.create(operation.ref, { requestId: existing.id, attemptId, initiatorId, createdAt: now() });
+  const chatId = linkRequestChat(tx, state.thread, existing.data() as RideRequest, existing.id);
+  return { ...result(existing), chatId };
+}
+async function commitCreation(
+  id: string,
+  prepared: PreparedPair,
+  initiatorId: string,
+  attemptId?: string,
+  previous?: RideRequest,
+): Promise<RideRequestResult> {
   const ref = getFirestore().doc(`rideRequests/${id}`);
   return getFirestore().runTransaction(async (tx) => {
-    const existing = await tx.get(ref);
-    if (existing.exists) return result(existing);
+    const state = await creationState(
+      tx,
+      id,
+      requestIdFor(prepared.value.driverId, prepared.value.riderId, prepared.value.localDate),
+      chatIdFor(prepared.value.driverId, prepared.value.riderId),
+      attemptId,
+    );
+    const changed =
+      state.own.exists &&
+      state.own.data()!.status === 'CANCELLED' &&
+      state.own.data()!.attemptId !== previous?.attemptId
+        ? state.own
+        : undefined;
+    const existing = existingCreation(tx, state, initiatorId, attemptId, changed);
+    if (existing) return existing;
+    if (initiatorId === prepared.value.driverId) {
+      const vehicle = await tx.get(getFirestore().doc(`users/${initiatorId}/vehicles/primary`));
+      if (!vehicleIsComplete(vehicle.data(), initiatorId))
+        throw new HttpsError(
+          'failed-precondition',
+          'Finish setting up your vehicle before requesting as a driver.',
+          { reason: 'VEHICLE_REQUIRED' },
+        );
+    }
     await assertCurrent(tx, prepared);
     await assertUncommitted(tx, prepared.value);
     const timestamp = now();
-    tx.create(ref, {
+    if (state.operation)
+      tx.create(state.operation.ref, {
+        requestId: id,
+        attemptId,
+        initiatorId,
+        createdAt: timestamp,
+      });
+    tx.set(ref, {
       ...prepared.value,
       id,
+      initiatorId,
+      ...(attemptId ? { attemptId } : {}),
       status: 'PENDING',
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    return { id, status: 'PENDING' };
+    const chatId = linkRequestChat(tx, state.thread, prepared.value, id, true);
+    return { id, status: 'PENDING', chatId, ...(attemptId ? { attemptId } : {}) };
   });
 }
 /** All reservations and the accepted status commit together. No network/routing in retry callbacks. */
 export async function commitAcceptance(
   id: string,
-  driverId: string,
+  responderId: string,
   prepared: PreparedPair,
+  attemptId?: string,
 ): Promise<RideRequestResult> {
   const db = getFirestore();
   const ref = db.doc(`rideRequests/${id}`);
   return db.runTransaction(async (tx) => {
     const snapshot = await tx.get(ref);
     const request = snapshot.data() as RideRequest | undefined;
-    if (!request || request.driverId !== driverId)
-      throw new HttpsError('permission-denied', 'Only this request’s driver may respond.');
+    if (!request || requestRecipient(request) !== responderId)
+      throw new HttpsError('permission-denied', 'Only the request recipient may respond.');
+    assertAttempt(request, attemptId);
     if (request.status === 'ACCEPTED') return result(snapshot);
     if (request.status !== 'PENDING')
-      throw new HttpsError('failed-precondition', 'This request is already declined.');
-    const vehicle = await tx.get(db.doc(`users/${driverId}/vehicles/primary`));
-    if (!vehicleIsComplete(vehicle.data(), driverId))
-      throw new HttpsError('failed-precondition', 'Finish setting up your vehicle before accepting a passenger.', { reason: 'VEHICLE_REQUIRED' });
+      throw new HttpsError('failed-precondition', 'This request is no longer pending.');
+    const vehicle = await tx.get(db.doc(`users/${request.driverId}/vehicles/primary`));
+    if (!vehicleIsComplete(vehicle.data(), request.driverId))
+      throw new HttpsError(
+        'failed-precondition',
+        'The driver must finish vehicle setup before this ride can be accepted.',
+        { reason: 'VEHICLE_REQUIRED' },
+      );
     if (
       request.riderId !== prepared.value.riderId ||
       request.driverId !== prepared.value.driverId ||
@@ -292,14 +385,42 @@ const options = {
 };
 export const createRideRequest = onCall(options, async (request) => {
   try {
-    const riderId = await authenticated(request.auth?.uid);
+    const initiatorId = await authenticated(request.auth?.uid);
     const data = input(request.data);
+    const riderId = data.riderId ?? initiatorId;
+    if (initiatorId !== riderId && initiatorId !== data.driverId)
+      throw new HttpsError('permission-denied', 'Only a trip participant may send this request.');
     if (riderId === data.driverId)
       throw new HttpsError('invalid-argument', 'You cannot request yourself.');
     const id = requestIdFor(riderId, data.driverId, data.localDate);
-    const existing = await getFirestore().doc(`rideRequests/${id}`).get();
-    if (existing.exists) return result(existing);
-    const prepared = await withMatchingRouting((routing) => preparePair(riderId, data, routing));
+    const preview = await getFirestore().runTransaction(async (tx) => {
+      const state = await creationState(
+        tx,
+        id,
+        requestIdFor(data.driverId, riderId, data.localDate),
+        chatIdFor(data.driverId, riderId),
+        data.attemptId,
+      );
+      return {
+        existing: existingCreation(tx, state, initiatorId, data.attemptId),
+        previous: state.own.data() as RideRequest | undefined,
+      };
+    });
+    if (preview.existing) return preview.existing;
+    const previous = preview.previous;
+    if (initiatorId === data.driverId) {
+      const vehicle = await getFirestore().doc(`users/${initiatorId}/vehicles/primary`).get();
+      if (!vehicleIsComplete(vehicle.data(), initiatorId))
+        throw new HttpsError(
+          'failed-precondition',
+          'Finish setting up your vehicle before requesting as a driver.',
+          { reason: 'VEHICLE_REQUIRED' },
+        );
+    }
+    const prepared = await withMatchingRouting(
+      (routing) => preparePair(riderId, data, routing),
+      data.source === 'CALENDAR',
+    );
     if (
       data.source === 'CALENDAR' &&
       (['departure', 'pickup', 'vehicleCampusArrival'] as const).some(
@@ -310,7 +431,7 @@ export const createRideRequest = onCall(options, async (request) => {
         'aborted',
         'Route estimates changed. Search again and review the proposed times.',
       );
-    return await commitCreation(id, prepared);
+    return await commitCreation(id, prepared, initiatorId, data.attemptId, previous);
   } catch (error) {
     mapped(error);
   }
@@ -321,7 +442,11 @@ export const respondToRideRequest = onCall(options, async (call) => {
     const data = call.data;
     if (
       !record(data) ||
-      Object.keys(data).sort().join(',') !== 'decision,requestId' ||
+      Object.keys(data)
+        .filter((key) => key !== 'attemptId')
+        .sort()
+        .join(',') !== 'decision,requestId' ||
+      (data.attemptId !== undefined && !validAttempt(data.attemptId)) ||
       typeof data.requestId !== 'string' ||
       !/^[a-f0-9]{64}$/.test(data.requestId) ||
       (data.decision !== 'ACCEPTED' && data.decision !== 'DECLINED')
@@ -333,39 +458,130 @@ export const respondToRideRequest = onCall(options, async (call) => {
     const ref = getFirestore().doc(`rideRequests/${data.requestId}`);
     const snapshot = await ref.get();
     const saved = snapshot.data() as RideRequest | undefined;
-    if (!saved || saved.driverId !== uid)
-      throw new HttpsError('permission-denied', 'Only this request’s driver may respond.');
+    if (!saved || requestRecipient(saved) !== uid)
+      throw new HttpsError('permission-denied', 'Only the request recipient may respond.');
+    assertAttempt(saved, data.attemptId);
     if (saved.status === data.decision) return result(snapshot);
     if (saved.status !== 'PENDING')
       throw new HttpsError('failed-precondition', 'This request already has a final decision.');
     if (data.decision === 'DECLINED')
       return await getFirestore().runTransaction(async (tx) => {
         const fresh = await tx.get(ref);
-        if (fresh.data()?.status === 'DECLINED') return result(fresh);
-        if (fresh.data()?.driverId !== uid || fresh.data()?.status !== 'PENDING')
+        const value = fresh.data() as RideRequest;
+        if (!value || requestRecipient(value) !== uid)
+          throw new HttpsError('permission-denied', 'Only the request recipient may respond.');
+        assertAttempt(value, data.attemptId);
+        if (value.status === 'DECLINED') return result(fresh);
+        if (value.status !== 'PENDING')
           throw new HttpsError('failed-precondition', 'This request already has a final decision.');
         tx.update(ref, { status: 'DECLINED', updatedAt: now() });
         return { id: ref.id, status: 'DECLINED' };
       });
-    const vehicle = await getFirestore().doc(`users/${uid}/vehicles/primary`).get();
-    if (!vehicleIsComplete(vehicle.data(), uid))
-      throw new HttpsError('failed-precondition', 'Finish setting up your vehicle before accepting a passenger.', { reason: 'VEHICLE_REQUIRED' });
-    const prepared = await withMatchingRouting((routing) =>
-      preparePair(
-        saved.riderId,
-        {
-          ...(saved.source === 'CALENDAR' ? { source: 'CALENDAR' as const } : {}),
-          driverId: saved.driverId,
-          localDate: saved.localDate,
-          direction: 'TO_CAMPUS',
-          riderRevision: saved.riderRevision,
-          driverRevision: saved.driverRevision,
-        },
-        routing,
-      ),
+    const vehicle = await getFirestore().doc(`users/${saved.driverId}/vehicles/primary`).get();
+    if (!vehicleIsComplete(vehicle.data(), saved.driverId))
+      throw new HttpsError(
+        'failed-precondition',
+        'The driver must finish vehicle setup before this ride can be accepted.',
+        { reason: 'VEHICLE_REQUIRED' },
+      );
+    const prepared = await withMatchingRouting(
+      (routing) =>
+        preparePair(
+          saved.riderId,
+          {
+            ...(saved.source === 'CALENDAR' ? { source: 'CALENDAR' as const } : {}),
+            driverId: saved.driverId,
+            localDate: saved.localDate,
+            direction: 'TO_CAMPUS',
+            riderRevision: saved.riderRevision,
+            driverRevision: saved.driverRevision,
+          },
+          routing,
+        ),
+      saved.source === 'CALENDAR',
     );
-    return await commitAcceptance(ref.id, uid, prepared);
+    return await commitAcceptance(ref.id, uid, prepared, data.attemptId);
   } catch (error) {
     mapped(error);
   }
+});
+
+function assertAttempt(request: RideRequest, attemptId: unknown = undefined) {
+  if (request.attemptId !== attemptId)
+    throw new HttpsError(
+      'aborted',
+      'This request changed. Reload the current request before acting.',
+    );
+}
+/** Cancellation only changes a pending proposal; it never removes accepted reservations. */
+export const cancelRideRequest = onCall(options, async (call) => {
+  try {
+    const uid = await authenticated(call.auth?.uid);
+    const data = call.data;
+    if (
+      !record(data) ||
+      Object.keys(data)
+        .filter((k) => k !== 'attemptId')
+        .join(',') !== 'requestId' ||
+      typeof data.requestId !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(data.requestId) ||
+      (data.attemptId !== undefined && !validAttempt(data.attemptId))
+    )
+      throw new HttpsError(
+        'invalid-argument',
+        'Supply the pending request and its proposal identifier.',
+      );
+    const ref = getFirestore().doc(`rideRequests/${data.requestId}`);
+    return await getFirestore().runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const saved = snapshot.data() as RideRequest | undefined;
+      if (!saved || requestInitiator(saved) !== uid)
+        throw new HttpsError('permission-denied', 'Only the request sender may cancel.');
+      assertAttempt(saved, data.attemptId);
+      if (saved.status === 'CANCELLED') return result(snapshot);
+      if (saved.status !== 'PENDING')
+        throw new HttpsError(
+          'failed-precondition',
+          saved.status === 'ACCEPTED'
+            ? 'This request was already accepted. The confirmed ride has not been cancelled.'
+            : 'This request is no longer pending.',
+        );
+      tx.update(ref, { status: 'CANCELLED', updatedAt: now() });
+      return {
+        id: ref.id,
+        status: 'CANCELLED',
+        ...(saved.attemptId ? { attemptId: saved.attemptId } : {}),
+      };
+    });
+  } catch (error) {
+    mapped(error);
+  }
+});
+
+/** Read-only preview: participants and points come from the accepted server record. */
+export const previewAcceptedRide = onCall(options, async (call) => {
+  try {
+    const uid = await authenticated(call.auth?.uid);
+    if (!record(call.data) || Object.keys(call.data).some((key) => key !== 'requestId') ||
+        typeof call.data.requestId !== 'string' || !/^[a-f0-9]{64}$/.test(call.data.requestId))
+      throw new HttpsError('invalid-argument', 'Supply an accepted trip ID.');
+    const db = getFirestore();
+    const snapshot = await db.doc(`rideRequests/${call.data.requestId}`).get();
+    const ride = snapshot.data() as RideRequest | undefined;
+    if (!ride || (uid !== ride.driverId && uid !== ride.riderId))
+      throw new HttpsError('permission-denied', 'This trip is not available to your account.');
+    if (ride.status !== 'ACCEPTED' || ride.source !== 'CALENDAR')
+      throw new HttpsError('failed-precondition', 'Exact routes are shared only for accepted calendar trips.');
+    const pickup = (await db.doc(`ridePickups/${snapshot.id}`).get()).data();
+    const campus = pickup?.campus ?? CAMPUS_POINTS.find((point) => point.label === ride.campusLabel)?.coordinate;
+    if (!isValidRouteCoordinate(pickup?.driverStart) || !isValidRouteCoordinate(pickup?.riderPickup) ||
+        !isValidRouteCoordinate(campus))
+      throw new HttpsError('failed-precondition', 'The confirmed route points are unavailable.');
+    const points = [pickup.driverStart, pickup.riderPickup, campus];
+    // Preview only: never modifies agreed timing, commitments, or acceptance state.
+    return await withMatchingRouting(
+      (routing) => routing.route(points, { departureEpochSeconds: Math.max(now() + 60, ride.plan.departure) }),
+      true,
+    );
+  } catch (error) { mapped(error); }
 });
