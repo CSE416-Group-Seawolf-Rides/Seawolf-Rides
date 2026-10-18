@@ -34,7 +34,7 @@ export function LiveAgenda({
               ? request.driverId === uid
                 ? 'Waiting on your answer'
                 : `Waiting for ${partnerName(request, uid)}`
-              : `Arrive by ${formatTime(day.schedule!.arriveBy!)}`;
+              : `Arrive around ${formatTime(day.schedule!.arriveBy!)}`;
         return (
           <Pressable
             key={day.date}

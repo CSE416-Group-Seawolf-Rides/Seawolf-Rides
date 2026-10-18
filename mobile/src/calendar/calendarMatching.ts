@@ -1,8 +1,20 @@
 import { evaluatePair } from '../matching/evaluatePair';
 import type { PairEvaluation, StaticRouteEstimate } from '../matching/types';
-import type { CommuteSchedule, DaySchedule, PrivacyArea } from '../commute/commuteModel';
+import type {
+  CommuteSchedule,
+  DaySchedule,
+  PrivacyArea,
+} from '../commute/commuteModel';
 import type { RoutingAdapter, RoutingResult } from '../routing/types';
-import { CAMPUS_POINTS, localMinuteToEpoch, PICKUP_SERVICE_SECONDS } from '../mvp/settings';
+import {
+  CAMPUS_POINTS,
+  localMinuteToEpoch,
+  PICKUP_SERVICE_SECONDS,
+} from '../mvp/settings';
+import {
+  ARRIVAL_FLEX_MINUTES,
+  preferredArrivalWindow,
+} from '../commute/arrivalPolicy';
 
 export interface CalendarParticipant {
   uid: string;
@@ -21,15 +33,69 @@ export interface CalendarMatch {
   area: PrivacyArea;
   plan: Extract<PairEvaluation, { status: 'FEASIBLE' }>['plan'];
   addedDrivingSeconds: number;
+  /** Absolute difference between this proposed arrival and the searching user's target. */
+  arrivalDifferenceSeconds: number;
   metrics: Extract<PairEvaluation, { status: 'FEASIBLE' }>['metrics'];
 }
 export interface CalendarSearchResult {
+  policyVersion: 2;
+  searchRevision: string;
+  totalCandidatePlans: number;
+  checkedCandidatePlans: number;
+  nextCursor: string | null;
   matches: CalendarMatch[];
   incomplete: boolean;
   unknownCount: number;
   incompatibleCount: number;
 }
-function routeEstimate(result: RoutingResult, index?: number): StaticRouteEstimate {
+export function arrivalTargetsOverlap(
+  a: number | null,
+  b: number | null,
+): boolean {
+  return (
+    a !== null &&
+    b !== null &&
+    Number.isInteger(a) &&
+    Number.isInteger(b) &&
+    a >= 0 &&
+    b >= 0 &&
+    a < 1440 &&
+    b < 1440 &&
+    Math.abs(a - b) <= ARRIVAL_FLEX_MINUTES
+  );
+}
+export function compareCalendarMatches(
+  a: CalendarMatch,
+  b: CalendarMatch,
+): number {
+  return (
+    a.arrivalDifferenceSeconds - b.arrivalDifferenceSeconds ||
+    a.addedDrivingSeconds - b.addedDrivingSeconds ||
+    (a.driverId < b.driverId ? -1 : a.driverId > b.driverId ? 1 : 0) ||
+    (a.riderId < b.riderId ? -1 : a.riderId > b.riderId ? 1 : 0)
+  );
+}
+export function mergeCalendarPages(
+  previous: CalendarSearchResult,
+  next: CalendarSearchResult,
+): CalendarSearchResult {
+  if (previous.searchRevision !== next.searchRevision)
+    throw new Error('The candidate list changed. Search again.');
+  const matches = new Map(
+    previous.matches.map((m) => [`${m.driverId}:${m.riderId}`, m]),
+  );
+  next.matches.forEach((m) => matches.set(`${m.driverId}:${m.riderId}`, m));
+  return {
+    ...next,
+    matches: [...matches.values()].sort(compareCalendarMatches),
+    unknownCount: previous.unknownCount + next.unknownCount,
+    incompatibleCount: previous.incompatibleCount + next.incompatibleCount,
+  };
+}
+function routeEstimate(
+  result: RoutingResult,
+  index?: number,
+): StaticRouteEstimate {
   if (result.status === 'FAILURE')
     return { status: result.code === 'NO_ROUTE' ? 'UNREACHABLE' : 'MISSING' };
   const route = index === undefined ? result.route : result.route.legs[index];
@@ -43,7 +109,8 @@ function routeEstimate(result: RoutingResult, index?: number): StaticRouteEstima
 }
 /** Proposed timing only: no claim that participants are ready before they agree.
  * The saved driver departure is fixed, while the rider can be picked up from
- * their saved ready-from time until their arrival deadline. No user detour/walking
+ * their saved ready-from time. Both preferred arrivals allow ±30 minutes, subject
+ * to the same date and any saved return time. No user detour/walking
  * preferences are invented.
  */
 export async function evaluateCalendarPair(
@@ -53,7 +120,8 @@ export async function evaluateCalendarPair(
   routing: RoutingAdapter,
   now: number,
 ): Promise<PairEvaluation> {
-  if (driver.uid === rider.uid) return { status: 'INFEASIBLE', reasonCodes: ['SELF_MATCH'] };
+  if (driver.uid === rider.uid)
+    return { status: 'INFEASIBLE', reasonCodes: ['SELF_MATCH'] };
   if (
     !['drive', 'either'].includes(driver.day.mode) ||
     !['ride', 'either'].includes(rider.day.mode)
@@ -63,7 +131,8 @@ export async function evaluateCalendarPair(
     r = rider.commute;
   if (!d.discoveryEnabled || !r.discoveryEnabled)
     return { status: 'INFEASIBLE', reasonCodes: ['SKIPPED_OCCURRENCE'] };
-  if (!(d.seats ?? 0)) return { status: 'INFEASIBLE', reasonCodes: ['NO_SEAT'] };
+  if (!(d.seats ?? 0))
+    return { status: 'INFEASIBLE', reasonCodes: ['NO_SEAT'] };
   const campus = CAMPUS_POINTS.find((p) => p.id === d.campusLot);
   if (!d.startPoint || !r.startPoint || !campus || d.campusLot !== r.campusLot)
     return { status: 'UNKNOWN', reasonCodes: ['LOCATION_UNCONFIRMED'] };
@@ -71,12 +140,44 @@ export async function evaluateCalendarPair(
     return { status: 'INFEASIBLE', reasonCodes: ['SKIPPED_OCCURRENCE'] };
   if (driver.day.startAt == null || rider.day.startAt == null)
     return { status: 'UNKNOWN', reasonCodes: ['MISSING_START_TIME'] };
+  if (
+    !Number.isFinite(now) ||
+    ![
+      driver.day.arriveBy,
+      rider.day.arriveBy,
+      driver.day.startAt,
+      rider.day.startAt,
+    ].every((v) => Number.isInteger(v) && v >= 0 && v < 1440)
+  )
+    return { status: 'UNKNOWN', reasonCodes: ['MALFORMED_WINDOW'] };
+  if (!arrivalTargetsOverlap(driver.day.arriveBy, rider.day.arriveBy))
+    return {
+      status: 'INFEASIBLE',
+      reasonCodes: ['ARRIVAL_PREFERENCE_MISMATCH'],
+    };
   const earliest = Math.max(now + 1, localMinuteToEpoch(date, 0));
   const driverStart = localMinuteToEpoch(date, driver.day.startAt);
-  const riderStart = Math.max(earliest, localMinuteToEpoch(date, rider.day.startAt));
-  const driverDeadline = localMinuteToEpoch(date, driver.day.arriveBy);
-  const riderDeadline = localMinuteToEpoch(date, rider.day.arriveBy);
-  if (driverStart < earliest || driverStart >= driverDeadline || riderStart >= riderDeadline)
+  const riderStart = Math.max(
+    earliest,
+    localMinuteToEpoch(date, rider.day.startAt),
+  );
+  const driverArrival = preferredArrivalWindow(
+    date,
+    { ...driver.day, arriveBy: driver.day.arriveBy },
+    earliest,
+  );
+  const riderArrival = preferredArrivalWindow(
+    date,
+    { ...rider.day, arriveBy: rider.day.arriveBy },
+    earliest,
+  );
+  const driverDeadline = driverArrival.latest;
+  const riderDeadline = riderArrival.latest;
+  if (
+    driverStart < earliest ||
+    driverStart >= driverDeadline ||
+    riderStart >= riderDeadline
+  )
     return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
   const safeRoute = async (
     points: Parameters<RoutingAdapter['route']>[0],
@@ -123,7 +224,7 @@ export async function evaluateCalendarPair(
       userId: driver.uid,
       occurrence: { localDate: date, direction: 'TO_CAMPUS' },
       departureWindow: { earliest: driverStart, latest: driverStart },
-      campusArrivalWindow: { earliest, latest: driverDeadline },
+      campusArrivalWindow: driverArrival,
       preferredDeparture: driverStart,
       seatsRemaining: d.seats ?? 0,
       maxExtraDurationSeconds: dateBound,
@@ -132,7 +233,7 @@ export async function evaluateCalendarPair(
       userId: rider.uid,
       occurrence: { localDate: date, direction: 'TO_CAMPUS' },
       pickupWindow: { earliest: riderStart, latest: riderDeadline },
-      destinationArrivalWindow: { earliest, latest: riderDeadline },
+      destinationArrivalWindow: riderArrival,
       seatsRequested: 1,
       accessWalkSeconds: 0,
       egressWalkSeconds: 0,

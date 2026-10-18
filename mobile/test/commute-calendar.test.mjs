@@ -1,13 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calendarDay, shiftDate, parseDayOverride } from '../src/calendar/commuteCalendar.ts';
-import { evaluateCalendarPair } from '../src/calendar/calendarMatching.ts';
+import {
+  calendarDay,
+  shiftDate,
+  parseDayOverride,
+} from '../src/calendar/commuteCalendar.ts';
+import {
+  arrivalTargetsOverlap,
+  compareCalendarMatches,
+  mergeCalendarPages,
+  evaluateCalendarPair,
+} from '../src/calendar/calendarMatching.ts';
 import {
   buildCommuteSchedule,
   commuteToDraft,
   toPrivacyArea,
 } from '../src/commute/commuteModel.ts';
-import { toCommuteDocument, parseCommuteDocument } from '../src/persistence/userDataModel.ts';
+import {
+  toCommuteDocument,
+  parseCommuteDocument,
+} from '../src/persistence/userDataModel.ts';
 import { localMinuteToEpoch } from '../src/mvp/settings.ts';
 const point = { latitude: 40.92047, longitude: -73.12844 };
 const commute = {
@@ -17,9 +29,9 @@ const commute = {
   campusLot: 'westSide',
   seats: 2,
   days: [
-    { day: 'mon', mode: 'drive', startAt: 450, arriveBy: 540, leaveAt: 1020 },
-    { day: 'tue', mode: 'either', startAt: 450, arriveBy: 540, leaveAt: 1020 },
-    { day: 'wed', mode: 'drive', startAt: 450, arriveBy: 540, leaveAt: 1020 },
+    { day: 'mon', mode: 'drive', startAt: 480, arriveBy: 540, leaveAt: 1020 },
+    { day: 'tue', mode: 'either', startAt: 480, arriveBy: 540, leaveAt: 1020 },
+    { day: 'wed', mode: 'drive', startAt: 480, arriveBy: 540, leaveAt: 1020 },
   ],
 };
 const date = '2026-10-19';
@@ -45,10 +57,12 @@ const router = {
       durationSeconds: points.length === 2 ? 1800 : 2100,
       distanceMeters: 10000,
       snappedWaypoints: points.map((input) => ({ input, distanceMeters: 0 })),
-      legs: (points.length === 2 ? [1800] : [600, 1500]).map((durationSeconds) => ({
-        durationSeconds,
-        distanceMeters: 5000,
-      })),
+      legs: (points.length === 2 ? [1800] : [600, 1500]).map(
+        (durationSeconds) => ({
+          durationSeconds,
+          distanceMeters: 5000,
+        }),
+      ),
     },
   }),
 };
@@ -56,22 +70,37 @@ test('weekly roles repeat; date-only override and reset preserve the weekly temp
   assert.equal(calendarDay(commute, 'both', date).mode, 'drive');
   assert.equal(calendarDay(commute, 'both', shiftDate(date, 1)).mode, 'either');
   assert.equal(calendarDay(commute, 'both', shiftDate(date, 7)).mode, 'drive');
-  assert.equal(calendarDay(commute, 'both', date, { mode: 'ride' }).mode, 'ride');
+  assert.equal(
+    calendarDay(commute, 'both', date, { mode: 'ride' }).mode,
+    'ride',
+  );
   assert.equal(calendarDay(commute, 'both', shiftDate(date, 7)).mode, 'drive');
   assert.equal(calendarDay(commute, 'both', date, { mode: 'off' }), null);
   assert.equal(calendarDay(commute, 'both', shiftDate(date, 3)), null);
-  assert.equal(calendarDay(commute, 'both', shiftDate(date, 3), { mode: 'ride' }).arriveBy, 540);
-  assert.equal(calendarDay(commute, 'driver', shiftDate(date, 1)).mode, 'drive');
+  assert.equal(
+    calendarDay(commute, 'both', shiftDate(date, 3), { mode: 'ride' }).arriveBy,
+    540,
+  );
+  assert.equal(
+    calendarDay(commute, 'driver', shiftDate(date, 1)).mode,
+    'drive',
+  );
   assert.equal(calendarDay(commute, 'rider', date).mode, 'ride');
   assert.throws(() => parseDayOverride({ mode: 'surprise' }));
 });
 test('exact point and discovery preference survive edit/save; old approximate-only commutes still load', () => {
   const built = buildCommuteSchedule(commuteToDraft(commute), 'both');
   assert.deepEqual(built.startPoint, point);
-  assert.deepEqual(parseCommuteDocument(toCommuteDocument('d', built), 'd').startPoint, point);
+  assert.deepEqual(
+    parseCommuteDocument(toCommuteDocument('d', built), 'd').startPoint,
+    point,
+  );
   assert.notDeepEqual(built.startArea.center, point);
   const { startPoint, discoveryEnabled, ...legacy } = commute;
-  assert.equal(parseCommuteDocument(toCommuteDocument('d', legacy), 'd').startPoint, undefined);
+  assert.equal(
+    parseCommuteDocument(toCommuteDocument('d', legacy), 'd').startPoint,
+    undefined,
+  );
   assert.throws(() =>
     toCommuteDocument('d', {
       ...commute,
@@ -82,8 +111,11 @@ test('exact point and discovery preference survive edit/save; old approximate-on
 test('uses the saved driver departure and rider ready-from time', async () => {
   const result = await evaluateCalendarPair(driver, rider, date, router, now);
   assert.equal(result.status, 'FEASIBLE');
-  assert.equal(result.plan.vehicleCampusArrival, localMinuteToEpoch(date, 450) + 2220);
-  assert.equal(result.plan.departure, localMinuteToEpoch(date, 450));
+  assert.equal(
+    result.plan.vehicleCampusArrival,
+    localMinuteToEpoch(date, 480) + 2220,
+  );
+  assert.equal(result.plan.departure, localMinuteToEpoch(date, 480));
   assert.equal(result.plan.pickup, result.plan.departure + 600);
   assert.equal(result.metrics.driverExtraDurationSeconds, 420);
   assert.equal(
@@ -105,7 +137,15 @@ test('missing exact locations, wrong roles, no seats and nonfinite estimates nev
     'UNKNOWN',
   );
   assert.equal(
-    (await evaluateCalendarPair({ ...driver, day: rider.day }, rider, date, router, now)).status,
+    (
+      await evaluateCalendarPair(
+        { ...driver, day: rider.day },
+        rider,
+        date,
+        router,
+        now,
+      )
+    ).status,
     'INFEASIBLE',
   );
   assert.notEqual(
@@ -127,7 +167,10 @@ test('missing exact locations, wrong roles, no seats and nonfinite estimates nev
       return value;
     },
   };
-  assert.equal((await evaluateCalendarPair(driver, rider, date, malformed, now)).status, 'UNKNOWN');
+  assert.equal(
+    (await evaluateCalendarPair(driver, rider, date, malformed, now)).status,
+    'UNKNOWN',
+  );
 });
 
 test('saved morning timing survives persistence and blocks pickups before rider readiness', async () => {
@@ -141,17 +184,26 @@ test('saved morning timing survives persistence and blocks pickups before rider 
   assert.equal(hasMorningTimes(days), true);
   days = setStartTime(days, 'tue', 480);
   assert.equal(hasSameTimes(days), false);
-  const parsed = parseCommuteDocument(toCommuteDocument('d', { ...commute, days }), 'd');
+  const parsed = parseCommuteDocument(
+    toCommuteDocument('d', { ...commute, days }),
+    'd',
+  );
   assert.equal(parsed.days[1].startAt, 480);
   assert.throws(() =>
-    toCommuteDocument('d', { ...commute, days: [{ ...commute.days[0], startAt: Infinity }] }),
+    toCommuteDocument('d', {
+      ...commute,
+      days: [{ ...commute.days[0], startAt: Infinity }],
+    }),
   );
   assert.throws(() =>
-    toCommuteDocument('d', { ...commute, days: [{ ...commute.days[0], startAt: 600 }] }),
+    toCommuteDocument('d', {
+      ...commute,
+      days: [{ ...commute.days[0], startAt: 600 }],
+    }),
   );
   const notReady = await evaluateCalendarPair(
     driver,
-    { ...rider, day: { ...rider.day, startAt: 480 } },
+    { ...rider, day: { ...rider.day, startAt: 510 } },
     date,
     router,
     now,
@@ -168,5 +220,177 @@ test('saved morning timing survives persistence and blocks pickups before rider 
       )
     ).status,
     'UNKNOWN',
+  );
+});
+
+test('preferred arrival target discovery is inclusive at ±30 minutes and rejects ±31 before routing', async () => {
+  for (const target of [510, 570]) {
+    assert.equal(arrivalTargetsOverlap(540, target), true);
+  }
+  for (const target of [509, 571, NaN, Infinity, -1, 1440, null]) {
+    assert.equal(arrivalTargetsOverlap(540, target), false);
+    if (target === 509 || target === 571) {
+      const result = await evaluateCalendarPair(
+        driver,
+        { ...rider, day: { ...rider.day, arriveBy: target } },
+        date,
+        {
+          route() {
+            throw new Error('Must not route outside target range');
+          },
+        },
+        now,
+      );
+      assert.deepEqual(result, {
+        status: 'INFEASIBLE',
+        reasonCodes: ['ARRIVAL_PREFERENCE_MISMATCH'],
+      });
+    }
+  }
+});
+test('actual proposed arrivals can be early or late within both people’s inclusive windows', async () => {
+  for (const [startAt, status] of [
+    [473, 'FEASIBLE'],
+    [472, 'INFEASIBLE'],
+    [533, 'FEASIBLE'],
+    [534, 'INFEASIBLE'],
+  ]) {
+    const result = await evaluateCalendarPair(
+      { ...driver, day: { ...driver.day, startAt } },
+      rider,
+      date,
+      router,
+      now,
+    );
+    assert.equal(result.status, status, `driver departure minute ${startAt}`);
+    if (status === 'FEASIBLE')
+      assert.equal(
+        result.plan.vehicleCampusArrival,
+        localMinuteToEpoch(date, startAt + 37),
+      );
+  }
+  // Same ETA must satisfy the other participant's own window and saved return.
+  const lateDriver = { ...driver, day: { ...driver.day, startAt: 533 } };
+  assert.equal(
+    (
+      await evaluateCalendarPair(
+        lateDriver,
+        { ...rider, day: { ...rider.day, arriveBy: 510 } },
+        date,
+        router,
+        now,
+      )
+    ).status,
+    'INFEASIBLE',
+  );
+  assert.equal(
+    (
+      await evaluateCalendarPair(
+        lateDriver,
+        { ...rider, day: { ...rider.day, leaveAt: 569 } },
+        date,
+        router,
+        now,
+      )
+    ).status,
+    'INFEASIBLE',
+  );
+  assert.equal(
+    (
+      await evaluateCalendarPair(
+        lateDriver,
+        { ...rider, day: { ...rider.day, leaveAt: 570 } },
+        date,
+        router,
+        now,
+      )
+    ).status,
+    'FEASIBLE',
+  );
+});
+test('invalid saved arrival/start times and nonfinite current times remain UNKNOWN', async () => {
+  for (const value of [NaN, Infinity, -1, 1440, 500.5]) {
+    assert.equal(
+      (
+        await evaluateCalendarPair(
+          { ...driver, day: { ...driver.day, startAt: value } },
+          rider,
+          date,
+          router,
+          now,
+        )
+      ).status,
+      'UNKNOWN',
+    );
+    assert.equal(
+      (
+        await evaluateCalendarPair(
+          driver,
+          { ...rider, day: { ...rider.day, arriveBy: value } },
+          date,
+          router,
+          now,
+        )
+      ).status,
+      'UNKNOWN',
+    );
+  }
+  assert.equal(
+    (await evaluateCalendarPair(driver, rider, date, router, NaN)).status,
+    'UNKNOWN',
+  );
+});
+test('pages rank actual arrival first, detour second, stable identities last and refuse stale lists', () => {
+  const make = (driverId, arrivalDifferenceSeconds, addedDrivingSeconds) => ({
+    driverId,
+    riderId: 'r',
+    arrivalDifferenceSeconds,
+    addedDrivingSeconds,
+  });
+  const matches = [
+    make('z', 0, 500),
+    make('b', 60, 100),
+    make('a', 60, 100),
+    make('c', 60, 90),
+    make('d', 120, 0),
+  ];
+  assert.deepEqual(
+    [...matches]
+      .reverse()
+      .sort(compareCalendarMatches)
+      .map((m) => m.driverId),
+    ['z', 'c', 'a', 'b', 'd'],
+  );
+  const first = {
+    policyVersion: 2,
+    searchRevision: 'same',
+    totalCandidatePlans: 5,
+    checkedCandidatePlans: 2,
+    nextCursor: 'next',
+    matches: matches.slice(1),
+    incomplete: true,
+    unknownCount: 1,
+    incompatibleCount: 2,
+  };
+  const next = {
+    ...first,
+    checkedCandidatePlans: 5,
+    nextCursor: null,
+    incomplete: false,
+    matches: [matches[0], matches[1]],
+    unknownCount: 2,
+    incompatibleCount: 1,
+  };
+  const result = mergeCalendarPages(first, next);
+  assert.deepEqual(
+    result.matches.map((m) => m.driverId),
+    ['z', 'c', 'a', 'b', 'd'],
+  );
+  assert.equal(result.unknownCount, 3);
+  assert.equal(result.incompatibleCount, 3);
+  assert.equal(result.incomplete, false);
+  assert.throws(
+    () => mergeCalendarPages(first, { ...next, searchRevision: 'changed' }),
+    /changed/,
   );
 });

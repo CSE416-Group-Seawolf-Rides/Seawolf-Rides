@@ -81,7 +81,7 @@ export function MorningTimingStep({
   return (
     <FlowStep
       title="When will you head out?"
-      subtitle="We can suggest a time from your starting point and campus arrival deadline. Choose a time that works for you. All times are New York time."
+      subtitle="We can suggest a time from your starting point and preferred campus arrival time. Choose a time that works for you. All times are New York time."
       progress={progress}
       continueLabel={continueLabel}
       canContinue={hasMorningTimes(draft.days) && !draft.days.some(getDayError)}
@@ -131,7 +131,7 @@ export function MorningTimingStep({
         return (
           <Card key={day.day}>
             <Text>
-              {weekdays.find((d) => d.value === day.day)?.name} · Arrive by{' '}
+              {weekdays.find((d) => d.value === day.day)?.name} · Arrive around{' '}
               {formatTime(day.arriveBy!)}
             </Text>
             {suggested !== null && (

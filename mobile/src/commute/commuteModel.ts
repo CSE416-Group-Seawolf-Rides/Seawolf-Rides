@@ -1,3 +1,4 @@
+import { latestStartMinute } from './arrivalPolicy';
 import type { CommuteRole } from '../onboarding/onboardingModel';
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -205,7 +206,7 @@ export function hasMorningTimes(days: DaySchedule[]): boolean {
       (day.startAt != null &&
         Number.isInteger(day.startAt) &&
         day.startAt >= 0 &&
-        day.startAt < day.arriveBy),
+        day.startAt < latestStartMinute(day)),
   );
 }
 export function hasSameTimes(days: DaySchedule[]): boolean {
@@ -233,9 +234,9 @@ export function getDayError(schedule: DaySchedule): string | null {
     (!Number.isInteger(schedule.startAt) ||
       schedule.startAt < 0 ||
       schedule.startAt >= 1440 ||
-      (schedule.arriveBy !== null && schedule.startAt >= schedule.arriveBy))
+      (schedule.arriveBy !== null && schedule.startAt >= latestStartMinute(schedule)))
   ) {
-    return 'Your morning start should be before your campus arrival deadline.';
+    return 'Your start must be before the latest arrival in your 30-minute window.';
   }
   return null;
 }
@@ -315,7 +316,7 @@ export function describeLeg(minutes: number | null, leg: TripLeg): string {
     return leg === 'arriveBy' ? 'No ride there' : 'No ride back';
   }
   return leg === 'arriveBy'
-    ? `Arrive by ${formatTime(minutes)}`
+    ? `Arrive around ${formatTime(minutes)}`
     : `Leave at ${formatTime(minutes)}`;
 }
 

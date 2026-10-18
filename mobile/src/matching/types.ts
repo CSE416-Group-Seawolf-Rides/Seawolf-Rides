@@ -101,6 +101,7 @@ export interface PairEvaluationInput {
 }
 
 export type InfeasibleReasonCode =
+  | 'ARRIVAL_PREFERENCE_MISMATCH'
   | 'SELF_MATCH'
   | 'OCCURRENCE_MISMATCH'
   | 'SKIPPED_OCCURRENCE'

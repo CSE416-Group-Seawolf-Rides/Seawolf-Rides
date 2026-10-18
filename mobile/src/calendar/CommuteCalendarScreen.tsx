@@ -20,9 +20,16 @@ import {
   formatTime,
   type Weekday,
 } from '../commute/commuteModel';
-import { localDateAt, weekdayForDate } from '../mvp/settings';
+import {
+  localDateAt,
+  localMinuteToEpoch,
+  weekdayForDate,
+} from '../mvp/settings';
 import { useRideRequests, sendRideRequest } from '../mvp/rideRequestClient';
-import type { CalendarSearchResult } from './calendarMatching';
+import {
+  mergeCalendarPages,
+  type CalendarSearchResult,
+} from './calendarMatching';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 import { useHomeClock } from '../rides/useHomeClock';
@@ -122,21 +129,36 @@ export function CommuteCalendarScreen({
       }
     }, [initialDate]),
   );
-  const search = async (date = selected) => {
+  const search = async (date = selected, more = false) => {
+    if (busy) return;
+    const previous = more ? result : null;
+    if (more && !previous?.nextCursor) return;
     if (date !== selected) chooseDate(date);
     const requestGeneration = ++generation.current;
     setBusy(true);
     setMessage(null);
-    setResult(null);
+    if (!more) setResult(null);
     setResultKey(JSON.stringify([date, commute, overrides.days]));
     try {
-      const next = await searchCalendar(date);
-      if (generation.current === requestGeneration) setResult(next);
+      const next = await searchCalendar(
+        date,
+        previous?.nextCursor ?? undefined,
+      );
+      const combined = previous ? mergeCalendarPages(previous, next) : next;
+      if (generation.current === requestGeneration) setResult(combined);
     } catch (error) {
-      if (generation.current === requestGeneration)
+      if (generation.current === requestGeneration) {
+        if (
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'functions/aborted'
+        )
+          setResult(null);
         setMessage(
           error instanceof Error ? error.message : 'Search unavailable.',
         );
+      }
     } finally {
       setBusy(false);
     }
@@ -227,8 +249,8 @@ export function CommuteCalendarScreen({
                     {nextScheduled.day.startAt != null
                       ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
                       : ''}
-                    Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New
-                    York time
+                    Arrive around {formatTime(nextScheduled.day.arriveBy!)} ·
+                    New York time
                   </Text>
                   <Text style={styles.nextDetail}>
                     {nextScheduled.day.mode === 'drive'
@@ -439,8 +461,8 @@ export function CommuteCalendarScreen({
                 <>
                   {day?.arriveBy != null && (
                     <Text style={styles.searchDetail}>
-                      Arrive on campus by {formatTime(day.arriveBy)} · New York
-                      time
+                      Arrive on campus around {formatTime(day.arriveBy)} · New
+                      York time
                     </Text>
                   )}
                   {pendingForDay.length > 0 && (
@@ -534,17 +556,22 @@ export function CommuteCalendarScreen({
           {result.incomplete && (
             <Card>
               <Text style={{ color: colors.warning }}>
-                Incomplete search: this public-routing demo checks at most two
-                accounts and two driver/rider arrangements. Other matches may
-                exist.
+                More candidates are available. Load more to check them; each
+                batch keeps road requests within the demo’s routing limits.
               </Text>
             </Card>
           )}
           <Text style={styles.heading}>Potential matches</Text>
           <Text style={styles.muted}>
-            Proposed times use saved morning availability, arrival deadlines and
-            road estimates. Sending a request proposes these times; the driver
-            decides. No seats are reserved until acceptance.
+            Arrivals may be up to 30 minutes before or after your preferred
+            time. Checked matches are sorted by the closest estimated arrival,
+            then added driving time. Proposed times use saved morning
+            availability and road estimates. Sending a request proposes these
+            times; the driver decides. No seats are reserved until acceptance.
+          </Text>
+          <Text style={styles.muted}>
+            Checked {result.checkedCandidatePlans} of{' '}
+            {result.totalCandidatePlans} candidate plans.
           </Text>
           {result.matches.map((match) => {
             const request = requests.items.find(
@@ -563,9 +590,43 @@ export function CommuteCalendarScreen({
                   {match.role === 'driver' ? 'Driving' : 'Looking for a ride'}
                 </Text>
                 <Text>{match.area.label} · approximate area</Text>
-                <Text>
-                  Proposed pickup {time(match.plan.pickup)} · campus{' '}
-                  {time(match.plan.riderDestinationArrival)}
+                <Text style={styles.muted}>Estimated times · New York</Text>
+                <View style={styles.matchTimes}>
+                  <View style={styles.matchTimeCell}>
+                    <Text style={styles.matchTimeLabel}>DEPARTURE</Text>
+                    <Text style={styles.matchTimeValue}>
+                      {time(match.plan.departure)}
+                    </Text>
+                    <Text style={styles.matchTimeNote}>Driver leaves</Text>
+                  </View>
+                  <View style={styles.matchTimeCell}>
+                    <Text style={styles.matchTimeLabel}>PICKUP</Text>
+                    <Text style={styles.matchTimeValue}>
+                      {time(match.plan.pickup)}
+                    </Text>
+                    <Text style={styles.matchTimeNote}>
+                      {Math.ceil(
+                        (match.plan.pickup - match.plan.departure) / 60,
+                      )}{' '}
+                      min to pickup
+                    </Text>
+                  </View>
+                  <View style={styles.matchTimeCell}>
+                    <Text style={styles.matchTimeLabel}>ARRIVAL</Text>
+                    <Text style={styles.matchTimeValue}>
+                      {time(
+                        match.driverId === user?.id
+                          ? match.plan.vehicleCampusArrival
+                          : match.plan.riderDestinationArrival,
+                      )}
+                    </Text>
+                    <Text style={styles.matchTimeNote}>On campus</Text>
+                  </View>
+                </View>
+                <Text style={styles.muted}>
+                  {match.arrivalDifferenceSeconds === 0
+                    ? 'Matches your preferred arrival time.'
+                    : `${Math.ceil(match.arrivalDifferenceSeconds / 60)} min ${(match.driverId === user?.id ? match.plan.vehicleCampusArrival : match.plan.riderDestinationArrival) < localMinuteToEpoch(selected, day!.arriveBy!) ? 'earlier' : 'later'} than your preferred arrival.`}
                 </Text>
                 <Text>
                   Adds {Math.ceil(match.addedDrivingSeconds / 60)} minutes
@@ -624,6 +685,14 @@ export function CommuteCalendarScreen({
               </Card>
             );
           })}
+          {result.nextCursor && (
+            <AppButton
+              label={busy ? 'Checking more…' : 'Load more matches'}
+              disabled={busy}
+              variant="secondary"
+              onPress={() => void search(selected, true)}
+            />
+          )}
           {!result.matches.length && (
             <Text>No potential matches found in the checked accounts.</Text>
           )}
@@ -669,6 +738,18 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   searchCard: { gap: spacing.lg, padding: spacing.xl },
+  matchTimes: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  matchTimeCell: { flex: 1, gap: spacing.sm },
+  matchTimeLabel: { fontSize: 10, fontWeight: '800', color: colors.textMuted },
+  matchTimeValue: { fontSize: 18, fontWeight: '800', color: colors.text },
+  matchTimeNote: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
   searchDate: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.text },
   searchRole: {
     alignSelf: 'flex-start',

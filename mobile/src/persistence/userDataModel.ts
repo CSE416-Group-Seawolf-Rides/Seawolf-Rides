@@ -1,3 +1,4 @@
+import { latestStartMinute } from '../commute/arrivalPolicy';
 import type {
   CampusLotId,
   CommuteSchedule,
@@ -73,7 +74,7 @@ function parseDays(value: unknown): DaySchedule[] {
           (startAt !== null &&
             arriveBy !== null &&
             typeof arriveBy === 'number' &&
-            startAt >= arriveBy))) ||
+            startAt >= latestStartMinute({ arriveBy, leaveAt })))) ||
       (arriveBy === null && leaveAt === null)
     ) {
       throw new Error('A persisted commute day contains invalid values.');

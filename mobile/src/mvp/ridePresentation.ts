@@ -1,3 +1,4 @@
+import { preferredArrivalWindow } from '../commute/arrivalPolicy';
 import type { RideRequest } from './rideRequestModel';
 import type { CommuteSchedule, DaySchedule } from '../commute/commuteModel';
 import type { CommuteRole } from '../onboarding/onboardingModel';
@@ -134,7 +135,8 @@ export function weekAgenda(
     } else if (
       !dated.some((r) => r.status === 'ACCEPTED') &&
       schedule?.arriveBy != null &&
-      localMinuteToEpoch(date, schedule.arriveBy) > now &&
+      preferredArrivalWindow(date, { ...schedule, arriveBy: schedule.arriveBy })
+        .latest > now &&
       !(
         schedule.mode === 'drive' &&
         schedule.startAt != null &&

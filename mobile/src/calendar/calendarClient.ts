@@ -41,12 +41,14 @@ export function useCalendarOverrides(uid?: string) {
 export async function saveCalendarDay(localDate: string, mode: CalendarMode | 'default') {
   await httpsCallable(getFirebaseFunctions(), 'setCommuteDay')({ localDate, mode });
 }
-export async function searchCalendar(localDate: string) {
-  return (
-    await httpsCallable<{ localDate: string }, CalendarSearchResult>(
+export async function searchCalendar(localDate: string, cursor?: string) {
+  const result = (
+    await httpsCallable<{ localDate: string; cursor?: string }, CalendarSearchResult>(
       getFirebaseFunctions(),
       'findCommuteMatches',
       { timeout: 120000 },
-    )({ localDate })
+    )({ localDate, ...(cursor ? { cursor } : {}) })
   ).data;
+  if (result.policyVersion !== 2) throw new Error('Restart your local backend to load arrival-window matching, then search again.');
+  return result;
 }

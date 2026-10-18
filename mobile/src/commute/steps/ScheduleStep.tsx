@@ -40,7 +40,7 @@ interface OpenField {
 
 const legCopy: Record<TripLeg, { label: string; none: string; add: string; default: number }> = {
   arriveBy: {
-    label: 'Arrive on campus by',
+    label: 'Arrive on campus around',
     none: 'I don’t need a ride there',
     add: 'I need a ride there',
     default: DEFAULT_ARRIVE_BY,
@@ -132,7 +132,7 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
           ? `${days.length} day${days.length === 1 ? '' : 's'} a week — up to ${trips} trip${trips === 1 ? '' : 's'} you could share.`
           : null
       }
-      subtitle="Pick your campus arrival deadline and return time. Next, we’ll help you choose when to head out."
+      subtitle="Pick your preferred campus arrival time and return time. Matches may arrive up to 30 minutes earlier or later, for you to agree on. Next, choose when to head out."
       title="Build your week"
     >
       <View style={styles.section}>
