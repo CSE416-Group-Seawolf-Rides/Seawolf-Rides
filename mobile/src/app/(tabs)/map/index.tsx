@@ -1,2 +1,4 @@
-import { MatchingScreen } from '../../../mvp/MatchingScreen';
-export default function MapRoute() { return <MatchingScreen />; }
+import { CommuteMapScreen } from '../../../calendar/CommuteMapScreen';
+export default function MapRoute() {
+  return <CommuteMapScreen />;
+}

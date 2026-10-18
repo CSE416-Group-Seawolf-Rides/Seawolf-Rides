@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Card } from '../../components/Card';
 import { FlowProgress, FlowStep } from '../../components/flow/FlowStep';
@@ -38,7 +38,7 @@ export function ReviewStep({
   onEdit,
   onSave,
 }: ReviewStepProps) {
-  const { draft } = useCommuteDraft();
+  const { draft, updateDraft } = useCommuteDraft();
   const complete = Boolean(draft.startArea && draft.campusLot && isScheduleValid(draft.days));
 
   return (
@@ -55,6 +55,25 @@ export function ReviewStep({
       <Section onEdit={() => onEdit('start')} title="Starting area">
         {draft.startArea && <PrivacyAreaMap area={draft.startArea} height={160} />}
       </Section>
+
+      <View style={{ gap: spacing.sm }}>
+        <Text>Use this saved week to find matches until I change it.</Text>
+        <Switch
+          accessibilityLabel="Allow commute matching"
+          value={draft.discoveryEnabled ?? true}
+          onValueChange={(discoveryEnabled) => updateDraft({ discoveryEnabled })}
+        />
+        <Text>
+          Before acceptance, others see only your approximate area. Your private starting point is
+          used for routing and shared with your ride partner after acceptance.
+        </Text>
+        {!draft.startPoint && (
+          <Text>
+            Reconfirm your starting point to enable road matching. Your existing approximate area is
+            preserved.
+          </Text>
+        )}
+      </View>
 
       <Section onEdit={() => onEdit('campus')} title="On campus">
         <Text style={styles.value}>{draft.campusLot ? lotTitle(draft.campusLot) : '—'}</Text>
@@ -97,7 +116,12 @@ function Section({
     <Card style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Pressable accessibilityLabel={`Edit ${title}`} accessibilityRole="button" hitSlop={10} onPress={onEdit}>
+        <Pressable
+          accessibilityLabel={`Edit ${title}`}
+          accessibilityRole="button"
+          hitSlop={10}
+          onPress={onEdit}
+        >
           <Text style={styles.edit}>Edit</Text>
         </Pressable>
       </View>

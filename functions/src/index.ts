@@ -91,3 +91,5 @@ export const findCompatibleDrivers = onCall(
     }
   },
 );
+
+export { findCommuteMatches, setCommuteDay } from './calendarMatching';

@@ -50,6 +50,8 @@ service cloud.firestore {
           'schemaVersion',
           'ownerId',
           'startArea',
+          'startPoint',
+          'discoveryEnabled',
           'campusLot',
           'days',
           'seats',
@@ -57,6 +59,15 @@ service cloud.firestore {
         ])
         && request.resource.data.schemaVersion == 1
         && request.resource.data.ownerId == userId
+        && (!request.resource.data.keys().hasAny(['discoveryEnabled']) || request.resource.data.discoveryEnabled is bool)
+        && (!request.resource.data.keys().hasAny(['startPoint']) || (
+          request.resource.data.startPoint is map
+          && request.resource.data.startPoint.keys().hasAll(['latitude', 'longitude'])
+          && request.resource.data.startPoint.keys().hasOnly(['latitude', 'longitude'])
+          && request.resource.data.startPoint.latitude is number
+          && request.resource.data.startPoint.latitude >= -90 && request.resource.data.startPoint.latitude <= 90
+          && request.resource.data.startPoint.longitude is number
+          && request.resource.data.startPoint.longitude >= -180 && request.resource.data.startPoint.longitude <= 180))
         && validPrivacyArea()
         && request.resource.data.campusLot in [
           'westSide',
@@ -129,6 +140,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Exact routing points are released only after acceptance, to that ride's participants.
+    match /ridePickups/{requestId} {
+      allow read: if isVerifiedStonyBrookUser()
+        && get(/databases/$(database)/documents/rideRequests/$(requestId)).data.status == 'ACCEPTED'
+        && request.auth.uid in get(/databases/$(database)/documents/rideRequests/$(requestId)).data.participantIds;
+      allow write: if false;
+    }
+
     // Temporary M2 heartbeat. It remains read-only and exposes no user document.
     match /commutes/{commuteId} {
       allow read: if commuteId == 'sample-commute-001';
@@ -138,6 +157,12 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, delete: if owns(userId);
       allow create, update: if owns(userId) && validProfile();
+
+      match /commuteDays/{date} {
+        allow read: if owns(userId);
+        // Trusted action checks existing commitments atomically.
+        allow write: if false;
+      }
 
       match /commutes/{commuteId} {
         allow read, delete: if owns(userId);

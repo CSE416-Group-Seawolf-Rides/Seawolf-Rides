@@ -1,5 +1,7 @@
 # M3 demo on one Mac, without cloud deployment
 
+The calendar branch replaces the technical matching form with saved-week matching. Follow [the calendar guide](commute-calendar.md) for its setup and demo; the explicit matching-settings walkthrough below describes the older path.
+
 For the rider-request → driver-decision → shared accepted ride demonstration, follow [the dated request walkthrough](local-ride-requests.md) after this environment setup. It uses the same backend and persisted emulator data.
 
 The backend is the local Firebase Auth, Firestore and Functions emulators under **`demo-seawolf-rides`**. The rider's mirrored physical iPhone and a simulator/second phone share those services and their saved data. Road estimates still leave the Mac for public OSRM; local hosting does not exempt them from the [provider's one-request-per-second policy](https://routing.openstreetmap.de/about.html). No billing account, Firebase login, Blaze upgrade, cloud function or paid hosting is needed for this workflow. Do not run `firebase deploy`.

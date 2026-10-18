@@ -1,0 +1,282 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
+import { localDateAt, weekdayForDate } from '../src/mvp/settings.ts';
+import { toPrivacyArea } from '../src/commute/commuteModel.ts';
+import { shiftDate } from '../src/calendar/commuteCalendar.ts';
+if (
+  process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:9095' ||
+  process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:9099'
+)
+  throw new Error('Test emulators required.');
+const require = createRequire(new URL('../../functions/package.json', import.meta.url));
+const { initializeApp: adminApp, deleteApp: deleteAdmin } = require('firebase-admin/app');
+const { getAuth: adminAuth } = require('firebase-admin/auth');
+const { getFirestore: adminFirestore } = require('firebase-admin/firestore');
+const admin = adminApp({ projectId: 'demo-seawolf-rides' }, 'calendar-test');
+const db = adminFirestore(admin);
+const clients = [];
+let providerFails = false;
+const server = createServer((req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  if (providerFails) {
+    res.writeHead(503);
+    res.end('{}');
+    return;
+  }
+  const points = new URL(req.url, 'http://localhost').pathname
+    .split('/')
+    .pop()
+    .split(';')
+    .map((p) => p.split(',').map(Number));
+  const durations = points.length === 2 ? [1800] : [600, 1500];
+  res.end(
+    JSON.stringify({
+      code: 'Ok',
+      waypoints: points.map((location) => ({
+        location,
+        distance: 0,
+        name: '',
+      })),
+      routes: [
+        {
+          duration: durations.reduce((a, b) => a + b, 0),
+          distance: 10000,
+          geometry: { type: 'LineString', coordinates: points },
+          legs: durations.map((duration, i) => ({
+            duration,
+            distance: 5000,
+            summary: '',
+            steps: [
+              {
+                duration,
+                distance: 5000,
+                name: 'Test road',
+                geometry: {
+                  type: 'LineString',
+                  coordinates: [points[i], points[i + 1]],
+                },
+                maneuver: { type: 'depart', location: points[i] },
+              },
+            ],
+          })),
+        },
+      ],
+    }),
+  );
+});
+async function client(uid) {
+  await adminAuth(admin).createUser({
+    uid,
+    email: `${uid}@stonybrook.edu`,
+    emailVerified: true,
+    password: 'Emulator-test-only-123!',
+  });
+  const app = initializeApp({ projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' }, uid);
+  clients.push(app);
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  const database = getFirestore(app);
+  connectFirestoreEmulator(database, '127.0.0.1', 9095);
+  const functions = getFunctions(app, 'us-central1');
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+  await signInWithEmailAndPassword(auth, `${uid}@stonybrook.edu`, 'Emulator-test-only-123!');
+  return { uid, db: database, functions };
+}
+async function action(client, name, data) {
+  for (let i = 0; i < 10; i++) {
+    try {
+      return (await httpsCallable(client.functions, name, { timeout: 120000 })(data)).data;
+    } catch (e) {
+      if (e.code !== 'functions/resource-exhausted' || i === 9) throw e;
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+  }
+}
+test(
+  'calendar real accounts: date exceptions, proposed timing, private locations, acceptance and locks',
+  { timeout: 120000 },
+  async () => {
+    await new Promise((resolve) => server.listen(5009, '127.0.0.1', resolve));
+    try {
+      const driver = await client('calendar-a-driver'),
+        rider = await client('calendar-b-rider'),
+        outsider = await client('calendar-outsider');
+      const date = localDateAt(Date.now() / 1000 + 86400);
+      const point = { latitude: 40.92047, longitude: -73.12844 };
+      for (const [account, mode, role] of [
+        [driver, 'drive', 'driver'],
+        [rider, 'ride', 'rider'],
+      ]) {
+        await setDoc(doc(account.db, 'users', account.uid), {
+          schemaVersion: 1,
+          firstName: role,
+          role,
+          updatedAt: new Date(),
+        });
+        await setDoc(doc(account.db, 'users', account.uid, 'commutes', 'primary'), {
+          schemaVersion: 1,
+          ownerId: account.uid,
+          startPoint: point,
+          startArea: toPrivacyArea(point, 'Stony Brook area'),
+          discoveryEnabled: true,
+          campusLot: 'westSide',
+          days: [{ day: weekdayForDate(date), mode, arriveBy: 540, leaveAt: 1020 }],
+          ...(role === 'driver' ? { seats: 1 } : {}),
+          updatedAt: new Date(),
+        });
+      }
+      await assert.rejects(getDoc(doc(rider.db, 'users', driver.uid, 'commutes', 'primary')), {
+        code: 'permission-denied',
+      });
+      await assert.rejects(
+        setDoc(doc(rider.db, 'users', rider.uid, 'commuteDays', date), {
+          mode: 'drive',
+        }),
+        { code: 'permission-denied' },
+      );
+      const search = await action(rider, 'findCommuteMatches', {
+        localDate: date,
+      });
+      assert.equal(search.matches.length, 1);
+      const match = search.matches[0];
+      assert.equal(match.driverId, driver.uid);
+      assert.equal(match.riderId, rider.uid);
+      assert.equal('startPoint' in match, false);
+      assert.equal('riderPickup' in match, false);
+      assert.notDeepEqual(match.area.center, point);
+      assert.ok(
+        match.plan.departure < match.plan.pickup &&
+          match.plan.pickup < match.plan.vehicleCampusArrival,
+      );
+      const passengers = await action(driver, 'findCommuteMatches', {
+        localDate: date,
+      });
+      assert.equal(passengers.matches[0].role, 'rider');
+      await db.doc(`users/${rider.uid}/commutes/primary`).update({ seats: 1 });
+      await action(driver, 'setCommuteDay', { localDate: date, mode: 'either' });
+      await action(rider, 'setCommuteDay', { localDate: date, mode: 'either' });
+      const flexible = await action(rider, 'findCommuteMatches', { localDate: date });
+      assert.deepEqual(flexible.matches.map((m) => m.role).sort(), ['driver', 'rider']);
+      await action(rider, 'setCommuteDay', { localDate: date, mode: 'default' });
+      await action(driver, 'setCommuteDay', { localDate: date, mode: 'off' });
+      assert.equal(
+        (await action(rider, 'findCommuteMatches', { localDate: date })).matches.length,
+        0,
+      );
+      assert.equal(
+        (await getDoc(doc(driver.db, 'users', driver.uid, 'commutes', 'primary'))).data().days[0]
+          .mode,
+        'drive',
+      );
+      await action(driver, 'setCommuteDay', {
+        localDate: date,
+        mode: 'default',
+      });
+      const fresh = (await action(rider, 'findCommuteMatches', { localDate: date })).matches[0];
+      const input = {
+        source: 'CALENDAR',
+        proposedPlan: {
+          departure: fresh.plan.departure,
+          pickup: fresh.plan.pickup,
+          vehicleCampusArrival: fresh.plan.vehicleCampusArrival,
+        },
+        direction: 'TO_CAMPUS',
+        driverId: fresh.driverId,
+        driverRevision: fresh.driverRevision,
+        riderRevision: fresh.riderRevision,
+        localDate: date,
+      };
+      await assert.rejects(
+        action(rider, 'createRideRequest', {
+          ...input,
+          proposedPlan: { ...input.proposedPlan, pickup: input.proposedPlan.pickup + 60 },
+        }),
+        { code: 'functions/aborted' },
+      );
+      const pending = await action(rider, 'createRideRequest', input);
+      assert.equal(pending.status, 'PENDING');
+      assert.equal(
+        (await getDoc(doc(driver.db, 'rideRequests', pending.id))).data().status,
+        'PENDING',
+      );
+      assert.equal((await db.doc(`ridePickups/${pending.id}`).get()).exists, false);
+      await assert.rejects(getDoc(doc(driver.db, 'ridePickups', pending.id)), {
+        code: 'permission-denied',
+      });
+      await assert.rejects(
+        action(rider, 'respondToRideRequest', {
+          requestId: pending.id,
+          decision: 'ACCEPTED',
+        }),
+        { code: 'functions/permission-denied' },
+      );
+      assert.equal(
+        (
+          await action(driver, 'respondToRideRequest', {
+            requestId: pending.id,
+            decision: 'ACCEPTED',
+          })
+        ).status,
+        'ACCEPTED',
+      );
+      for (const account of [rider, driver]) {
+        assert.deepEqual(
+          (await getDoc(doc(account.db, 'ridePickups', pending.id))).data().riderPickup,
+          point,
+        );
+        assert.equal(
+          (await getDoc(doc(account.db, 'rideRequests', pending.id))).data().status,
+          'ACCEPTED',
+        );
+      }
+      await assert.rejects(getDoc(doc(outsider.db, 'ridePickups', pending.id)), {
+        code: 'permission-denied',
+      });
+      await assert.rejects(action(driver, 'setCommuteDay', { localDate: date, mode: 'ride' }), {
+        code: 'functions/failed-precondition',
+      });
+      assert.equal(
+        (
+          await action(driver, 'respondToRideRequest', {
+            requestId: pending.id,
+            decision: 'ACCEPTED',
+          })
+        ).status,
+        'ACCEPTED',
+      );
+      // Persist a separate exception for restart verification, without changing the recurring week.
+      await action(driver, 'setCommuteDay', {
+        localDate: shiftDate(date, 1),
+        mode: 'either',
+      });
+      // Provider failure uses different coordinates to bypass the existing private route cache.
+      providerFails = true;
+      const ref = db.doc(`users/${driver.uid}/commutes/primary`);
+      await ref.update({
+        startPoint: { latitude: 40.9346, longitude: -73.0524 },
+      });
+      await action(rider, 'setCommuteDay', {
+        localDate: shiftDate(date, 1),
+        mode: 'ride',
+      });
+      const unavailable = await action(rider, 'findCommuteMatches', {
+        localDate: shiftDate(date, 1),
+      });
+      assert.equal(unavailable.matches.length, 0);
+      assert.ok(unavailable.unknownCount > 0);
+    } finally {
+      // Each fake-router suite must start cold; cached estimates outlive a test process.
+      const cached = await db.collection('_m3RouteCache').get();
+      await Promise.all(cached.docs.map((item) => item.ref.delete()));
+      await Promise.all(clients.map(deleteApp));
+      await deleteAdmin(admin);
+      await new Promise((resolve) => server.close(resolve));
+    }
+  },
+);

@@ -11,8 +11,8 @@ export interface Coordinates {
   longitude: number;
 }
 
-// The only location we keep: a 2-mile circle around a coarse grid point. The exact
-// coordinates used to find it are never stored or shared.
+// Public presentation only. Exact coordinates are stored in the owner-only commute
+// document and released separately to participants after acceptance.
 export interface PrivacyArea {
   center: Coordinates;
   radiusMiles: number;
@@ -29,6 +29,8 @@ export interface DaySchedule {
 
 export interface CommuteDraft {
   startArea?: PrivacyArea;
+  startPoint?: Coordinates;
+  discoveryEnabled?: boolean;
   campusLot?: CampusLotId;
   days: DaySchedule[];
   seats: number;
@@ -36,6 +38,9 @@ export interface CommuteDraft {
 
 export interface CommuteSchedule {
   startArea: PrivacyArea;
+  /** Private routing point; older commutes must reconfirm their location. */
+  startPoint?: Coordinates;
+  discoveryEnabled?: boolean;
   campusLot: CampusLotId;
   days: DaySchedule[];
   seats?: number;
@@ -53,9 +58,17 @@ export const MIN_SEATS = 1;
 export const MAX_SEATS = 6;
 export const DEFAULT_SEATS = 3;
 
-export const emptyCommuteDraft: CommuteDraft = { days: [], seats: DEFAULT_SEATS };
+export const emptyCommuteDraft: CommuteDraft = {
+  days: [],
+  seats: DEFAULT_SEATS,
+};
 
-export const weekdays: { value: Weekday; short: string; letter: string; name: string }[] = [
+export const weekdays: {
+  value: Weekday;
+  short: string;
+  letter: string;
+  name: string;
+}[] = [
   { value: 'mon', short: 'Mon', letter: 'M', name: 'Monday' },
   { value: 'tue', short: 'Tue', letter: 'T', name: 'Tuesday' },
   { value: 'wed', short: 'Wed', letter: 'W', name: 'Wednesday' },
@@ -66,13 +79,21 @@ export const weekdays: { value: Weekday; short: string; letter: string; name: st
 ];
 
 // Campus arrival spots chosen by the team.
-export const campusLots: { value: CampusLotId; title: string; description?: string }[] = [
+export const campusLots: {
+  value: CampusLotId;
+  title: string;
+  description?: string;
+}[] = [
   { value: 'westSide', title: 'West Side' },
   { value: 'eastSide', title: 'East Side' },
   { value: 'tabler', title: 'Tabler' },
   { value: 'roth', title: 'Roth' },
   { value: 'lot40', title: 'Lot 40' },
-  { value: 'other', title: 'Somewhere else on campus', description: 'Sort out the spot with your match' },
+  {
+    value: 'other',
+    title: 'Somewhere else on campus',
+    description: 'Sort out the spot with your match',
+  },
 ];
 
 export const dayModeLabels: Record<DayMode, string> = {
@@ -97,7 +118,11 @@ export function toPrivacyArea(exact: Coordinates, label: string): PrivacyArea {
     PRIVACY_GRID_MILES / (MILES_PER_DEGREE_LATITUDE * Math.cos((latitude * Math.PI) / 180));
   const longitude = (Math.floor(exact.longitude / lngStep) + 0.5) * lngStep;
 
-  return { center: { latitude, longitude }, radiusMiles: PRIVACY_RADIUS_MILES, label };
+  return {
+    center: { latitude, longitude },
+    radiusMiles: PRIVACY_RADIUS_MILES,
+    label,
+  };
 }
 
 export function distanceMiles(a: Coordinates, b: Coordinates): number {
@@ -218,6 +243,12 @@ export function buildCommuteSchedule(draft: CommuteDraft, role: CommuteRole): Co
 
   return {
     startArea: draft.startArea,
+    ...(draft.startPoint ? { startPoint: draft.startPoint } : {}),
+    ...(draft.discoveryEnabled !== undefined
+      ? { discoveryEnabled: draft.discoveryEnabled }
+      : draft.startPoint
+        ? { discoveryEnabled: true }
+        : {}),
     campusLot: draft.campusLot,
     days,
     seats: role === 'rider' ? undefined : draft.seats,
@@ -230,6 +261,8 @@ export function commuteToDraft(schedule: CommuteSchedule | null): CommuteDraft {
   }
   return {
     startArea: schedule.startArea,
+    startPoint: schedule.startPoint,
+    discoveryEnabled: schedule.discoveryEnabled,
     campusLot: schedule.campusLot,
     days: schedule.days,
     seats: schedule.seats ?? DEFAULT_SEATS,
@@ -246,7 +279,9 @@ export function describeLeg(minutes: number | null, leg: TripLeg): string {
   if (minutes === null) {
     return leg === 'arriveBy' ? 'No ride there' : 'No ride back';
   }
-  return leg === 'arriveBy' ? `Arrive by ${formatTime(minutes)}` : `Leave at ${formatTime(minutes)}`;
+  return leg === 'arriveBy'
+    ? `Arrive by ${formatTime(minutes)}`
+    : `Leave at ${formatTime(minutes)}`;
 }
 
 export function describeWeekdays(days: Weekday[]): string {

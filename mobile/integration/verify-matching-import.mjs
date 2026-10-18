@@ -59,6 +59,42 @@ try {
       await deleteClient(client);
     }
   }
+  const calendarRides = await db
+    .collection('rideRequests')
+    .where('riderId', '==', 'calendar-b-rider')
+    .get();
+  assert.equal(calendarRides.size, 1);
+  assert.equal(calendarRides.docs[0].data().status, 'ACCEPTED');
+  const privatePickup = await db.doc(`ridePickups/${calendarRides.docs[0].id}`).get();
+  assert.deepEqual(privatePickup.data().riderPickup, { latitude: 40.92047, longitude: -73.12844 });
+  // The accepted location snapshot stays fixed after a weekly location edit.
+  assert.notDeepEqual(
+    privatePickup.data().driverStart,
+    (await db.doc('users/calendar-a-driver/commutes/primary').get()).data().startPoint,
+  );
+  for (const uid of ['calendar-a-driver', 'calendar-b-rider']) {
+    assert.equal((await getAuth(app).getUser(uid)).emailVerified, true);
+    const client = clientApp({ projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' }, uid);
+    try {
+      const auth = clientAuth(client);
+      connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+      const database = clientFirestore(client);
+      connectFirestoreEmulator(database, '127.0.0.1', 9095);
+      await signInWithEmailAndPassword(auth, `${uid}@stonybrook.edu`, 'Emulator-test-only-123!');
+      assert.equal(
+        (await getDoc(doc(database, 'rideRequests', calendarRides.docs[0].id))).data().status,
+        'ACCEPTED',
+      );
+      assert.deepEqual(
+        (await getDoc(doc(database, 'ridePickups', calendarRides.docs[0].id))).data().riderPickup,
+        privatePickup.data().riderPickup,
+      );
+    } finally {
+      await deleteClient(client);
+    }
+  }
+  assert.ok((await db.collection('users/calendar-a-driver/commuteDays').get()).size > 0);
+  assert.ok((await db.doc('users/calendar-a-driver/commutes/primary').get()).data().startPoint);
   console.log(
     'PASS: accounts, commutes, pending/declined requests, accepted ride and reservations survive restart/import; both clients read accepted status.',
   );

@@ -6,6 +6,7 @@ import { AppButton } from '../components/AppButton';
 import { Card } from '../components/Card';
 import { Screen } from '../components/Screen';
 import { decideRideRequest, useRideRequests } from './rideRequestClient';
+import { useAcceptedPickup } from '../calendar/acceptedPickups';
 import type { RideRequest } from './rideRequestModel';
 
 const time = (epoch: number) =>
@@ -14,6 +15,16 @@ const time = (epoch: number) =>
     hour: '2-digit',
     minute: '2-digit',
   });
+function ConfirmedPickup({ ride }: { ride: RideRequest }) {
+  const state = useAcceptedPickup(ride);
+  if (state.error) return <Text>{state.error}</Text>;
+  return state.pickup ? (
+    <Text>
+      Confirmed pickup: {state.pickup.riderPickup.latitude.toFixed(5)},{' '}
+      {state.pickup.riderPickup.longitude.toFixed(5)}. Shared only with your accepted ride partner.
+    </Text>
+  ) : null;
+}
 export function RideRequestsScreen() {
   const { user } = useSession();
   const requests = useRideRequests(user?.id);
@@ -48,12 +59,14 @@ export function RideRequestsScreen() {
         </Text>
         {item.status === 'PENDING' && (
           <Text>
-            Pending driver decision. No seats are reserved yet; acceptance rechecks availability.
+            Pending driver decision. Accepting agrees to the proposed times and reveals the private
+            pickup points to both participants. No seats are reserved until acceptance.
           </Text>
         )}
         {item.status === 'DECLINED' && (
           <Text>The driver declined this request. No ride or seat reservation was created.</Text>
         )}
+        {item.status === 'ACCEPTED' && <ConfirmedPickup ride={item} />}
         {item.status === 'ACCEPTED' && (
           <Text>
             This dated ride is accepted for both accounts. Later preference edits do not reschedule

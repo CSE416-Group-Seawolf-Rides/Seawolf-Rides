@@ -110,11 +110,14 @@ export function toCommuteDocument(ownerId: string, commute: CommuteSchedule): Co
   return {
     schemaVersion: USER_DATA_SCHEMA_VERSION,
     ownerId,
-    ...parseCommuteDocument({
-      schemaVersion: USER_DATA_SCHEMA_VERSION,
+    ...parseCommuteDocument(
+      {
+        schemaVersion: USER_DATA_SCHEMA_VERSION,
+        ownerId,
+        ...commute,
+      },
       ownerId,
-      ...commute,
-    }, ownerId),
+    ),
   };
 }
 
@@ -159,7 +162,35 @@ export function parseCommuteDocument(value: unknown, expectedOwnerId: string): C
     throw new Error('The persisted commute contains an invalid seat count.');
   }
 
+  const point = value.startPoint;
+  if (
+    point !== undefined &&
+    (!isRecord(point) ||
+      Object.keys(point).sort().join(',') !== 'latitude,longitude' ||
+      !isFiniteNumber(point.latitude) ||
+      point.latitude < -90 ||
+      point.latitude > 90 ||
+      !isFiniteNumber(point.longitude) ||
+      point.longitude < -180 ||
+      point.longitude > 180)
+  ) {
+    throw new Error('The private starting point is invalid.');
+  }
+  if (value.discoveryEnabled !== undefined && typeof value.discoveryEnabled !== 'boolean') {
+    throw new Error('The discovery preference is invalid.');
+  }
   return {
+    ...(point === undefined
+      ? {}
+      : {
+          startPoint: {
+            latitude: (point as { latitude: number }).latitude,
+            longitude: (point as { longitude: number }).longitude,
+          },
+        }),
+    ...(value.discoveryEnabled === undefined
+      ? {}
+      : { discoveryEnabled: value.discoveryEnabled as boolean }),
     startArea: {
       center: { latitude, longitude },
       radiusMiles: PRIVACY_RADIUS_MILES,
