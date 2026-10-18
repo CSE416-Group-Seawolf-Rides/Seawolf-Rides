@@ -4,6 +4,7 @@ import { Modal, Pressable, Text, View } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '../components/AppButton';
+import { ChatTripSheet } from './ChatTripSheet';
 import { ChatContextCard } from './ChatContextCard';
 import { Avatar } from '../components/Avatar';
 import { Card } from '../components/Card';
@@ -41,6 +42,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
   const { user } = useSession();
   const chat = useChat(chatId, user?.id);
   const pending = useRef<{ uid?: string; chatId: string; text: string; id: string } | null>(null);
+  const [tripKey, setTripKey] = useState('');
   const [profileKey, setProfileKey] = useState('');
   const screenKey = `${user?.id}:${chatId}`;
   const thread = chat.thread;
@@ -63,7 +65,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
     onLoadEarlier={chat.loadEarlier}
     onBack={() => router.back()}
     onOpenProfile={() => setProfileKey(screenKey)}
-    contextCard={thread && <ChatContextCard thread={thread} uid={user?.id ?? ''} {...context} />}
+    contextCard={thread && <ChatContextCard thread={thread} uid={user?.id ?? ''} {...context} onViewTrip={() => setTripKey(screenKey)} />}
     onSendMessage={async (text) => {
       if (!pending.current || pending.current.uid !== user?.id || pending.current.chatId !== chatId || pending.current.text !== text)
         pending.current = { uid: user?.id, chatId, text, id: newMessageId() };
@@ -72,6 +74,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
       if (pending.current === operation) pending.current = null;
     }}
   />
+    {thread && !chat.error && tripKey === screenKey && <ChatTripSheet key={screenKey} thread={thread} uid={user?.id ?? ''} onClose={() => setTripKey('')} />}
     <Modal visible={!!thread && !chat.error && profileKey === screenKey} animationType="slide" presentationStyle="pageSheet"
       onRequestClose={() => setProfileKey('')}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.lg }}>

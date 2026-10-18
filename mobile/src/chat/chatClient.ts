@@ -4,7 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { getFirebaseFirestore, getFirebaseFunctions } from '../firebase/firebase';
 import type { CalendarMatch } from '../calendar/calendarMatching';
 import type { RideRequest } from '../mvp/rideRequestModel';
-import type { ChatMessage, ChatThread } from './chatModel';
+import type { ChatMatchDetails, ChatMessage, ChatThread } from './chatModel';
 
 export async function startMatchChat(match: CalendarMatch, localDate: string) {
   return (await httpsCallable<unknown, { id: string }>(
@@ -81,4 +81,9 @@ export function useChatRequest(requestId: string | undefined, uid?: string) {
     }, () => setState({ key, error: 'Could not load trip context.' }));
   }, [requestId, uid, key]);
   return !requestId ? { loading: false } : state.key === key ? { request: state.request, error: state.error, loading: false } : { loading: true };
+}
+
+export async function getChatMatch(chatId: string) {
+  return (await httpsCallable<{ chatId: string }, ChatMatchDetails>(getFirebaseFunctions(), 'getChatMatch',
+    { timeout: 120000 })({ chatId })).data;
 }

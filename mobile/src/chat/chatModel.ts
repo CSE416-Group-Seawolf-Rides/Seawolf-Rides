@@ -1,3 +1,5 @@
+import type { CalendarMatch } from '../calendar/calendarMatching';
+import type { Coordinates } from '../commute/commuteModel';
 import { requestInitiator, type RideRequest } from '../mvp/rideRequestModel';
 
 export interface ChatThread {
@@ -41,4 +43,10 @@ export function chatContext(thread: ChatThread, uid: string, request?: RideReque
     trip: { driverId: request.driverId, riderId: request.riderId, localDate: request.localDate,
       campusLabel: request.campusLabel, departure: request.plan.departure, pickup: request.plan.pickup,
       vehicleCampusArrival: request.plan.vehicleCampusArrival } };
+}
+
+export interface ChatMatchDetails {
+  localDate: string;
+  ownPoint: Coordinates;
+  match: CalendarMatch;
 }

@@ -96,4 +96,4 @@ export { findCommuteMatches, setCommuteDay } from './calendarMatching';
 export { saveVehicleDetails } from './vehicle';
 export { estimateCommuteStart } from './commuteEstimate';
 
-export { startMatchChat, sendChatMessage } from './chat';
+export { startMatchChat, sendChatMessage, getChatMatch } from './chat';

@@ -1,3 +1,4 @@
+import { chatRequestInput } from '../src/chat/chatTripActions.ts';
 import assert from 'node:assert/strict';
 import { verifyDropoff } from './dropoff-checks.mjs';
 import { verifyChat, verifyRequestChat } from './chat-checks.mjs';
@@ -222,21 +223,11 @@ test(
         4,
         'driver and rider views use one cached road model',
       );
-      await verifyChat(t, { driver, rider, outsider, match, date, action, db, calls });
+      const inquiryChatId = await verifyChat(t, { driver, rider, outsider, match, date, action, db, calls });
+      const reviewed = await action(rider, 'getChatMatch', { chatId: inquiryChatId });
       await action(driver, 'saveVehicleDetails', vehicleFixture(driver.uid));
-      const pending = await action(rider, 'createRideRequest', {
-        source: 'CALENDAR',
-        direction: 'TO_CAMPUS',
-        localDate: date,
-        driverId: driver.uid,
-        riderRevision: match.riderRevision,
-        driverRevision: match.driverRevision,
-        proposedPlan: {
-          departure: match.plan.departure,
-          pickup: match.plan.pickup,
-          vehicleCampusArrival: match.plan.vehicleCampusArrival,
-        },
-      });
+      const pending = await action(rider, 'createRideRequest', chatRequestInput(reviewed));
+      assert.equal(pending.chatId, inquiryChatId);
       await verifyRequestChat({ driver, rider, outsider, value: pending, count: 3 });
       assert.equal((await db.collection('chats').get()).size, 1, 'inquiry upgrades to a request in the same conversation');
       await assert.rejects(

@@ -1,12 +1,13 @@
 import { Text, View } from 'react-native';
+import { AppButton } from '../components/AppButton';
 import { Card } from '../components/Card';
 import { rideTime } from '../mvp/ridePresentation';
 import type { RideRequest } from '../mvp/rideRequestModel';
 import { colors, spacing } from '../theme';
 import { chatContext, type ChatThread } from './chatModel';
 
-export function ChatContextCard({ thread, uid, request, loading, error }: {
-  thread: ChatThread; uid: string; request?: RideRequest; loading?: boolean; error?: string;
+export function ChatContextCard({ thread, uid, request, loading, error, onViewTrip }: {
+  thread: ChatThread; uid: string; request?: RideRequest; loading?: boolean; error?: string; onViewTrip?: () => void;
 }) {
   const context = chatContext(thread, uid, request);
   const trip = context.trip;
@@ -21,6 +22,7 @@ export function ChatContextCard({ thread, uid, request, loading, error }: {
       </View>
       <Text style={{ color: colors.textMuted, fontSize: 13 }}>{date} · {trip?.campusLabel ?? thread.campusLabel}</Text>
       {trip && <Text style={{ color: colors.textMuted, fontSize: 13 }}>Pickup {rideTime(trip.pickup)} · Arrive {rideTime(trip.vehicleCampusArrival)}</Text>}
+      {onViewTrip && <AppButton label={thread.requestId ? 'View request' : 'View match'} variant="secondary" onPress={onViewTrip} />}
     </>}
   </Card>;
 }

@@ -1,11 +1,13 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { prepareCalendarPair, requireLocalDemo } from './calendarMatching';
+import { loadCalendarParticipant, prepareCalendarPair, requireLocalDemo } from './calendarMatching';
 import { checkDemoDate } from '../../mobile/src/calendar/commuteCalendar';
 import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
 import { chatIdFor, chatTrip } from './chatThreads';
-import { record } from '../../mobile/src/mvp/settings';
+import type { ChatMatchDetails } from '../../mobile/src/chat/chatModel';
+import { ARRIVAL_BUFFER_SECONDS } from '../../mobile/src/commute/arrivalPolicy';
+import { localMinuteToEpoch, CAMPUS_POINTS, record } from '../../mobile/src/mvp/settings';
 
 const options = { region: 'us-central1', timeoutSeconds: 120, maxInstances: 1, concurrency: 4 };
 const identity = (value: unknown): value is string =>
@@ -101,5 +103,52 @@ export const sendChatMessage = onCall(options, async (call) => {
       tx.update(ref, { updatedAt: sentAt, lastMessage: text, messageCount: sequence });
       return { id: message.id };
     });
+  } catch (error) { mapped(error); }
+});
+
+/** Refresh just this inquiry's canonical pair, never scan the whole candidate list. */
+export const getChatMatch = onCall(options, async (call): Promise<ChatMatchDetails> => {
+  try {
+    const uid = await authenticated(call.auth?.uid);
+    const data = call.data;
+    if (!record(data) || Object.keys(data).join(',') !== 'chatId' || !hash(data.chatId))
+      throw new HttpsError('invalid-argument', 'Choose a conversation.');
+    const ref = getFirestore().doc(`chats/${data.chatId}`);
+    const before = await ref.get();
+    const thread = before.data();
+    if (!thread?.participantIds?.includes(uid))
+      throw new HttpsError('permission-denied', 'This conversation is unavailable to your account.');
+    const trip = thread.trip;
+    if (!trip || !identity(trip.driverId) || !identity(trip.riderId) ||
+        chatIdFor(trip.driverId, trip.riderId) !== data.chatId || typeof trip.localDate !== 'string')
+      throw new HttpsError('failed-precondition', 'Find a current match from your calendar to start a new trip.');
+    const [driver, rider] = await Promise.all([
+      loadCalendarParticipant(trip.driverId, trip.localDate), loadCalendarParticipant(trip.riderId, trip.localDate),
+    ]);
+    if (!driver || !rider) throw new HttpsError('failed-precondition', 'This match is no longer available.');
+    const prepared = await withMatchingRouting((routing) => prepareCalendarPair(
+      trip.riderId, trip.driverId, trip.localDate, rider.participant.revision, driver.participant.revision, routing,
+    ), true);
+    // Recheck after routing; a changed inquiry or saved plan must not be displayed as current.
+    const [freshThread, ...current] = await getFirestore().getAll(ref, ...prepared.snapshots.map((s) => s.ref));
+    if (JSON.stringify(freshThread.get('trip')) !== JSON.stringify(trip) || freshThread.get('requestId') !== thread.requestId ||
+        current.some((s, i) => s.exists !== prepared.snapshots[i].exists ||
+          (s.exists && !s.updateTime!.isEqual(prepared.snapshots[i].updateTime!))))
+      throw new HttpsError('aborted', 'The trip changed. Reopen its details.');
+    const d = prepared.participants.driver, r = prepared.participants.rider;
+    const own = uid === d.uid ? d : r, other = uid === d.uid ? r : d;
+    const dropoffLabel = prepared.value.campusLabel;
+    const preferredDropoffLabel = r.commute.riderDropoffPreference === 'any' || r.commute.campusLot === 'other'
+      ? 'Any' : CAMPUS_POINTS.find((p) => p.id === r.commute.campusLot)?.label;
+    return { localDate: trip.localDate, ownPoint: own.commute.startPoint!, match: {
+      driverId: d.uid, riderId: r.uid, driverRevision: d.revision, riderRevision: r.revision,
+      name: other.name, role: uid === d.uid ? 'rider' : 'driver', area: other.commute.startArea,
+      plan: prepared.value.plan, metrics: prepared.value.metrics,
+      addedDrivingSeconds: prepared.value.metrics.driverExtraDurationSeconds,
+      arrivalDifferenceSeconds: Math.abs((uid === d.uid ? prepared.value.plan.vehicleCampusArrival : prepared.value.plan.riderDestinationArrival) - (localMinuteToEpoch(trip.localDate, own.day.arriveBy!) - ARRIVAL_BUFFER_SECONDS)),
+      savedDriverDeparture: localMinuteToEpoch(trip.localDate, d.day.startAt!),
+      dropoffLabel, preferredDropoffLabel, dropoffPreferenceMatch: preferredDropoffLabel === 'Any' || preferredDropoffLabel === dropoffLabel,
+      ...(prepared.eta ? { eta: prepared.eta } : {}),
+    } };
   } catch (error) { mapped(error); }
 });

@@ -477,6 +477,8 @@ export async function prepareCalendarPair(
   return {
     value,
     snapshots: [...r.snapshots, ...d.snapshots],
+    participants: { driver: d.participant, rider: r.participant },
+    eta: evaluated.eta,
     privatePickup: {
       campus: CAMPUS_POINTS.find((p) => p.id === d.participant.commute.campusLot)!.coordinate,
       driverStart: d.participant.commute.startPoint!,
