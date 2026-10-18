@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { verifySymmetricRequests } from './symmetric-request-checks.mjs';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -169,8 +170,8 @@ async function action(client, name, data) {
 }
 test(
   'traffic forecasts through real callable accounts: dated legs, one-candidate pages, shared cache, acceptance, privacy, failures and quota',
-  { timeout: 120000 },
-  async () => {
+  { timeout: 240000 },
+  async (t) => {
     await new Promise((resolve) => server.listen(5009, '127.0.0.1', resolve));
     try {
       const date = localDateAt(Date.now() / 1000 + 86400);
@@ -405,6 +406,9 @@ test(
         (await db.doc('_m3Routing/publicOsrm').get()).data().owner,
         null,
       );
+      await verifySymmetricRequests(t, { client, action, db, date, start, pickup, outsider });
+      const quotaCache = await db.collection('_m3RouteCache').get();
+      await Promise.all(quotaCache.docs.map((entry) => entry.ref.update({ expiresAtMs: 0 })));
       await db.doc('_m3Routing/tomtomBudget').set({ month, count: 17999 });
       const beforeQuota = calls.length;
       const quota = await action(rider, 'findCommuteMatches', {

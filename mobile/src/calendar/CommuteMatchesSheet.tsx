@@ -21,7 +21,12 @@ import {
   type Coordinates,
   type DayMode,
 } from '../commute/commuteModel';
-import type { RideRequest } from '../mvp/rideRequestModel';
+import {
+  findTripRequest,
+  requestCanCancel,
+  requestRecipient,
+  type RideRequest,
+} from '../mvp/rideRequestModel';
 import { rideTime } from '../mvp/ridePresentation';
 import { trafficForecastIsStale } from '../routing/types';
 import type { CalendarMatch, CalendarSearchResult } from './calendarMatching';
@@ -43,13 +48,17 @@ export function CommuteMatchesSheet({
   busy,
   nowEpochSeconds,
   requesting,
+  cancellingId,
   message,
   requests,
   onLoadMore,
   onRetry,
   onRequest,
   onReviewRequests,
-  reviewReady,
+  vehicleLoaded,
+  vehicleReady,
+  onVehicleRequired,
+  onCancel,
   onClose,
 }: {
   date: string;
@@ -60,13 +69,17 @@ export function CommuteMatchesSheet({
   busy: boolean;
   nowEpochSeconds: number;
   requesting: boolean;
+  cancellingId: string | null;
   message: string | null;
   requests: RideRequest[];
   onLoadMore: () => void;
   onRetry: () => void;
   onRequest: (match: CalendarMatch) => void;
   onReviewRequests: () => void;
-  reviewReady: boolean;
+  vehicleLoaded: boolean;
+  vehicleReady: boolean;
+  onVehicleRequired: () => void;
+  onCancel: (request: RideRequest) => void;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -82,18 +95,18 @@ export function CommuteMatchesSheet({
   const people = matchedPeople(result?.matches ?? [], uid);
   const current = matchPage(people, pageSize, page);
   const person = people.find((item) => item.id === detailId);
-  const match =
+  const selectedMatch =
     person?.options.find((item) => item.driverId === driverOption) ?? person?.options[0];
+  const request = selectedMatch ? findTripRequest(requests, selectedMatch, date) : undefined;
+  const match =
+    person?.options.find(
+      (item) =>
+        request &&
+        (request.status === 'PENDING' || request.status === 'ACCEPTED') &&
+        item.driverId === request.driverId,
+    ) ?? selectedMatch;
   const detailOpen = !!person && !!match;
   const staleTraffic = trafficForecastIsStale(match?.eta, nowEpochSeconds);
-  const request =
-    match &&
-    requests.find(
-      (item) =>
-        item.driverId === match.driverId &&
-        item.riderId === match.riderId &&
-        item.localDate === date,
-    );
   const dateLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
@@ -133,6 +146,61 @@ export function CommuteMatchesSheet({
       if (finished) setDetailId(null);
     });
   };
+  const requestActions = (candidate: CalendarMatch, fromCard = false) => {
+    const existing = findTripRequest(requests, candidate, date);
+    if (existing?.status === 'PENDING')
+      return (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={styles.status}>
+            {requestRecipient(existing) === uid ? 'Waiting for your answer' : 'Request pending'}
+          </Text>
+          {requestCanCancel(existing, uid) ? (
+            <AppButton
+              label={cancellingId === existing.id ? 'Cancelling…' : 'Cancel request'}
+              variant="secondary"
+              disabled={busy}
+              onPress={() => onCancel(existing)}
+            />
+          ) : (
+            <AppButton
+              label="Review request"
+              disabled={busy}
+              onPress={() => dismiss(onReviewRequests)}
+            />
+          )}
+        </View>
+      );
+    if (existing && existing.status !== 'CANCELLED')
+      return (
+        <Text style={styles.status}>
+          {existing.status === 'ACCEPTED' ? 'Confirmed ride' : 'Request declined'}
+        </Text>
+      );
+    return (
+      <AppButton
+        label={
+          requesting && !cancellingId
+            ? 'Sending…'
+            : fromCard
+              ? 'Request to carpool'
+              : 'Send request'
+        }
+        disabled={
+          busy ||
+          (!fromCard &&
+            (trafficForecastIsStale(candidate.eta, nowEpochSeconds) ||
+              (candidate.driverId === uid && !vehicleLoaded)))
+        }
+        onPress={() => {
+          if (fromCard) {
+            setDriverOption(candidate.driverId);
+            setDetailId(candidate.driverId === uid ? candidate.riderId : candidate.driverId);
+          } else if (candidate.driverId === uid && !vehicleReady) dismiss(onVehicleRequired);
+          else onRequest(candidate);
+        }}
+      />
+    );
+  };
   const changePage = (value: number) => {
     setPage(value);
     scroll.current?.scrollTo({ y: 0, animated: false });
@@ -159,10 +227,7 @@ export function CommuteMatchesSheet({
         accessibilityState={{ disabled: current.page + 1 >= current.pages || busy }}
         disabled={current.page + 1 >= current.pages || busy}
         onPress={() => changePage(current.page + 1)}
-        style={[
-          styles.pageButton,
-          (current.page + 1 >= current.pages || busy) && styles.disabled,
-        ]}
+        style={[styles.pageButton, (current.page + 1 >= current.pages || busy) && styles.disabled]}
       >
         <Text style={styles.link}>Next</Text>
         <Ionicons name="chevron-forward" size={20} color={colors.accent} />
@@ -238,10 +303,7 @@ export function CommuteMatchesSheet({
                       style={[styles.size, size === pageSize && styles.sizeSelected]}
                     >
                       <Text
-                        style={[
-                          styles.sizeLabel,
-                          size === pageSize && styles.sizeLabelSelected,
-                        ]}
+                        style={[styles.sizeLabel, size === pageSize && styles.sizeLabelSelected]}
                       >
                         {size}
                       </Text>
@@ -253,18 +315,25 @@ export function CommuteMatchesSheet({
               {busy && (
                 <View accessibilityLiveRegion="polite" style={styles.loading}>
                   <ActivityIndicator color={colors.accent} />
-                  <Text style={styles.muted}>Finding matches…</Text>
+                  <Text style={styles.muted}>
+                    {requesting ? 'Saving request…' : 'Finding matches…'}
+                  </Text>
                 </View>
               )}
               {current.people.map((item) => {
-                const best = item.options[0];
+                const active = findTripRequest(requests, item.options[0], date);
+                const best =
+                  item.options.find(
+                    (option) =>
+                      active &&
+                      (active.status === 'PENDING' || active.status === 'ACCEPTED') &&
+                      option.driverId === active.driverId,
+                  ) ?? item.options[0];
                 return (
                   <Card key={item.id} style={styles.personCard}>
                     <View style={styles.personHeader}>
                       <View style={styles.avatar}>
-                        <Text style={styles.initial}>
-                          {item.name.charAt(0).toUpperCase()}
-                        </Text>
+                        <Text style={styles.initial}>{item.name.charAt(0).toUpperCase()}</Text>
                       </View>
                       <View style={styles.headerText}>
                         <Text style={styles.name}>{item.name}</Text>
@@ -281,7 +350,11 @@ export function CommuteMatchesSheet({
                     {best.eta?.model === 'TRAFFIC_FORECAST' && (
                       <Text style={styles.muted}>Traffic-aware forecast · TomTom</Text>
                     )}
-                    <MatchTimes match={best} uid={uid} />
+                    <Text style={styles.muted}>
+                      {best.driverId === uid ? 'You’re driving' : 'You’re riding'}
+                    </Text>
+                    <MatchTimes match={best} uid={uid} request={active} />
+                    {requestActions(best, true)}
                     <AppButton
                       label="View more"
                       accessibilityLabel={`View more about ${item.name}`}
@@ -329,8 +402,7 @@ export function CommuteMatchesSheet({
               )}
               {!!result?.unknownCount && (
                 <Text style={styles.muted}>
-                  Some road estimates or commute details are unavailable. Try searching
-                  again.
+                  Some road estimates or commute details are unavailable. Try searching again.
                 </Text>
               )}
               {message && (
@@ -392,8 +464,14 @@ export function CommuteMatchesSheet({
                           accessibilityRole="radio"
                           accessibilityState={{
                             checked: option.driverId === match.driverId,
+                            disabled:
+                              busy ||
+                              request?.status === 'PENDING' ||
+                              request?.status === 'ACCEPTED',
                           }}
-                          disabled={busy}
+                          disabled={
+                            busy || request?.status === 'PENDING' || request?.status === 'ACCEPTED'
+                          }
                           onPress={() => setDriverOption(option.driverId)}
                           style={[
                             styles.roleOption,
@@ -403,8 +481,7 @@ export function CommuteMatchesSheet({
                           <Text
                             style={[
                               styles.link,
-                              option.driverId === match.driverId &&
-                                styles.sizeLabelSelected,
+                              option.driverId === match.driverId && styles.sizeLabelSelected,
                             ]}
                           >
                             {option.driverId === uid ? 'I’m driving' : 'I’m riding'}
@@ -438,16 +515,14 @@ export function CommuteMatchesSheet({
                       />
                     </MapView>
                   </View>
-                  <Text style={styles.muted}>
-                    Your pin · {person.name}’s approximate area
-                  </Text>
+                  <Text style={styles.muted}>Your pin · {person.name}’s approximate area</Text>
                   <Card style={styles.personCard}>
                     <Text style={styles.name}>Estimated trip</Text>
-                    <MatchTimes match={match} uid={uid} />
+                    <MatchTimes match={match} uid={uid} request={request} />
                     <Text style={styles.muted}>
-                      {Math.ceil((match.plan.pickup - match.plan.departure) / 60)} min to
-                      pickup · {Math.ceil(match.addedDrivingSeconds / 60)} min added
-                      driving, including boarding
+                      {Math.ceil((match.plan.pickup - match.plan.departure) / 60)} min to pickup ·{' '}
+                      {Math.ceil(match.addedDrivingSeconds / 60)} min added driving, including
+                      boarding
                     </Text>
                     <Text style={styles.muted}>
                       New York time ·{' '}
@@ -457,12 +532,12 @@ export function CommuteMatchesSheet({
                     </Text>
                     {match.eta && (
                       <Text style={styles.muted}>
-                        Estimated {rideTime(match.eta.computedAtEpochSeconds)} · for
-                        departure {rideTime(match.eta.departureEpochSeconds)}
+                        Estimated {rideTime(match.eta.computedAtEpochSeconds)} · for departure{' '}
+                        {rideTime(match.eta.departureEpochSeconds)}
                       </Text>
                     )}
                   </Card>
-                  {staleTraffic && !request && (
+                  {staleTraffic && (!request || request.status === 'CANCELLED') && (
                     <Card style={styles.personCard}>
                       <Text style={styles.muted}>
                         This traffic forecast is over two minutes old.
@@ -478,29 +553,7 @@ export function CommuteMatchesSheet({
                       />
                     </Card>
                   )}
-                  {request ? (
-                    <Card style={styles.personCard}>
-                      <Text style={styles.name}>
-                        {request.status === 'ACCEPTED'
-                          ? 'Accepted'
-                          : request.status === 'DECLINED'
-                            ? 'Declined'
-                            : 'Request pending'}
-                      </Text>
-                    </Card>
-                  ) : match.riderId === uid ? (
-                    <AppButton
-                      label={busy ? 'Sending…' : 'Request this trip'}
-                      disabled={busy || staleTraffic}
-                      onPress={() => onRequest(match)}
-                    />
-                  ) : (
-                    <AppButton
-                      label="Review ride requests"
-                      disabled={busy || !reviewReady}
-                      onPress={() => dismiss(onReviewRequests)}
-                    />
-                  )}
+                  {requestActions(match)}
                   {message && (
                     <Text accessibilityLiveRegion="polite" style={styles.status}>
                       {message}
@@ -521,7 +574,17 @@ export function CommuteMatchesSheet({
     </Modal>
   );
 }
-function MatchTimes({ match, uid }: { match: CalendarMatch; uid: string }) {
+function MatchTimes({
+  match,
+  uid,
+  request,
+}: {
+  match: CalendarMatch;
+  uid: string;
+  request?: RideRequest;
+}) {
+  if (request?.status === 'PENDING' || request?.status === 'ACCEPTED')
+    match = { ...match, driverId: request.driverId, riderId: request.riderId, plan: request.plan };
   return (
     <View style={styles.times}>
       {[

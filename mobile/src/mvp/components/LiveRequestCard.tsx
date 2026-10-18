@@ -2,14 +2,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Avatar } from '../../components/Avatar';
 import { Card } from '../../components/Card';
 import { colors, spacing } from '../../theme';
-import type { RideRequest } from '../rideRequestModel';
-import {
-  historyLabel,
-  partnerName,
-  rideDate,
-  rideEnd,
-  rideTime,
-} from '../ridePresentation';
+import { AppButton } from '../../components/AppButton';
+import { requestCanCancel, requestRecipient, type RideRequest } from '../rideRequestModel';
+import { historyLabel, partnerName, rideDate, rideEnd, rideTime } from '../ridePresentation';
 import { useAcceptedPickup } from '../../calendar/acceptedPickups';
 
 export function LiveRequestCard({
@@ -17,11 +12,15 @@ export function LiveRequestCard({
   uid,
   now,
   showPickup = false,
+  onCancel,
+  busyId,
 }: {
   ride: RideRequest;
   uid: string;
   now: number;
   showPickup?: boolean;
+  onCancel?: (ride: RideRequest) => void;
+  busyId?: string | null;
 }) {
   const pickup = useAcceptedPickup(showPickup ? ride : undefined);
   const status =
@@ -37,16 +36,10 @@ export function LiveRequestCard({
         <View style={styles.copy}>
           <Text style={styles.name}>{partnerName(ride, uid)}</Text>
           <Text style={styles.detail}>
-            {ride.driverId === uid ? 'Rides with you' : 'Drives you'} ·{' '}
-            {rideDate(ride.localDate)}
+            {ride.driverId === uid ? 'Rides with you' : 'Drives you'} · {rideDate(ride.localDate)}
           </Text>
         </View>
-        <Text
-          style={[
-            styles.status,
-            status === 'Confirmed' && { color: colors.success },
-          ]}
-        >
+        <Text style={[styles.status, status === 'Confirmed' && { color: colors.success }]}>
           {status}
         </Text>
       </View>
@@ -65,14 +58,12 @@ export function LiveRequestCard({
         </View>
         <View style={styles.copy}>
           <Text style={styles.caption}>CAMPUS ARRIVAL</Text>
-          <Text style={styles.time}>
-            {rideTime(ride.plan.riderDestinationArrival)}
-          </Text>
+          <Text style={styles.time}>{rideTime(ride.plan.riderDestinationArrival)}</Text>
         </View>
       </View>
       <Text style={styles.detail}>
-        Adds {Math.ceil(ride.metrics.driverExtraDurationSeconds / 60)} minutes
-        driving · New York time
+        Adds {Math.ceil(ride.metrics.driverExtraDurationSeconds / 60)} minutes driving · New York
+        time
       </Text>
       {showPickup && ride.status === 'ACCEPTED' && (
         <>
@@ -87,9 +78,19 @@ export function LiveRequestCard({
       )}
       {ride.status === 'PENDING' && status === 'Pending' && (
         <Text style={styles.detail}>
-          Waiting for the driver’s decision. No seat is reserved until
-          acceptance.
+          {requestRecipient(ride) === uid
+            ? 'Waiting for your answer.'
+            : `Waiting for ${partnerName(ride, uid)}’s answer.`}{' '}
+          No seat is reserved until acceptance.
         </Text>
+      )}
+      {onCancel && requestCanCancel(ride, uid) && (
+        <AppButton
+          label={busyId === ride.id ? 'Cancelling…' : 'Cancel request'}
+          variant="secondary"
+          disabled={!!busyId}
+          onPress={() => onCancel(ride)}
+        />
       )}
     </Card>
   );

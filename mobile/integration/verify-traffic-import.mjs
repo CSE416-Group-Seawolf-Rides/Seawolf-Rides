@@ -9,48 +9,67 @@ if (
 )
   throw new Error('Loopback test emulators required.');
 const require = createRequire(new URL('../../functions/package.json', import.meta.url));
-const {
-  initializeApp: initializeAdmin,
-  deleteApp: deleteAdmin,
-} = require('firebase-admin/app');
+const { initializeApp: initializeAdmin, deleteApp: deleteAdmin } = require('firebase-admin/app');
 const { getFirestore: adminFirestore } = require('firebase-admin/firestore');
 const admin = initializeAdmin({ projectId: 'demo-seawolf-rides' });
 try {
   const db = adminFirestore(admin);
-  const rides = await db
-    .collection('rideRequests')
-    .where('riderId', '==', 'traffic-rider')
-    .get();
+  const rides = await db.collection('rideRequests').where('riderId', '==', 'traffic-rider').get();
   assert.equal(rides.size, 1);
   const ride = rides.docs[0];
   assert.equal(ride.data().status, 'ACCEPTED');
   assert.equal(ride.data().plan.vehicleCampusArrival - ride.data().plan.departure, 2220);
   assert.equal(
-    (await db.collection('_rideCommitments').where('requestId', '==', ride.id).get())
-      .size,
+    (await db.collection('_rideCommitments').where('requestId', '==', ride.id).get()).size,
     2,
   );
   assert.equal((await db.doc('_m3Routing/tomtomBudget').get()).data().count, 18000);
+  const symmetric = await db
+    .collection('rideRequests')
+    .where('participantIds', 'array-contains', 'symmetric-rider')
+    .get();
+  const byDate = symmetric.docs
+    .map((d) => d.data())
+    .sort((a, b) => a.localDate.localeCompare(b.localDate));
+  assert.equal(byDate.length, 4);
+  assert.equal(byDate[0].status, 'ACCEPTED');
+  assert.equal(byDate[0].initiatorId, 'symmetric-driver');
+  assert.equal(byDate[0].attemptId, 'symmetric-driver-proposal-2');
+  assert.equal(byDate[1].status, 'DECLINED');
+  assert.equal(byDate[3].status, 'CANCELLED');
+  assert.equal(byDate[3].attemptId, 'symmetric-crossed-proposal-9');
+  assert.ok((await db.collection('_rideRequestAttempts').get()).size >= 9);
   for (const uid of ['traffic-rider', 'traffic-a-driver']) {
-    const app = initializeApp(
-      { projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' },
-      uid,
-    );
+    const app = initializeApp({ projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' }, uid);
     try {
       const auth = getAuth(app);
       connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
       const client = getFirestore(app);
       connectFirestoreEmulator(client, '127.0.0.1', 9095);
-      await signInWithEmailAndPassword(
-        auth,
-        `${uid}@stonybrook.edu`,
-        'Emulator-test-only-123!',
-      );
+      await signInWithEmailAndPassword(auth, `${uid}@stonybrook.edu`, 'Emulator-test-only-123!');
+      assert.equal((await getDoc(doc(client, 'rideRequests', ride.id))).data().status, 'ACCEPTED');
+      assert.equal((await getDoc(doc(client, 'ridePickups', ride.id))).exists(), true);
+    } finally {
+      await deleteApp(app);
+    }
+  }
+  for (const uid of ['symmetric-driver', 'symmetric-rider']) {
+    const app = initializeApp({ projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' }, uid);
+    try {
+      const auth = getAuth(app);
+      connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+      const client = getFirestore(app);
+      connectFirestoreEmulator(client, '127.0.0.1', 9095);
+      await signInWithEmailAndPassword(auth, `${uid}@stonybrook.edu`, 'Emulator-test-only-123!');
       assert.equal(
-        (await getDoc(doc(client, 'rideRequests', ride.id))).data().status,
+        (await getDoc(doc(client, 'rideRequests', byDate[0].id))).data().status,
         'ACCEPTED',
       );
-      assert.equal((await getDoc(doc(client, 'ridePickups', ride.id))).exists(), true);
+      assert.equal(
+        (await getDoc(doc(client, 'rideRequests', byDate[3].id))).data().status,
+        'CANCELLED',
+      );
+      assert.equal((await getDoc(doc(client, 'ridePickups', byDate[0].id))).exists(), true);
     } finally {
       await deleteApp(app);
     }

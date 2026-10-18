@@ -22,25 +22,23 @@ import {
   weekAgenda,
 } from './ridePresentation';
 import { LiveCarpoolCard } from './components/LiveCarpoolCard';
+import { useRideDecision } from './useRideDecision';
 import { LiveAgenda } from './components/LiveAgenda';
 
 export function RideRequestsScreen() {
   const { user, profile, commute } = useSession();
   const requests = useRideRequests(user?.id);
+  const decision = useRideDecision();
   const overrides = useCalendarOverrides(user?.id);
   const { now } = useHomeClock(
-    requests.items.map((r) =>
-      r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure,
-    ),
+    requests.items.map((r) => (r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure)),
   );
   const epoch = now.getTime() / 1000;
   const uid = user?.id ?? '';
   const [showNextWeek, setShowNextWeek] = useState(false);
   const carpools = currentCarpools(requests.items, uid, epoch);
-  const waiting = requests.items.filter((r) =>
-    requestNeedsAnswer(r, uid, epoch),
-  );
-  const waitingPeople = new Set(waiting.map((r) => r.riderId)).size;
+  const waiting = requests.items.filter((r) => requestNeedsAnswer(r, uid, epoch));
+  const waitingPeople = new Set(waiting.map((r) => partnerId(r, uid))).size;
   const monday = startOfWeek(localToday(epoch));
   const thisWeek = weekAgenda(
     requests.items,
@@ -65,24 +63,19 @@ export function RideRequestsScreen() {
   const people = new Set(past.map((r) => partnerId(r, uid))).size;
   if (requests.error)
     return (
-      <Screen title="Rides">
+      <Screen title="Rides" afterContent={decision.sheet}>
         <Text accessibilityRole="alert">{requests.error}</Text>
         <AppButton label="Reload rides" onPress={requests.retry} />
       </Screen>
     );
   return (
-    <Screen title="Rides">
-      {!requests.loaded && (
-        <Text style={styles.muted}>Loading your rides…</Text>
-      )}
+    <Screen title="Rides" afterContent={decision.sheet}>
+      {decision.error && <Text accessibilityRole="alert">{decision.error}</Text>}
+      {!requests.loaded && <Text style={styles.muted}>Loading your rides…</Text>}
       {(requests.error || overrides.error) && (
-        <Text accessibilityRole="alert">
-          {requests.error || overrides.error}
-        </Text>
+        <Text accessibilityRole="alert">{requests.error || overrides.error}</Text>
       )}
-      {requests.error && (
-        <AppButton label="Reload rides" onPress={requests.retry} />
-      )}
+      {requests.error && <AppButton label="Reload rides" onPress={requests.retry} />}
       {!!waiting.length && (
         <Pressable
           accessibilityRole="button"
@@ -93,8 +86,8 @@ export function RideRequestsScreen() {
             <Text style={styles.badgeText}>{waitingPeople}</Text>
           </View>
           <Text style={styles.waitingCopy}>
-            {waitingPeople} rider{waitingPeople === 1 ? ' is' : 's are'} waiting
-            on your answer
+            {waitingPeople} {waitingPeople === 1 ? 'person is' : 'people are'} waiting on your
+            answer
           </Text>
           <Text style={styles.action}>Review</Text>
         </Pressable>
@@ -109,13 +102,14 @@ export function RideRequestsScreen() {
             carpool={pool}
             uid={uid}
             onOpen={() => router.push(`/rides/person/${pool.id}`)}
+            onCancel={(request) => void decision.cancel(request)}
+            busyId={decision.busy}
           />
         ))}
         {requests.loaded && !carpools.length && (
           <Card style={styles.empty}>
             <Text style={styles.muted}>
-              No upcoming carpools yet. People you have accepted trips with will
-              appear here.
+              No upcoming carpools yet. People you have accepted trips with will appear here.
             </Text>
             <AppButton
               label={
@@ -139,9 +133,7 @@ export function RideRequestsScreen() {
           <LiveAgenda days={thisWeek} uid={uid} />
         ) : requests.loaded && overrides.loaded ? (
           <Card>
-            <Text style={styles.muted}>
-              Nothing left on your schedule this week.
-            </Text>
+            <Text style={styles.muted}>Nothing left on your schedule this week.</Text>
           </Card>
         ) : (
           <Text style={styles.muted}>Loading your week…</Text>
@@ -179,11 +171,7 @@ export function RideRequestsScreen() {
         <Card style={styles.history}>
           <View style={styles.historyHeader}>
             <Text style={styles.heading}>History</Text>
-            <Ionicons
-              name="chevron-forward"
-              size={18}
-              color={colors.textMuted}
-            />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </View>
           <Text style={styles.stats}>
             {past.length} past ride{past.length === 1 ? '' : 's'} · {people}{' '}

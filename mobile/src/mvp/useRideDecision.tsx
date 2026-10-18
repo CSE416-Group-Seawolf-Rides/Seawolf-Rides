@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useSession } from '../auth/SessionProvider';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
-import { decideRideRequest } from './rideRequestClient';
+import { decideRideRequest, cancelRideRequest } from './rideRequestClient';
 import type { RideRequest } from './rideRequestModel';
 
 export function useRideDecision() {
@@ -12,12 +12,9 @@ export function useRideDecision() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
-  const decide = async (
-    item: RideRequest,
-    decision: 'ACCEPTED' | 'DECLINED',
-  ) => {
+  const decide = async (item: RideRequest, decision: 'ACCEPTED' | 'DECLINED') => {
     if (submitting.current) return;
-    if (decision === 'ACCEPTED' && !vehicle.vehicle) {
+    if (decision === 'ACCEPTED' && item.driverId === user?.id && !vehicle.vehicle) {
       if (vehicle.loaded) setVehicleRequired(true);
       else setError(vehicle.error ?? 'Wait for your vehicle details to load.');
       return;
@@ -26,20 +23,31 @@ export function useRideDecision() {
     setBusy(item.id);
     setError(null);
     try {
-      await decideRideRequest(item.id, decision);
+      await decideRideRequest(item.id, decision, item.attemptId);
     } catch (caught) {
       if (
         caught &&
         typeof caught === 'object' &&
         'details' in caught &&
-        (caught.details as { reason?: string })?.reason === 'VEHICLE_REQUIRED'
+        (caught.details as { reason?: string })?.reason === 'VEHICLE_REQUIRED' &&
+        item.driverId === user?.id
       )
         setVehicleRequired(true);
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : 'Could not save your decision. Retry.',
-      );
+      setError(caught instanceof Error ? caught.message : 'Could not save your decision. Retry.');
+    } finally {
+      submitting.current = false;
+      setBusy(null);
+    }
+  };
+  const cancel = async (item: RideRequest) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    setBusy(item.id);
+    setError(null);
+    try {
+      await cancelRideRequest(item);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not cancel this request. Retry.');
     } finally {
       submitting.current = false;
       setBusy(null);
@@ -49,11 +57,9 @@ export function useRideDecision() {
     busy,
     error,
     decide,
+    cancel,
     sheet: (
-      <VehicleRequiredSheet
-        visible={vehicleRequired}
-        onClose={() => setVehicleRequired(false)}
-      />
+      <VehicleRequiredSheet visible={vehicleRequired} onClose={() => setVehicleRequired(false)} />
     ),
   };
 }

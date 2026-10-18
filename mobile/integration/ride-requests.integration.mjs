@@ -251,7 +251,7 @@ test('only participants read requests, only the chosen driver decides, clients c
     code: 'functions/invalid-argument',
   });
   await assert.rejects(action(rider, 'createRideRequest', { ...input, riderId: stranger.uid }), {
-    code: 'functions/invalid-argument',
+    code: 'functions/permission-denied',
   });
   const updates = [watchStatus(driver, id, 'DECLINED'), watchStatus(rider, id, 'DECLINED')];
   assert.equal((await respond(driver, id, 'DECLINED')).status, 'DECLINED');

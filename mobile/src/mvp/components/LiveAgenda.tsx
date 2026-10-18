@@ -3,16 +3,11 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatTime, weekdays } from '../../commute/commuteModel';
 import { weekdayForDate } from '../settings';
+import { requestRecipient } from '../rideRequestModel';
 import { partnerName, rideTime, type LiveAgendaDay } from '../ridePresentation';
 import { colors, radii, spacing } from '../../theme';
 
-export function LiveAgenda({
-  days,
-  uid,
-}: {
-  days: LiveAgendaDay[];
-  uid: string;
-}) {
+export function LiveAgenda({ days, uid }: { days: LiveAgendaDay[]; uid: string }) {
   return (
     <View style={styles.group}>
       {days.map((day, index) => {
@@ -31,7 +26,7 @@ export function LiveAgenda({
           day.status === 'confirmed'
             ? `${day.mode === 'drive' ? 'Driving' : 'Riding'} · ${request.campusLabel}`
             : day.status === 'pending'
-              ? request.driverId === uid
+              ? requestRecipient(request) === uid
                 ? 'Waiting on your answer'
                 : `Waiting for ${partnerName(request, uid)}`
               : `Arrive around ${formatTime(day.schedule!.arriveBy!)}`;
@@ -52,31 +47,20 @@ export function LiveAgenda({
           >
             <View style={styles.date}>
               <Text style={styles.weekday}>
-                {weekdays
-                  .find((d) => d.value === weekdayForDate(day.date))
-                  ?.short.toUpperCase()}
+                {weekdays.find((d) => d.value === weekdayForDate(day.date))?.short.toUpperCase()}
               </Text>
               <Text style={styles.number}>{Number(day.date.slice(-2))}</Text>
             </View>
             <View style={styles.copy}>
               <Text style={styles.headline}>{headline}</Text>
-              <Text
-                style={[
-                  styles.detail,
-                  day.status === 'pending' && styles.pending,
-                ]}
-              >
+              <Text style={[styles.detail, day.status === 'pending' && styles.pending]}>
                 {detail}
               </Text>
             </View>
             {day.status === 'open' ? (
               <Text style={styles.find}>Find</Text>
             ) : (
-              <Ionicons
-                name="chevron-forward"
-                size={17}
-                color={colors.textMuted}
-              />
+              <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
             )}
           </Pressable>
         );

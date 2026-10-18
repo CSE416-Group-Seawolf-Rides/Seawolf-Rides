@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getFirebaseFirestore, getFirebaseFunctions } from '../firebase/firebase';
 import type { CreateRideRequestInput, RideRequest, RideRequestResult } from './rideRequestModel';
@@ -11,16 +11,36 @@ export async function sendRideRequest(input: CreateRideRequestInput): Promise<Ri
       getFirebaseFunctions(),
       'createRideRequest',
       { timeout: 120000 },
-    )(input)
+    )({
+      ...input,
+      attemptId: input.attemptId ?? doc(collection(getFirebaseFirestore(), 'rideRequests')).id,
+    })
   ).data;
 }
-export async function decideRideRequest(requestId: string, decision: 'ACCEPTED' | 'DECLINED') {
+export async function decideRideRequest(
+  requestId: string,
+  decision: 'ACCEPTED' | 'DECLINED',
+  attemptId?: string,
+) {
   return (
-    await httpsCallable<{ requestId: string; decision: string }, RideRequestResult>(
+    await httpsCallable<
+      { requestId: string; decision: string; attemptId?: string },
+      RideRequestResult
+    >(getFirebaseFunctions(), 'respondToRideRequest', { timeout: 120000 })({
+      requestId,
+      decision,
+      ...(attemptId ? { attemptId } : {}),
+    })
+  ).data;
+}
+
+export async function cancelRideRequest(request: RideRequest): Promise<RideRequestResult> {
+  return (
+    await httpsCallable<{ requestId: string; attemptId?: string }, RideRequestResult>(
       getFirebaseFunctions(),
-      'respondToRideRequest',
+      'cancelRideRequest',
       { timeout: 120000 },
-    )({ requestId, decision })
+    )({ requestId: request.id, ...(request.attemptId ? { attemptId: request.attemptId } : {}) })
   ).data;
 }
 

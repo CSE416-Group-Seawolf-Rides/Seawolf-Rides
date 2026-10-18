@@ -21,9 +21,7 @@ function useLiveRides() {
   const { user } = useSession();
   const requests = useRideRequests(user?.id);
   const { now } = useHomeClock(
-    requests.items.map((r) =>
-      r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure,
-    ),
+    requests.items.map((r) => (r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure)),
   );
   return { requests, uid: user?.id ?? '', now: now.getTime() / 1000 };
 }
@@ -32,9 +30,7 @@ export function LiveRideHistoryScreen() {
   const history = rideHistory(requests.items, uid, now);
   return (
     <Screen title="History" onBack={() => router.back()}>
-      {requests.error && (
-        <Text accessibilityRole="alert">{requests.error}</Text>
-      )}
+      {requests.error && <Text accessibilityRole="alert">{requests.error}</Text>}
       {!requests.loaded && <Text>Loading history…</Text>}
       {requests.loaded && !requests.error && !history.length && (
         <Text style={{ color: colors.textMuted }}>
@@ -54,20 +50,18 @@ export function LiveRideHistoryScreen() {
     </Screen>
   );
 }
-export function LiveCarpoolScreen({
-  participantId,
-}: {
-  participantId: string;
-}) {
+export function LiveCarpoolScreen({ participantId }: { participantId: string }) {
   const { requests, uid, now } = useLiveRides();
-  const pool = currentCarpools(requests.items, uid, now).find(
-    (c) => c.id === participantId,
-  );
+  const decision = useRideDecision();
+  const pool = currentCarpools(requests.items, uid, now).find((c) => c.id === participantId);
   return (
-    <Screen title={pool?.name ?? 'Carpool'} onBack={() => router.back()}>
-      {requests.error && (
-        <Text accessibilityRole="alert">{requests.error}</Text>
-      )}
+    <Screen
+      title={pool?.name ?? 'Carpool'}
+      onBack={() => router.back()}
+      afterContent={decision.sheet}
+    >
+      {decision.error && <Text accessibilityRole="alert">{decision.error}</Text>}
+      {requests.error && <Text accessibilityRole="alert">{requests.error}</Text>}
       {!requests.loaded && <Text>Loading your carpool…</Text>}
       {requests.loaded && !requests.error && !pool && (
         <>
@@ -83,14 +77,20 @@ export function LiveCarpoolScreen({
         [...pool.accepted, ...pool.pending]
           .sort((a, b) => a.plan.departure - b.plan.departure)
           .map((ride) => (
-            <Pressable
-              key={ride.id}
-              accessibilityRole="button"
-              accessibilityLabel={`View trip on ${ride.localDate}`}
-              onPress={() => router.push(`/rides/${ride.id}`)}
-            >
-              <LiveRequestCard ride={ride} uid={uid} now={now} />
-            </Pressable>
+            <View key={ride.id} style={{ gap: spacing.sm }}>
+              <LiveRequestCard
+                ride={ride}
+                uid={uid}
+                now={now}
+                onCancel={(item) => void decision.cancel(item)}
+                busyId={decision.busy}
+              />
+              <AppButton
+                label="View trip"
+                variant="secondary"
+                onPress={() => router.push(`/rides/${ride.id}`)}
+              />
+            </View>
           ))}
     </Screen>
   );
@@ -100,15 +100,9 @@ export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
   const decision = useRideDecision();
   const ride = requests.items.find((r) => r.id === rideId);
   return (
-    <Screen
-      title="Trip details"
-      onBack={() => router.back()}
-      afterContent={decision.sheet}
-    >
+    <Screen title="Trip details" onBack={() => router.back()} afterContent={decision.sheet}>
       {(requests.error || decision.error) && (
-        <Text accessibilityRole="alert">
-          {requests.error || decision.error}
-        </Text>
+        <Text accessibilityRole="alert">{requests.error || decision.error}</Text>
       )}
       {!requests.loaded && <Text>Loading trip…</Text>}
       {requests.loaded && !requests.error && !ride && (
@@ -116,7 +110,14 @@ export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
       )}
       {ride && (
         <>
-          <LiveRequestCard ride={ride} uid={uid} now={now} showPickup />
+          <LiveRequestCard
+            ride={ride}
+            uid={uid}
+            now={now}
+            showPickup
+            onCancel={(item) => void decision.cancel(item)}
+            busyId={decision.busy}
+          />
           {requestNeedsAnswer(ride, uid, now) && (
             <>
               <AppButton
@@ -143,9 +144,7 @@ export function LiveRequestReviewScreen() {
   const [deferred, setDeferred] = useState<string[]>([]);
   const waiting = requests.items
     .filter((r) => requestNeedsAnswer(r, uid, now))
-    .sort(
-      (a, b) => a.plan.departure - b.plan.departure || a.id.localeCompare(b.id),
-    );
+    .sort((a, b) => a.plan.departure - b.plan.departure || a.id.localeCompare(b.id));
   const queue = [
     ...waiting.filter((r) => !deferred.includes(r.id)),
     ...deferred.flatMap((id) => waiting.filter((r) => r.id === id)),
@@ -159,9 +158,7 @@ export function LiveRequestReviewScreen() {
       afterContent={decision.sheet}
     >
       {(requests.error || decision.error) && (
-        <Text accessibilityRole="alert">
-          {requests.error || decision.error}
-        </Text>
+        <Text accessibilityRole="alert">{requests.error || decision.error}</Text>
       )}
       {!requests.loaded && <Text>Loading requests…</Text>}
       {requests.loaded && !requests.error && !current && (
@@ -172,10 +169,7 @@ export function LiveRequestReviewScreen() {
           <Text style={{ color: colors.textMuted }}>
             New requests will appear on Home and Rides.
           </Text>
-          <AppButton
-            label="Back to Rides"
-            onPress={() => router.navigate('/rides')}
-          />
+          <AppButton label="Back to Rides" onPress={() => router.navigate('/rides')} />
         </>
       )}
       {current && (
@@ -198,10 +192,7 @@ export function LiveRequestReviewScreen() {
               variant="secondary"
               disabled={!!decision.busy}
               onPress={() =>
-                setDeferred((ids) => [
-                  ...ids.filter((id) => id !== current.id),
-                  current.id,
-                ])
+                setDeferred((ids) => [...ids.filter((id) => id !== current.id), current.id])
               }
             />
           )}
