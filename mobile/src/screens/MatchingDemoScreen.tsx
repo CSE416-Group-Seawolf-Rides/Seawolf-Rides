@@ -26,6 +26,7 @@ interface MatchingDemoScreenProps {
 }
 
 const reasonExplanations: Record<ReasonCode, string> = {
+  MISSING_START_TIME: 'A saved driver departure or rider ready-from time is missing.',
   SELF_MATCH: 'A person cannot be matched with themself.',
   OCCURRENCE_MISMATCH: 'The driver and rider are not requesting the same dated trip.',
   SKIPPED_OCCURRENCE: 'The driver or rider has skipped this occurrence.',
@@ -36,6 +37,7 @@ const reasonExplanations: Record<ReasonCode, string> = {
   WALK_LIMIT: 'The rider’s supplied walking duration exceeds an explicit walking limit.',
   DRIVER_DETOUR_LIMIT: 'The added driver duration exceeds the active detour limit.',
   RIDER_RIDE_LIMIT: 'The rider’s extra in-vehicle duration exceeds their limit.',
+  ARRIVAL_PREFERENCE_MISMATCH: 'Preferred campus arrival times are more than 30 minutes apart.',
   NO_FEASIBLE_DEPARTURE: 'No departure time satisfies every pickup and arrival window.',
   UNSUPPORTED_DIRECTION: 'This evaluator does not yet support trips from campus.',
   LOCATION_UNCONFIRMED: 'A routing anchor is approximate, so a precise plan cannot be claimed.',

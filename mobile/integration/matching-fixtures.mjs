@@ -1,3 +1,4 @@
+import { httpsCallable } from 'firebase/functions';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { commuteKey } from '../src/mvp/settings.ts';
 export async function saveMatchingFixture(
@@ -61,5 +62,8 @@ export async function saveMatchingFixture(
     ...setup,
     updatedAt: serverTimestamp(),
   });
+  if (mode === 'driver') await httpsCallable(client.functions, 'saveVehicleDetails')(vehicleFixture(client.uid));
   return setup;
 }
+
+export const vehicleFixture = (ownerId) => ({ schemaVersion: 1, ownerId, type: 'Test sedan', color: 'Blue', photoBase64: '/9j/AA==', plate: 'DEMO 123', plateRegion: 'New York' });

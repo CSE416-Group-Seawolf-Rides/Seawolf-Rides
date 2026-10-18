@@ -1,9 +1,10 @@
+import { latestStartMinute } from './arrivalPolicy';
 import type { CommuteRole } from '../onboarding/onboardingModel';
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 export type DayMode = 'drive' | 'ride' | 'either';
 export type CampusLotId = 'westSide' | 'eastSide' | 'tabler' | 'roth' | 'lot40' | 'other';
-export type CommuteStepId = 'start' | 'campus' | 'schedule' | 'seats' | 'review';
+export type CommuteStepId = 'start' | 'campus' | 'schedule' | 'timing' | 'seats' | 'review';
 export type TripLeg = 'arriveBy' | 'leaveAt';
 
 export interface Coordinates {
@@ -11,8 +12,8 @@ export interface Coordinates {
   longitude: number;
 }
 
-// The only location we keep: a 2-mile circle around a coarse grid point. The exact
-// coordinates used to find it are never stored or shared.
+// Public presentation only. Exact coordinates are stored in the owner-only commute
+// document and released separately to participants after acceptance.
 export interface PrivacyArea {
   center: Coordinates;
   radiusMiles: number;
@@ -23,12 +24,16 @@ export interface PrivacyArea {
 export interface DaySchedule {
   day: Weekday;
   arriveBy: number | null;
+  /** Driver departure / rider ready-from time, in local minutes. Absent on legacy commutes. */
+  startAt?: number | null;
   leaveAt: number | null;
   mode: DayMode;
 }
 
 export interface CommuteDraft {
   startArea?: PrivacyArea;
+  startPoint?: Coordinates;
+  discoveryEnabled?: boolean;
   campusLot?: CampusLotId;
   days: DaySchedule[];
   seats: number;
@@ -36,6 +41,9 @@ export interface CommuteDraft {
 
 export interface CommuteSchedule {
   startArea: PrivacyArea;
+  /** Private routing point; older commutes must reconfirm their location. */
+  startPoint?: Coordinates;
+  discoveryEnabled?: boolean;
   campusLot: CampusLotId;
   days: DaySchedule[];
   seats?: number;
@@ -47,15 +55,24 @@ const MILES_PER_DEGREE_LATITUDE = 69;
 const EARTH_RADIUS_MILES = 3958.8;
 export const METERS_PER_MILE = 1609.344;
 
+export const DEFAULT_START_AT = 8 * 60;
 export const DEFAULT_ARRIVE_BY = 9 * 60;
 export const DEFAULT_LEAVE_AT = 17 * 60;
 export const MIN_SEATS = 1;
 export const MAX_SEATS = 6;
 export const DEFAULT_SEATS = 3;
 
-export const emptyCommuteDraft: CommuteDraft = { days: [], seats: DEFAULT_SEATS };
+export const emptyCommuteDraft: CommuteDraft = {
+  days: [],
+  seats: DEFAULT_SEATS,
+};
 
-export const weekdays: { value: Weekday; short: string; letter: string; name: string }[] = [
+export const weekdays: {
+  value: Weekday;
+  short: string;
+  letter: string;
+  name: string;
+}[] = [
   { value: 'mon', short: 'Mon', letter: 'M', name: 'Monday' },
   { value: 'tue', short: 'Tue', letter: 'T', name: 'Tuesday' },
   { value: 'wed', short: 'Wed', letter: 'W', name: 'Wednesday' },
@@ -66,13 +83,21 @@ export const weekdays: { value: Weekday; short: string; letter: string; name: st
 ];
 
 // Campus arrival spots chosen by the team.
-export const campusLots: { value: CampusLotId; title: string; description?: string }[] = [
+export const campusLots: {
+  value: CampusLotId;
+  title: string;
+  description?: string;
+}[] = [
   { value: 'westSide', title: 'West Side' },
   { value: 'eastSide', title: 'East Side' },
   { value: 'tabler', title: 'Tabler' },
   { value: 'roth', title: 'Roth' },
   { value: 'lot40', title: 'Lot 40' },
-  { value: 'other', title: 'Somewhere else on campus', description: 'Sort out the spot with your match' },
+  {
+    value: 'other',
+    title: 'Somewhere else on campus',
+    description: 'Sort out the spot with your match',
+  },
 ];
 
 export const dayModeLabels: Record<DayMode, string> = {
@@ -97,7 +122,11 @@ export function toPrivacyArea(exact: Coordinates, label: string): PrivacyArea {
     PRIVACY_GRID_MILES / (MILES_PER_DEGREE_LATITUDE * Math.cos((latitude * Math.PI) / 180));
   const longitude = (Math.floor(exact.longitude / lngStep) + 0.5) * lngStep;
 
-  return { center: { latitude, longitude }, radiusMiles: PRIVACY_RADIUS_MILES, label };
+  return {
+    center: { latitude, longitude },
+    radiusMiles: PRIVACY_RADIUS_MILES,
+    label,
+  };
 }
 
 export function distanceMiles(a: Coordinates, b: Coordinates): number {
@@ -138,6 +167,7 @@ export function toggleDay(days: DaySchedule[], day: Weekday, role: CommuteRole):
     ...days,
     {
       day,
+      ...(template?.startAt !== undefined ? { startAt: template.startAt } : {}),
       arriveBy: template ? template.arriveBy : DEFAULT_ARRIVE_BY,
       leaveAt: template ? template.leaveAt : DEFAULT_LEAVE_AT,
       mode: defaultDayMode(role),
@@ -160,9 +190,31 @@ export function setDayMode(days: DaySchedule[], day: Weekday, mode: DayMode): Da
   return days.map((schedule) => (schedule.day === day ? { ...schedule, mode } : schedule));
 }
 
+export function setStartTime(
+  days: DaySchedule[],
+  target: Weekday | 'all',
+  minutes: number | null,
+): DaySchedule[] {
+  return days.map((day) =>
+    target === 'all' || day.day === target ? { ...day, startAt: minutes } : day,
+  );
+}
+export function hasMorningTimes(days: DaySchedule[]): boolean {
+  return days.every(
+    (day) =>
+      day.arriveBy === null ||
+      (day.startAt != null &&
+        Number.isInteger(day.startAt) &&
+        day.startAt >= 0 &&
+        day.startAt < latestStartMinute(day)),
+  );
+}
 export function hasSameTimes(days: DaySchedule[]): boolean {
   return days.every(
-    (schedule) => schedule.arriveBy === days[0].arriveBy && schedule.leaveAt === days[0].leaveAt,
+    (schedule) =>
+      schedule.arriveBy === days[0].arriveBy &&
+      schedule.leaveAt === days[0].leaveAt &&
+      (schedule.startAt ?? null) === (days[0].startAt ?? null),
   );
 }
 
@@ -176,6 +228,15 @@ export function getDayError(schedule: DaySchedule): string | null {
     schedule.leaveAt <= schedule.arriveBy
   ) {
     return 'Leave time should be after you arrive.';
+  }
+  if (
+    schedule.startAt != null &&
+    (!Number.isInteger(schedule.startAt) ||
+      schedule.startAt < 0 ||
+      schedule.startAt >= 1440 ||
+      (schedule.arriveBy !== null && schedule.startAt >= latestStartMinute(schedule)))
+  ) {
+    return 'Your start must be before the latest arrival in your 30-minute window.';
   }
   return null;
 }
@@ -196,8 +257,8 @@ export function countTrips(days: DaySchedule[]): number {
 
 export function getCommuteSteps(role: CommuteRole): CommuteStepId[] {
   return role === 'rider'
-    ? ['start', 'campus', 'schedule', 'review']
-    : ['start', 'campus', 'schedule', 'seats', 'review'];
+    ? ['start', 'campus', 'schedule', 'timing', 'review']
+    : ['start', 'campus', 'schedule', 'timing', 'seats', 'review'];
 }
 
 export function getNextCommuteStep(role: CommuteRole, current: CommuteStepId): CommuteStepId {
@@ -218,6 +279,12 @@ export function buildCommuteSchedule(draft: CommuteDraft, role: CommuteRole): Co
 
   return {
     startArea: draft.startArea,
+    ...(draft.startPoint ? { startPoint: draft.startPoint } : {}),
+    ...(draft.discoveryEnabled !== undefined
+      ? { discoveryEnabled: draft.discoveryEnabled }
+      : draft.startPoint
+        ? { discoveryEnabled: true }
+        : {}),
     campusLot: draft.campusLot,
     days,
     seats: role === 'rider' ? undefined : draft.seats,
@@ -230,6 +297,8 @@ export function commuteToDraft(schedule: CommuteSchedule | null): CommuteDraft {
   }
   return {
     startArea: schedule.startArea,
+    startPoint: schedule.startPoint,
+    discoveryEnabled: schedule.discoveryEnabled,
     campusLot: schedule.campusLot,
     days: schedule.days,
     seats: schedule.seats ?? DEFAULT_SEATS,
@@ -246,7 +315,9 @@ export function describeLeg(minutes: number | null, leg: TripLeg): string {
   if (minutes === null) {
     return leg === 'arriveBy' ? 'No ride there' : 'No ride back';
   }
-  return leg === 'arriveBy' ? `Arrive by ${formatTime(minutes)}` : `Leave at ${formatTime(minutes)}`;
+  return leg === 'arriveBy'
+    ? `Arrive around ${formatTime(minutes)}`
+    : `Leave at ${formatTime(minutes)}`;
 }
 
 export function describeWeekdays(days: Weekday[]): string {

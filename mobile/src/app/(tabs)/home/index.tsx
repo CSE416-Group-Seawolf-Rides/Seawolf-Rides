@@ -1,25 +1,16 @@
-import { router } from 'expo-router';
-import { View } from 'react-native';
-import { MatchingScreen } from '../../../mvp/MatchingScreen';
-import { AppButton } from '../../../components/AppButton';
+import { useLocalSearchParams } from 'expo-router';
+import { weekdayForDate } from '../../../mvp/settings';
+import { CommuteCalendarScreen } from '../../../calendar/CommuteCalendarScreen';
 export default function HomeRoute() {
-  return (
-    <View style={{ flex: 1 }}>
-      <MatchingScreen />
-      {__DEV__ && (
-        <>
-          <AppButton
-            label="Development simulations (synthetic)"
-            variant="secondary"
-            onPress={() => router.push('/home/demo-home')}
-          />
-          <AppButton
-            label="Development map (synthetic)"
-            variant="secondary"
-            onPress={() => router.push('/map/demo-map')}
-          />
-        </>
-      )}
-    </View>
-  );
+  const { date } = useLocalSearchParams<{ date?: string }>();
+  let validDate: string | undefined;
+  try {
+    if (date) {
+      weekdayForDate(date);
+      validDate = date;
+    }
+  } catch {
+    /* Ignore a malformed deep link. */
+  }
+  return <CommuteCalendarScreen initialDate={validDate} />;
 }

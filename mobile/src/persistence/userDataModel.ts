@@ -1,3 +1,4 @@
+import { latestStartMinute } from '../commute/arrivalPolicy';
 import type {
   CampusLotId,
   CommuteSchedule,
@@ -59,7 +60,7 @@ function parseDays(value: unknown): DaySchedule[] {
     if (!isRecord(candidate)) {
       throw new Error('A persisted commute day is malformed.');
     }
-    const { day, mode, arriveBy, leaveAt } = candidate;
+    const { day, mode, arriveBy, leaveAt, startAt } = candidate;
     if (
       typeof day !== 'string' ||
       !weekdays.has(day as Weekday) ||
@@ -68,12 +69,24 @@ function parseDays(value: unknown): DaySchedule[] {
       !dayModes.has(mode as DayMode) ||
       !isTime(arriveBy) ||
       !isTime(leaveAt) ||
+      (startAt !== undefined &&
+        (!isTime(startAt) ||
+          (startAt !== null &&
+            arriveBy !== null &&
+            typeof arriveBy === 'number' &&
+            startAt >= latestStartMinute({ arriveBy, leaveAt })))) ||
       (arriveBy === null && leaveAt === null)
     ) {
       throw new Error('A persisted commute day contains invalid values.');
     }
     seen.add(day as Weekday);
-    return { day: day as Weekday, mode: mode as DayMode, arriveBy, leaveAt };
+    return {
+      day: day as Weekday,
+      mode: mode as DayMode,
+      arriveBy,
+      leaveAt,
+      ...(startAt === undefined ? {} : { startAt: startAt as number | null }),
+    };
   });
 
   return days;
@@ -110,11 +123,14 @@ export function toCommuteDocument(ownerId: string, commute: CommuteSchedule): Co
   return {
     schemaVersion: USER_DATA_SCHEMA_VERSION,
     ownerId,
-    ...parseCommuteDocument({
-      schemaVersion: USER_DATA_SCHEMA_VERSION,
+    ...parseCommuteDocument(
+      {
+        schemaVersion: USER_DATA_SCHEMA_VERSION,
+        ownerId,
+        ...commute,
+      },
       ownerId,
-      ...commute,
-    }, ownerId),
+    ),
   };
 }
 
@@ -159,7 +175,35 @@ export function parseCommuteDocument(value: unknown, expectedOwnerId: string): C
     throw new Error('The persisted commute contains an invalid seat count.');
   }
 
+  const point = value.startPoint;
+  if (
+    point !== undefined &&
+    (!isRecord(point) ||
+      Object.keys(point).sort().join(',') !== 'latitude,longitude' ||
+      !isFiniteNumber(point.latitude) ||
+      point.latitude < -90 ||
+      point.latitude > 90 ||
+      !isFiniteNumber(point.longitude) ||
+      point.longitude < -180 ||
+      point.longitude > 180)
+  ) {
+    throw new Error('The private starting point is invalid.');
+  }
+  if (value.discoveryEnabled !== undefined && typeof value.discoveryEnabled !== 'boolean') {
+    throw new Error('The discovery preference is invalid.');
+  }
   return {
+    ...(point === undefined
+      ? {}
+      : {
+          startPoint: {
+            latitude: (point as { latitude: number }).latitude,
+            longitude: (point as { longitude: number }).longitude,
+          },
+        }),
+    ...(value.discoveryEnabled === undefined
+      ? {}
+      : { discoveryEnabled: value.discoveryEnabled as boolean }),
     startArea: {
       center: { latitude, longitude },
       radiusMiles: PRIVACY_RADIUS_MILES,

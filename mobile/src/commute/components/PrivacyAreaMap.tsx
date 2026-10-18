@@ -12,7 +12,7 @@ interface PrivacyAreaMapProps {
 const MILES_PER_DEGREE_LATITUDE = 69;
 
 // Read-only map of the 2-mile area other people will see. There is deliberately no
-// pin: the circle is the only location information we ever show.
+// pin: this is the location presentation before a ride is accepted.
 export function PrivacyAreaMap({ area, height = 220 }: PrivacyAreaMapProps) {
   const latitudeDelta = (area.radiusMiles * 2 * 1.35) / MILES_PER_DEGREE_LATITUDE;
   const longitudeDelta = latitudeDelta / Math.cos((area.center.latitude * Math.PI) / 180);

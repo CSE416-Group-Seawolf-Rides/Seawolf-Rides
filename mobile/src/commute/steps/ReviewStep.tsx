@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Card } from '../../components/Card';
 import { FlowProgress, FlowStep } from '../../components/flow/FlowStep';
@@ -7,8 +7,10 @@ import { colors, spacing } from '../../theme';
 import {
   CommuteStepId,
   dayModeLabels,
+  formatTime,
   describeLeg,
   isScheduleValid,
+  hasMorningTimes,
   lotTitle,
   weekdays,
 } from '../commuteModel';
@@ -38,8 +40,10 @@ export function ReviewStep({
   onEdit,
   onSave,
 }: ReviewStepProps) {
-  const { draft } = useCommuteDraft();
-  const complete = Boolean(draft.startArea && draft.campusLot && isScheduleValid(draft.days));
+  const { draft, updateDraft } = useCommuteDraft();
+  const complete = Boolean(
+    draft.startArea && draft.campusLot && isScheduleValid(draft.days) && hasMorningTimes(draft.days),
+  );
 
   return (
     <FlowStep
@@ -56,8 +60,31 @@ export function ReviewStep({
         {draft.startArea && <PrivacyAreaMap area={draft.startArea} height={160} />}
       </Section>
 
+      <View style={{ gap: spacing.sm }}>
+        <Text>Use this saved week to find matches until I change it.</Text>
+        <Switch
+          accessibilityLabel="Allow commute matching"
+          value={draft.discoveryEnabled ?? true}
+          onValueChange={(discoveryEnabled) => updateDraft({ discoveryEnabled })}
+        />
+        <Text>
+          Before acceptance, others see only your approximate area. Your private starting point is
+          used for routing and shared with your ride partner after acceptance.
+        </Text>
+        {!draft.startPoint && (
+          <Text>
+            Reconfirm your starting point to enable road matching. Your existing approximate area is
+            preserved.
+          </Text>
+        )}
+      </View>
+
       <Section onEdit={() => onEdit('campus')} title="On campus">
         <Text style={styles.value}>{draft.campusLot ? lotTitle(draft.campusLot) : '—'}</Text>
+      </Section>
+
+      <Section onEdit={() => onEdit('timing')} title="Departure">
+        <Text>Set when you leave or are ready for pickup.</Text>
       </Section>
 
       <Section onEdit={() => onEdit('schedule')} title="Your week">
@@ -67,8 +94,24 @@ export function ReviewStep({
               {weekdays.find((weekday) => weekday.value === schedule.day)?.short}
             </Text>
             <View style={styles.dayDetail}>
+              {schedule.arriveBy !== null && (
+                <Text style={styles.value}>
+                  {schedule.mode === 'drive'
+                    ? 'Depart at'
+                    : schedule.mode === 'ride'
+                      ? 'Ready from'
+                      : 'Start at'}{' '}
+                  {schedule.startAt != null
+                    ? formatTime(schedule.startAt)
+                    : '— add a morning start time'}
+                </Text>
+              )}
               <Text style={styles.value}>{describeLeg(schedule.arriveBy, 'arriveBy')}</Text>
-              <Text style={styles.value}>{describeLeg(schedule.leaveAt, 'leaveAt')}</Text>
+              <Text style={styles.value}>
+                {schedule.leaveAt === null
+                  ? describeLeg(null, 'leaveAt')
+                  : `Leave campus at ${formatTime(schedule.leaveAt)}`}
+              </Text>
               {role === 'both' && <Text style={styles.meta}>{dayModeLabels[schedule.mode]}</Text>}
             </View>
           </View>
@@ -97,7 +140,12 @@ function Section({
     <Card style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Pressable accessibilityLabel={`Edit ${title}`} accessibilityRole="button" hitSlop={10} onPress={onEdit}>
+        <Pressable
+          accessibilityLabel={`Edit ${title}`}
+          accessibilityRole="button"
+          hitSlop={10}
+          onPress={onEdit}
+        >
           <Text style={styles.edit}>Edit</Text>
         </Pressable>
       </View>

@@ -8,10 +8,10 @@ import { useCommuteRole } from '../../commute/useCommuteRole';
 
 export default function CommuteSetupScheduleRoute() {
   const role = useCommuteRole();
-  const { editing, saveEdit } = useCommuteEdit();
+  const { editing } = useCommuteEdit();
 
   return editing ? (
-    <ScheduleStep continueLabel="Save" onContinue={saveEdit} role={role} />
+    <ScheduleStep continueLabel="Review morning time" onContinue={() => router.replace('/commute-setup/timing?edit=1')} role={role} />
   ) : (
     <ScheduleStep
       onContinue={() => router.push(`/commute-setup/${getNextCommuteStep(role, 'schedule')}`)}

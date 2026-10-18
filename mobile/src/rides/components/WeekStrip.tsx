@@ -8,8 +8,9 @@ import { DayOverview, DayStatus } from '../rideModel';
 interface WeekStripProps {
   overview: DayOverview[];
   dates: Record<Weekday, number>;
-  today: Weekday;
+  today?: Weekday;
   showModes: boolean;
+  selectedDay?: Weekday;
   // Days with somewhere to go: a trip to open, or drivers to find.
   actionableDays: Weekday[];
   onPressDay: (day: Weekday) => void;
@@ -29,6 +30,7 @@ export function WeekStrip({
   dates,
   today,
   showModes,
+  selectedDay,
   actionableDays,
   onPressDay,
 }: WeekStripProps) {
@@ -48,7 +50,7 @@ export function WeekStrip({
                   : `${weekday.name}, ${mode && showModes ? `${dayModeLabels[mode]}, ` : ''}${statusCopy[status]}`
               }
               accessibilityRole="button"
-              accessibilityState={{ disabled: !actionable }}
+              accessibilityState={{ disabled: !actionable, selected: selectedDay === day }}
               disabled={!actionable}
               key={day}
               onPress={() => {
@@ -58,6 +60,7 @@ export function WeekStrip({
               style={({ pressed }) => [
                 styles.day,
                 isToday && styles.dayToday,
+                selectedDay === day && styles.daySelected,
                 pressed && styles.dayPressed,
               ]}
             >
@@ -128,6 +131,7 @@ const styles = StyleSheet.create({
   dayToday: {
     borderColor: colors.accentSoft,
   },
+  daySelected: { backgroundColor: colors.accentSoft },
   dayPressed: {
     backgroundColor: colors.surfaceMuted,
   },
@@ -165,7 +169,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success,
   },
   dotPending: {
-    backgroundColor: colors.warning,
+    backgroundColor: colors.accent,
   },
   dotSkipped: {
     backgroundColor: colors.border,

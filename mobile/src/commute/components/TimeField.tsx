@@ -6,6 +6,7 @@ import { formatTime } from '../commuteModel';
 
 interface TimeFieldProps {
   label: string;
+  emptyLabel?: string;
   minutes: number | null;
   defaultMinutes: number;
   expanded: boolean;
@@ -31,6 +32,7 @@ function fromDate(date: Date): number {
 // Clock apps on iPhone). Android uses its native time picker dialog instead.
 export function TimeField({
   label,
+  emptyLabel = 'Not needed',
   minutes,
   defaultMinutes,
   expanded,
@@ -39,7 +41,7 @@ export function TimeField({
   onToggle,
   onChange,
 }: TimeFieldProps) {
-  const value = minutes === null ? 'Not needed' : formatTime(minutes);
+  const value = minutes === null ? emptyLabel : formatTime(minutes);
 
   function openAndroidPicker(current: number) {
     DateTimePickerAndroid.open({

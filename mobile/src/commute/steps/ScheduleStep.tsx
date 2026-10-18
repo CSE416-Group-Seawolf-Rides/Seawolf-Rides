@@ -40,7 +40,7 @@ interface OpenField {
 
 const legCopy: Record<TripLeg, { label: string; none: string; add: string; default: number }> = {
   arriveBy: {
-    label: 'Arrive on campus by',
+    label: 'Arrive on campus around',
     none: 'I don’t need a ride there',
     add: 'I need a ride there',
     default: DEFAULT_ARRIVE_BY,
@@ -100,7 +100,12 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
     // Switching back to "same every day" adopts the first day's times everywhere.
     if (!value && first) {
       setDays(
-        days.map((schedule) => ({ ...schedule, arriveBy: first.arriveBy, leaveAt: first.leaveAt })),
+        days.map((schedule) => ({
+          ...schedule,
+          startAt: first.startAt ?? null,
+          arriveBy: first.arriveBy,
+          leaveAt: first.leaveAt,
+        })),
       );
     }
   }
@@ -119,7 +124,7 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
   return (
     <FlowStep
       continueLabel={continueLabel}
-      canContinue={isScheduleValid(days)}
+      canContinue={isScheduleValid(days.map((day) => ({ ...day, startAt: undefined })))}
       onContinue={onContinue}
       progress={progress}
       reaction={
@@ -127,7 +132,7 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
           ? `${days.length} day${days.length === 1 ? '' : 's'} a week — up to ${trips} trip${trips === 1 ? '' : 's'} you could share.`
           : null
       }
-      subtitle="When do you need to be on campus, and when do you head home? We’ll work out pickup times."
+      subtitle="Pick your preferred campus arrival time and return time. Matches may arrive up to 30 minutes earlier or later, for you to agree on. Next, choose when to head out."
       title="Build your week"
     >
       <View style={styles.section}>
@@ -145,10 +150,11 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
 
       {days.length > 0 && !byDay && first && (
         <Card style={styles.timesCard}>
+          <Text style={styles.sectionTitle}>Your morning trip</Text>
           {renderField('all', 'arriveBy', first.arriveBy)}
           <View style={styles.divider} />
           {renderField('all', 'leaveAt', first.leaveAt)}
-          {getDayError(first) && <Text style={styles.error}>{getDayError(first)}</Text>}
+          {getDayError({ ...first, startAt: undefined }) && <Text style={styles.error}>{getDayError({ ...first, startAt: undefined })}</Text>}
         </Card>
       )}
 
@@ -166,7 +172,7 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
 
       {(byDay || role === 'both') &&
         days.map((schedule) => {
-          const error = byDay ? getDayError(schedule) : null;
+          const error = byDay ? getDayError({ ...schedule, startAt: undefined }) : null;
           return (
             <Card key={schedule.day} style={styles.dayCard}>
               <Text style={styles.dayTitle}>{dayName(schedule.day)}</Text>
@@ -188,7 +194,6 @@ export function ScheduleStep({ role, progress, onContinue, continueLabel }: Sche
             </Card>
           );
         })}
-
     </FlowStep>
   );
 }

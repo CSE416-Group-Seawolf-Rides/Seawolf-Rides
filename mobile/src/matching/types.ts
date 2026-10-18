@@ -101,6 +101,7 @@ export interface PairEvaluationInput {
 }
 
 export type InfeasibleReasonCode =
+  | 'ARRIVAL_PREFERENCE_MISMATCH'
   | 'SELF_MATCH'
   | 'OCCURRENCE_MISMATCH'
   | 'SKIPPED_OCCURRENCE'
@@ -114,6 +115,7 @@ export type InfeasibleReasonCode =
   | 'NO_FEASIBLE_DEPARTURE';
 
 export type UnknownReasonCode =
+  | 'MISSING_START_TIME'
   | 'UNSUPPORTED_DIRECTION'
   | 'LOCATION_UNCONFIRMED'
   | 'MISSING_TRAVEL_ESTIMATE'

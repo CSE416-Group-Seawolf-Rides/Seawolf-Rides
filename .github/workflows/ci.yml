@@ -118,6 +118,9 @@ jobs:
       - name: Test Firestore security rules
         run: npm run test:firestore-rules
 
+      - name: Test live carpool presentation
+        run: npm run test:ride-presentation
+
       - name: Test real-account matching through callable emulator
         run: npm run test:matching
 

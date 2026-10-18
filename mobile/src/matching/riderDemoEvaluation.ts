@@ -362,6 +362,7 @@ export const riderDemoReasonExplanations: Record<
   InfeasibleReasonCode | UnknownReasonCode,
   string
 > = {
+  MISSING_START_TIME: 'A saved morning start time is missing.',
   SELF_MATCH: 'The driver and rider are the same person.',
   OCCURRENCE_MISMATCH: 'The dated trip or travel direction does not match.',
   SKIPPED_OCCURRENCE: 'The driver or rider skipped this dated trip.',
@@ -372,6 +373,7 @@ export const riderDemoReasonExplanations: Record<
   WALK_LIMIT: 'A fixture walking assumption exceeds the rider limit.',
   DRIVER_DETOUR_LIMIT: 'The road route exceeds the active driver detour limit.',
   RIDER_RIDE_LIMIT: 'The rider in-vehicle detour exceeds their limit.',
+  ARRIVAL_PREFERENCE_MISMATCH: 'Preferred campus arrival times are more than 30 minutes apart.',
   NO_FEASIBLE_DEPARTURE: 'No driver departure can satisfy all pickup and arrival windows.',
   UNSUPPORTED_DIRECTION: 'This evaluator does not yet support that trip direction.',
   LOCATION_UNCONFIRMED: 'The pickup is not confirmed precisely enough for routing.',

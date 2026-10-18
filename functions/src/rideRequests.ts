@@ -21,6 +21,9 @@ import type {
 import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
 
+import { prepareCalendarPair } from './calendarMatching';
+import { vehicleIsComplete } from '../../mobile/src/vehicle/vehicleModel';
+
 const digest = (parts: string[]) =>
   createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 export const requestIdFor = (rider: string, driver: string, date: string) =>
@@ -44,8 +47,17 @@ const uidValue = (value: unknown): value is string =>
 function input(value: unknown): CreateRideRequestInput {
   if (
     !record(value) ||
-    Object.keys(value).sort().join(',') !==
-      'direction,driverId,driverRevision,localDate,riderRevision' ||
+    Object.keys(value)
+      .filter((k) => k !== 'source' && k !== 'proposedPlan')
+      .sort()
+      .join(',') !== 'direction,driverId,driverRevision,localDate,riderRevision' ||
+    (value.source !== undefined && value.source !== 'CALENDAR') ||
+    (value.source === 'CALENDAR' &&
+      (!record(value.proposedPlan) ||
+        Object.keys(value.proposedPlan).sort().join(',') !==
+          'departure,pickup,vehicleCampusArrival' ||
+        !Object.values(value.proposedPlan).every(Number.isSafeInteger))) ||
+    (value.source !== 'CALENDAR' && value.proposedPlan !== undefined) ||
     !uidValue(value.driverId) ||
     typeof value.localDate !== 'string' ||
     value.direction !== 'TO_CAMPUS' ||
@@ -83,12 +95,25 @@ export async function preparePair(
 ) {
   if (riderId === data.driverId)
     throw new HttpsError('invalid-argument', 'You cannot request yourself.');
+  if (data.source === 'CALENDAR')
+    return prepareCalendarPair(
+      riderId,
+      data.driverId,
+      data.localDate,
+      data.riderRevision,
+      data.driverRevision,
+      routing,
+    );
   const [rider, driver] = await Promise.all([participant(riderId), participant(data.driverId)]);
   if (!rider.saved.eligible || !driver.saved.eligible)
     throw new HttpsError('permission-denied', 'Both accounts must remain eligible.');
   const result = await findMatches(
     riderId,
-    { localDate: data.localDate, revision: data.riderRevision, direction: data.direction },
+    {
+      localDate: data.localDate,
+      revision: data.riderRevision,
+      direction: data.direction,
+    },
     {
       load: async (uid) =>
         uid === riderId ? rider.saved : uid === data.driverId ? driver.saved : null,
@@ -129,13 +154,20 @@ export async function preparePair(
     plan: card.plan,
     metrics: card.metrics,
   };
-  return { value, snapshots: [...rider.snapshots, ...driver.snapshots] };
+  return {
+    value,
+    snapshots: [...rider.snapshots, ...driver.snapshots],
+    privatePickup: undefined,
+  };
 }
 type PreparedPair = Awaited<ReturnType<typeof preparePair>>;
 async function assertCurrent(tx: Transaction, prepared: PreparedPair) {
   const current = await tx.getAll(...prepared.snapshots.map((s) => s.ref));
   current.forEach((snapshot, index) => {
-    if (!snapshot.exists || !snapshot.updateTime?.isEqual(prepared.snapshots[index].updateTime!))
+    if (
+      snapshot.exists !== prepared.snapshots[index].exists ||
+      (snapshot.exists && !snapshot.updateTime?.isEqual(prepared.snapshots[index].updateTime!))
+    )
       throw new HttpsError('aborted', 'Saved inputs changed during validation. Reload and retry.');
   });
   if (prepared.value.plan.departure <= now())
@@ -143,7 +175,10 @@ async function assertCurrent(tx: Transaction, prepared: PreparedPair) {
       'failed-precondition',
       'This trip departure has passed. Choose a future trip.',
     );
-  const driverCommute = parseCommuteDocument(current[5].data(), prepared.value.driverId);
+  const driverCommute = parseCommuteDocument(
+    current.find((s) => s.ref.path === `users/${prepared.value.driverId}/commutes/primary`)!.data(),
+    prepared.value.driverId,
+  );
   if ((driverCommute.seats ?? 0) < prepared.value.seats)
     throw new HttpsError('failed-precondition', 'Insufficient passenger seats.');
 }
@@ -197,6 +232,9 @@ export async function commitAcceptance(
     if (request.status === 'ACCEPTED') return result(snapshot);
     if (request.status !== 'PENDING')
       throw new HttpsError('failed-precondition', 'This request is already declined.');
+    const vehicle = await tx.get(db.doc(`users/${driverId}/vehicles/primary`));
+    if (!vehicleIsComplete(vehicle.data(), driverId))
+      throw new HttpsError('failed-precondition', 'Finish setting up your vehicle before accepting a passenger.', { reason: 'VEHICLE_REQUIRED' });
     if (
       request.riderId !== prepared.value.riderId ||
       request.driverId !== prepared.value.driverId ||
@@ -205,6 +243,16 @@ export async function commitAcceptance(
       request.driverRevision !== prepared.value.driverRevision
     )
       throw new HttpsError('failed-precondition', 'The pending request inputs changed.');
+    if (
+      request.source === 'CALENDAR' &&
+      (['departure', 'pickup', 'vehicleCampusArrival', 'riderDestinationArrival'] as const).some(
+        (key) => request.plan[key] !== prepared.value.plan[key],
+      )
+    )
+      throw new HttpsError(
+        'failed-precondition',
+        'The proposed timing changed. This request cannot be accepted with different times.',
+      );
     await assertCurrent(tx, prepared);
     const refs = await assertUncommitted(tx, prepared.value);
     refs.forEach((commitment, i) =>
@@ -216,6 +264,7 @@ export async function commitAcceptance(
         reservedSeats: request.seats,
       }),
     );
+    if (prepared.privatePickup) tx.set(db.doc(`ridePickups/${id}`), prepared.privatePickup);
     tx.update(ref, { ...prepared.value, status: 'ACCEPTED', updatedAt: now() });
     return { id, status: 'ACCEPTED' };
   });
@@ -235,7 +284,12 @@ function mapped(error: unknown): never {
     'The ride action could not be completed. Retry; duplicate actions are safe.',
   );
 }
-const options = { region: 'us-central1', timeoutSeconds: 120, maxInstances: 1, concurrency: 4 };
+const options = {
+  region: 'us-central1',
+  timeoutSeconds: 120,
+  maxInstances: 1,
+  concurrency: 4,
+};
 export const createRideRequest = onCall(options, async (request) => {
   try {
     const riderId = await authenticated(request.auth?.uid);
@@ -246,6 +300,16 @@ export const createRideRequest = onCall(options, async (request) => {
     const existing = await getFirestore().doc(`rideRequests/${id}`).get();
     if (existing.exists) return result(existing);
     const prepared = await withMatchingRouting((routing) => preparePair(riderId, data, routing));
+    if (
+      data.source === 'CALENDAR' &&
+      (['departure', 'pickup', 'vehicleCampusArrival'] as const).some(
+        (key) => data.proposedPlan![key] !== prepared.value.plan[key],
+      )
+    )
+      throw new HttpsError(
+        'aborted',
+        'Route estimates changed. Search again and review the proposed times.',
+      );
     return await commitCreation(id, prepared);
   } catch (error) {
     mapped(error);
@@ -283,10 +347,14 @@ export const respondToRideRequest = onCall(options, async (call) => {
         tx.update(ref, { status: 'DECLINED', updatedAt: now() });
         return { id: ref.id, status: 'DECLINED' };
       });
+    const vehicle = await getFirestore().doc(`users/${uid}/vehicles/primary`).get();
+    if (!vehicleIsComplete(vehicle.data(), uid))
+      throw new HttpsError('failed-precondition', 'Finish setting up your vehicle before accepting a passenger.', { reason: 'VEHICLE_REQUIRED' });
     const prepared = await withMatchingRouting((routing) =>
       preparePair(
         saved.riderId,
         {
+          ...(saved.source === 'CALENDAR' ? { source: 'CALENDAR' as const } : {}),
           driverId: saved.driverId,
           localDate: saved.localDate,
           direction: 'TO_CAMPUS',

@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Location from 'expo-location';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 
 import { AuthProviderButton } from '../../components/AuthProviderButton';
 import { FlowProgress, FlowStep } from '../../components/flow/FlowStep';
@@ -45,10 +46,13 @@ export function StartAreaStep({
   const [error, setError] = useState<string | null>(null);
   const area = draft.startArea;
 
-  // The exact point only lives inside this function; only the privacy area is kept.
+  // Persist only coordinates, never the searched address or geocoder metadata.
   async function saveAreaAround(exact: Coordinates) {
     const snapped = toPrivacyArea(exact, '');
-    updateDraft({ startArea: { ...snapped, label: await labelFor(snapped.center) } });
+    updateDraft({
+      startPoint: { latitude: exact.latitude, longitude: exact.longitude },
+      startArea: { ...snapped, label: await labelFor(snapped.center) },
+    });
   }
 
   async function useCurrentLocation() {
@@ -57,7 +61,9 @@ export function StartAreaStep({
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
-        setError('Location access is off. Search for your town instead.');
+        setError(
+          'Location access is off. Search for a pickup address or public meeting point instead.',
+        );
         return;
       }
       const position = await Location.getCurrentPositionAsync({
@@ -65,7 +71,7 @@ export function StartAreaStep({
       });
       await saveAreaAround(position.coords);
     } catch {
-      setError('We couldn’t get your location. Try searching for your town instead.');
+      setError('We couldn’t get your location. Try searching for a pickup address instead.');
     } finally {
       setStatus('idle');
     }
@@ -83,7 +89,7 @@ export function StartAreaStep({
       const address = /\b(ny|new york)\b/i.test(text) ? text : `${text}, NY`;
       const [result] = await Location.geocodeAsync(address);
       if (!result) {
-        setError(`We couldn’t find “${text}”. Try a town name, like Centereach.`);
+        setError(`We couldn’t find “${text}”. Try a complete address or public meeting point.`);
         return;
       }
       await saveAreaAround(result);
@@ -97,27 +103,55 @@ export function StartAreaStep({
   return (
     <FlowStep
       continueLabel={continueLabel}
-      canContinue={area !== undefined && status === 'idle'}
+      canContinue={area !== undefined && draft.startPoint !== undefined && status === 'idle'}
       leading={leading}
       onContinue={onContinue}
       onLeadingPress={onLeadingPress}
       progress={progress}
       reaction={
         area
-          ? `Others will only see “${area.label}” and this ${PRIVACY_RADIUS_MILES}-mile circle. Your exact spot is never saved.`
+          ? `This ${PRIVACY_RADIUS_MILES}-mile area is what other users see before you both confirm a ride. Your exact point is saved privately for routing and shared only with your accepted ride partner.`
           : null
       }
-      subtitle={`We only ever show a ${PRIVACY_RADIUS_MILES}-mile area around it — never your address.`}
+      subtitle="Choose your starting address or a public meeting point. Check the pin before continuing. The routing provider receives this point to calculate road estimates."
       title="Where do you usually leave from?"
     >
       {area ? (
-        <PrivacyAreaMap area={area} />
+        <View style={{ gap: spacing.md }}>
+          {draft.startPoint && (
+            <>
+              <Text>Your private starting point — drag the pin to correct it.</Text>
+              <MapView
+                style={{ height: 220 }}
+                region={{
+                  ...draft.startPoint,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+              >
+                <Marker
+                  coordinate={draft.startPoint}
+                  draggable
+                  onDragEnd={(event) => {
+                    setStatus('searching');
+                    void saveAreaAround(event.nativeEvent.coordinate).finally(() =>
+                      setStatus('idle'),
+                    );
+                  }}
+                  title="Your private starting point"
+                />
+              </MapView>
+            </>
+          )}
+          <Text>This is what other users see before confirming a commute:</Text>
+          <PrivacyAreaMap area={area} />
+        </View>
       ) : (
         <View style={styles.privacyCard}>
           <Ionicons color={colors.accent} name="shield-checkmark-outline" size={24} />
           <Text style={styles.privacyText}>
-            Pick your home, a nearby street, or just your town. We blur it into a{' '}
-            {PRIVACY_RADIUS_MILES}-mile area before anyone sees it.
+            Pick a precise starting point. Other users initially see only a {PRIVACY_RADIUS_MILES}
+            -mile area before anyone sees it.
           </Text>
         </View>
       )}
@@ -153,10 +187,10 @@ export function StartAreaStep({
         editable={status === 'idle'}
         error={error ?? undefined}
         helperText={status === 'searching' ? 'Searching…' : undefined}
-        label="Search a town or address"
+        label="Search a pickup address or public place"
         onChangeText={setQuery}
         onSubmitEditing={search}
-        placeholder="e.g. Centereach"
+        placeholder="e.g. Stony Brook LIRR station"
         returnKeyType="search"
         value={query}
       />

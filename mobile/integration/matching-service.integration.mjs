@@ -66,6 +66,7 @@ async function client(uid, verified = true) {
     uid,
     db,
     auth,
+    functions,
     rawCall: httpsCallable(functions, 'findCompatibleDrivers', {
       timeout: 120000,
     }),
@@ -170,6 +171,9 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
         code: 'functions/resource-exhausted',
       }),
       assert.rejects(rider.rawCall({ action: 'PREVIEW', revision: 'v1' }), {
+        code: 'functions/resource-exhausted',
+      }),
+      assert.rejects(httpsCallable(driver.functions, 'estimateCommuteStart')({ startPoint: { latitude: 40.9, longitude: -73.1 }, campusLot: 'westSide' }), {
         code: 'functions/resource-exhausted',
       }),
     ]);

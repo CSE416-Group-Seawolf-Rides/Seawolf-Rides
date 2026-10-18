@@ -5,6 +5,7 @@ export type RideRequestStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED';
 export interface RideRequest {
   id: string;
   schemaVersion: 1;
+  source?: 'CALENDAR';
   participantIds: string[];
   driverId: string;
   riderId: string;
@@ -25,6 +26,8 @@ export interface RideRequest {
 }
 
 export interface CreateRideRequestInput {
+  source?: 'CALENDAR';
+  proposedPlan?: { departure: number; pickup: number; vehicleCampusArrival: number };
   driverId: string;
   localDate: string;
   riderRevision: string;

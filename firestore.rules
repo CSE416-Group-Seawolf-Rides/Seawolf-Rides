@@ -13,6 +13,12 @@ service cloud.firestore {
       return isVerifiedStonyBrookUser() && request.auth.uid == userId;
     }
 
+    // Vehicle photos and plates are private. Only the trusted demo callable writes them.
+    match /users/{userId}/vehicles/{vehicleId} {
+      allow read: if owns(userId) && vehicleId == 'primary';
+      allow write: if false;
+    }
+
     function validProfile() {
       return request.resource.data.keys().hasOnly([
           'schemaVersion',
@@ -45,11 +51,25 @@ service cloud.firestore {
         && request.resource.data.startArea.label.size() <= 120;
     }
 
+    function validLocalTime(t) { return t == null || (t is int && t >= 0 && t < 1440); }
+    function validDay(d) {
+      return d is map && d.keys().hasAll(['day', 'mode', 'arriveBy', 'leaveAt'])
+        && d.keys().hasOnly(['day', 'mode', 'arriveBy', 'leaveAt', 'startAt'])
+        && d.day in ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        && d.mode in ['drive', 'ride', 'either']
+        && validLocalTime(d.arriveBy) && validLocalTime(d.leaveAt)
+        && (d.arriveBy != null || d.leaveAt != null)
+        && (!d.keys().hasAny(['startAt']) || (validLocalTime(d.startAt)
+          && (d.startAt == null || d.arriveBy == null || ((d.startAt < d.arriveBy + 30) && (d.leaveAt == null || d.startAt < d.leaveAt)))));
+    }
+
     function validCommute(userId) {
       return request.resource.data.keys().hasOnly([
           'schemaVersion',
           'ownerId',
           'startArea',
+          'startPoint',
+          'discoveryEnabled',
           'campusLot',
           'days',
           'seats',
@@ -57,6 +77,15 @@ service cloud.firestore {
         ])
         && request.resource.data.schemaVersion == 1
         && request.resource.data.ownerId == userId
+        && (!request.resource.data.keys().hasAny(['discoveryEnabled']) || request.resource.data.discoveryEnabled is bool)
+        && (!request.resource.data.keys().hasAny(['startPoint']) || (
+          request.resource.data.startPoint is map
+          && request.resource.data.startPoint.keys().hasAll(['latitude', 'longitude'])
+          && request.resource.data.startPoint.keys().hasOnly(['latitude', 'longitude'])
+          && request.resource.data.startPoint.latitude is number
+          && request.resource.data.startPoint.latitude >= -90 && request.resource.data.startPoint.latitude <= 90
+          && request.resource.data.startPoint.longitude is number
+          && request.resource.data.startPoint.longitude >= -180 && request.resource.data.startPoint.longitude <= 180))
         && validPrivacyArea()
         && request.resource.data.campusLot in [
           'westSide',
@@ -69,6 +98,13 @@ service cloud.firestore {
         && request.resource.data.days is list
         && request.resource.data.days.size() > 0
         && request.resource.data.days.size() <= 7
+        && validDay(request.resource.data.days[0])
+        && (request.resource.data.days.size() < 2 || validDay(request.resource.data.days[1]))
+        && (request.resource.data.days.size() < 3 || validDay(request.resource.data.days[2]))
+        && (request.resource.data.days.size() < 4 || validDay(request.resource.data.days[3]))
+        && (request.resource.data.days.size() < 5 || validDay(request.resource.data.days[4]))
+        && (request.resource.data.days.size() < 6 || validDay(request.resource.data.days[5]))
+        && (request.resource.data.days.size() < 7 || validDay(request.resource.data.days[6]))
         && (!request.resource.data.keys().hasAny(['seats'])
           || (request.resource.data.seats is int
             && request.resource.data.seats >= 1
@@ -129,6 +165,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Exact routing points are released only after acceptance, to that ride's participants.
+    match /ridePickups/{requestId} {
+      allow read: if isVerifiedStonyBrookUser()
+        && get(/databases/$(database)/documents/rideRequests/$(requestId)).data.status == 'ACCEPTED'
+        && request.auth.uid in get(/databases/$(database)/documents/rideRequests/$(requestId)).data.participantIds;
+      allow write: if false;
+    }
+
     // Temporary M2 heartbeat. It remains read-only and exposes no user document.
     match /commutes/{commuteId} {
       allow read: if commuteId == 'sample-commute-001';
@@ -138,6 +182,12 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, delete: if owns(userId);
       allow create, update: if owns(userId) && validProfile();
+
+      match /commuteDays/{date} {
+        allow read: if owns(userId);
+        // Trusted action checks existing commitments atomically.
+        allow write: if false;
+      }
 
       match /commutes/{commuteId} {
         allow read, delete: if owns(userId);

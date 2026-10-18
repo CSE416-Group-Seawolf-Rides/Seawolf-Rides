@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
-import { MatchingScreen } from '../../../../mvp/MatchingScreen';
-export default function DayDriversRoute() {
+import { CommuteCalendarScreen } from '../../../../calendar/CommuteCalendarScreen';
+export default function DayRoute() {
   const { date } = useLocalSearchParams<{ date?: string }>();
-  return <MatchingScreen initialDate={date} />;
+  return <CommuteCalendarScreen initialDate={date} />;
 }
