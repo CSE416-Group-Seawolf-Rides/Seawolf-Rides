@@ -4,7 +4,7 @@ This branch builds on merged PRs #12–#14. It keeps the demo on `demo-seawolf-r
 
 ## Product behavior
 
-- Home is a calendar with a saved-week summary, date-specific role controls and real-account recommendations. Map is a native map again, showing the owner's private starting point, the approximate area others see, the campus destination and the next accepted partner's point.
+- Home keeps the next accepted trip, a compact “This week” strip, requests needing a decision and real-account recommendations for the selected date. “Calendar View” opens the full calendar in a bottom sheet; the large route-summary card is removed. Select a date, optionally stage a role change and tap “Save this date,” then “View this day” to return to Home. Closing or choosing another date discards unsaved role changes. Map is a native map again, showing the owner's private starting point, the approximate area others see, the campus destination and the next accepted partner's point.
 - Driver-only and rider-only roles fill their selected weekly commute days. For a `both` profile, each weekday keeps its saved Driving / Riding / Either choice. Unselected days are off.
 - A date exception changes only that date. “Use weekly default” removes the exception. An added date uses the first saved day's arrival/return times, shown before editing. Weekly edits affect future defaults; explicit date exceptions remain explicit.
 - Existing accepted rides retain their agreed role, timing and pickup snapshot. Calendar changes on an accepted date are rejected atomically. Editing the weekly template does not reschedule an accepted ride.
@@ -59,7 +59,7 @@ node scripts/start-local-demo.mjs "$(ipconfig getifaddr en0)"
 ```
 
 1. On both clients save a commute with the same campus drop-off and an arrival deadline of 09:00 on a future Monday. Use precise nearby public station points for a controlled demo. Driver offers at least one seat. Enable matching on review.
-2. Home shows the recurring week and a calendar. Choose the future Monday, change its role, then use weekly default; verify the following Monday is unaffected.
+2. Home shows the recurring week and a “Calendar View” button. Open the sheet, choose the future Monday, select a role and tap “Save this date.” Select “Use weekly default” and save to reset it; verify the following Monday is unaffected. “View this day” returns to Home with that date selected. Close without saving to check that tentative edits are discarded.
 3. Rider finds drivers, reviews the proposed pickup/arrival/added driving time and requests the trip. Driver can independently find passengers and review incoming requests in Rides.
 4. Before acceptance neither participant can see the other's exact point. The driver reviews the proposed times and accepts or declines. Acceptance shows the shared ride on both clients and releases pickup details. Date edits for that accepted trip are disabled.
 5. Stop gracefully, wait for export, restart and confirm accounts, date exceptions and accepted ride/pickup details persist.
