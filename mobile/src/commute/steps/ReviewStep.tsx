@@ -83,7 +83,7 @@ export function ReviewStep({
         <Text style={styles.value}>{draft.campusLot ? lotTitle(draft.campusLot) : '—'}</Text>
       </Section>
 
-      <Section onEdit={() => onEdit('timing')} title="Morning start">
+      <Section onEdit={() => onEdit('timing')} title="Departure">
         <Text>Set when you leave or are ready for pickup.</Text>
       </Section>
 
