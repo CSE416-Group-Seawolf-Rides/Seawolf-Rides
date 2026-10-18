@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { collection, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getFirebaseFirestore, getFirebaseFunctions } from '../firebase/firebase';
 import type { CreateRideRequestInput, RideRequest, RideRequestResult } from './rideRequestModel';
+import { participantRequestsQuery } from './rideRequestQuery';
 
 export async function sendRideRequest(input: CreateRideRequestInput): Promise<RideRequestResult> {
   return (
@@ -36,20 +37,17 @@ export function useRideRequests(uid?: string) {
     if (!uid) return;
     let active = true;
     const stop = onSnapshot(
-      query(
-        collection(getFirebaseFirestore(), 'rideRequests'),
-        where('participantIds', 'array-contains', uid),
-        limit(101),
-      ),
+      participantRequestsQuery(getFirebaseFirestore(), uid),
       (snapshot) => {
         if (!active) return;
         setState({
           uid,
           loaded: true,
           error: null,
-          truncated: snapshot.size > 100,
+          // The local demo needs every participant-owned record to derive future carpools
+          // and history. An arbitrary document-ID limit can hide upcoming rides.
+          truncated: false,
           items: snapshot.docs
-            .slice(0, 100)
             .map((d) => ({ ...d.data(), id: d.id }) as RideRequest)
             .sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id)),
         });

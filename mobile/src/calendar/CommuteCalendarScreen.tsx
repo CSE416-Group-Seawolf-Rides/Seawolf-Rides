@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '../auth/SessionProvider';
@@ -9,15 +9,28 @@ import { AppButton } from '../components/AppButton';
 import { WeekStrip } from '../rides/components/WeekStrip';
 import { calendarDay, shiftDate } from './commuteCalendar';
 import { useCalendarOverrides, searchCalendar } from './calendarClient';
-import { calendarWeek, nextAcceptedRide, nextScheduledCommute } from './calendarHome';
+import {
+  calendarWeek,
+  nextAcceptedRide,
+  nextScheduledCommute,
+} from './calendarHome';
 import { CommuteCalendarSheet } from './CommuteCalendarSheet';
-import { dayModeLabels, formatTime, type Weekday } from '../commute/commuteModel';
+import {
+  dayModeLabels,
+  formatTime,
+  type Weekday,
+} from '../commute/commuteModel';
 import { localDateAt, weekdayForDate } from '../mvp/settings';
 import { useRideRequests, sendRideRequest } from '../mvp/rideRequestClient';
 import type { CalendarSearchResult } from './calendarMatching';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 import { useHomeClock } from '../rides/useHomeClock';
+import {
+  homeHeaderDate,
+  requestNeedsAnswer,
+  rideEnd,
+} from '../mvp/ridePresentation';
 import { colors, spacing } from '../theme';
 
 const time = (epoch: number) =>
@@ -33,14 +46,20 @@ const dateLabel = (date: string) =>
     day: 'numeric',
     timeZone: 'UTC',
   });
-export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } = {}) {
+export function CommuteCalendarScreen({
+  initialDate,
+}: { initialDate?: string } = {}) {
   const { user, profile, commute } = useSession();
-  const { now, greeting } = useHomeClock();
+  const requests = useRideRequests(user?.id);
+  const { now, greeting } = useHomeClock(
+    requests.items.map((r) =>
+      r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure,
+    ),
+  );
   const today = localDateAt(now.getTime() / 1000);
   const [selected, setSelected] = useState(initialDate ?? today);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const overrides = useCalendarOverrides(user?.id);
-  const requests = useRideRequests(user?.id);
   const vehicle = useVehicle(user?.id);
   const [vehicleRequired, setVehicleRequired] = useState(false);
   const [searchResult, setResult] = useState<CalendarSearchResult | null>(null);
@@ -54,25 +73,37 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     commute && profile
       ? calendarDay(commute, profile.role, selected, overrides.days[selected])
       : null;
-  const accepted = requests.items.find((r) => r.localDate === selected && r.status === 'ACCEPTED');
+  const accepted = requests.items.find(
+    (r) => r.localDate === selected && r.status === 'ACCEPTED',
+  );
   const nextTrip = nextAcceptedRide(requests.items, now.getTime() / 1000);
   const nextScheduled =
     commute && profile
-      ? nextScheduledCommute(commute, profile.role, today, overrides.days, now.getTime() / 1000)
+      ? nextScheduledCommute(
+          commute,
+          profile.role,
+          today,
+          overrides.days,
+          now.getTime() / 1000,
+        )
       : null;
-  const needsDecision = requests.items.filter(
-    (r) =>
-      r.status === 'PENDING' && r.driverId === user?.id && r.plan.departure > now.getTime() / 1000,
+  const needsDecision = requests.items.filter((r) =>
+    requestNeedsAnswer(r, user?.id ?? '', now.getTime() / 1000),
   );
   const pendingForDay = requests.items.filter(
     (r) => r.status === 'PENDING' && r.localDate === selected,
   );
   const week =
     commute && profile && user
-      ? calendarWeek(commute, profile.role, today, overrides.days, requests.items, user.id)
+      ? calendarWeek(
+          commute,
+          profile.role,
+          selected,
+          overrides.days,
+          requests.items,
+          user.id,
+        )
       : [];
-  const confirmedCount = week.filter((d) => d.status === 'confirmed').length;
-  const commuteCount = week.filter((d) => d.status !== 'off').length;
   const withinHorizon = selected >= today && selected <= shiftDate(today, 30);
   const chooseDate = (date: string) => {
     generation.current++;
@@ -80,6 +111,17 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     setMessage(null);
     setCalendarOpen(false);
   };
+  // An agenda link may revisit the already-mounted Home tab with a different date.
+  useFocusEffect(
+    useCallback(() => {
+      if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+        generation.current++;
+        setSelected(initialDate);
+        setMessage(null);
+        router.setParams({ date: undefined });
+      }
+    }, [initialDate]),
+  );
   const search = async (date = selected) => {
     if (date !== selected) chooseDate(date);
     const requestGeneration = ++generation.current;
@@ -92,36 +134,41 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
       if (generation.current === requestGeneration) setResult(next);
     } catch (error) {
       if (generation.current === requestGeneration)
-        setMessage(error instanceof Error ? error.message : 'Search unavailable.');
+        setMessage(
+          error instanceof Error ? error.message : 'Search unavailable.',
+        );
     } finally {
       setBusy(false);
     }
   };
   return (
     <Screen
-      eyebrow={dateLabel(today).toUpperCase()}
+      eyebrow={homeHeaderDate(today).toUpperCase()}
       title={`${greeting}, ${profile?.firstName ?? 'there'}`}
       afterContent={
         <>
-        <VehicleRequiredSheet visible={vehicleRequired} onClose={() => setVehicleRequired(false)} />
-        {calendarOpen && commute && profile && user ? (
-          <CommuteCalendarSheet
-            initialDate={selected}
-            today={today}
-            commute={commute}
-            role={profile.role}
-            uid={user.id}
-            overrides={overrides.days}
-            requests={requests.items}
-            ready={overrides.loaded && requests.loaded}
-            onClose={() => setCalendarOpen(false)}
-            onSelect={chooseDate}
-            onEditCommute={() => {
-              setCalendarOpen(false);
-              router.push('/commute-setup');
-            }}
+          <VehicleRequiredSheet
+            visible={vehicleRequired}
+            onClose={() => setVehicleRequired(false)}
           />
-        ) : undefined}
+          {calendarOpen && commute && profile && user ? (
+            <CommuteCalendarSheet
+              initialDate={selected}
+              today={today}
+              commute={commute}
+              role={profile.role}
+              uid={user.id}
+              overrides={overrides.days}
+              requests={requests.items}
+              ready={overrides.loaded && requests.loaded}
+              onClose={() => setCalendarOpen(false)}
+              onSelect={chooseDate}
+              onEditCommute={() => {
+                setCalendarOpen(false);
+                router.push('/commute-setup');
+              }}
+            />
+          ) : undefined}
         </>
       }
     >
@@ -129,16 +176,21 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
         <Card style={styles.nextTrip}>
           <Text style={styles.nextEyebrow}>Your Next Trip</Text>
           <Text style={styles.nextDetail}>No trip planned yet.</Text>
-          <Text style={styles.nextDetail}>Save your usual commute to see your week and find matches.</Text>
-          <AppButton variant="secondary" label="Set up my commute" onPress={() => router.push('/commute-setup')} />
+          <Text style={styles.nextDetail}>
+            Save your usual commute to see your week and find matches.
+          </Text>
+          <AppButton
+            variant="secondary"
+            label="Set up my commute"
+            onPress={() => router.push('/commute-setup')}
+          />
         </Card>
       ) : (
         <>
           {nextTrip ? (
             <Card style={styles.nextTrip}>
               <Text style={styles.nextEyebrow}>
-                YOUR NEXT TRIP ·{' '}
-                {dateLabel(nextTrip.localDate)}
+                YOUR NEXT TRIP · {dateLabel(nextTrip.localDate)}
               </Text>
               <Text style={styles.nextHeadline}>
                 {nextTrip.driverId === user?.id
@@ -146,16 +198,20 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   : `${time(nextTrip.plan.pickup)} pickup`}
               </Text>
               <Text style={styles.nextDetail}>
-                With {nextTrip.driverId === user?.id ? nextTrip.riderName : nextTrip.driverName} ·{' '}
-                {nextTrip.campusLabel}
+                With{' '}
+                {nextTrip.driverId === user?.id
+                  ? nextTrip.riderName
+                  : nextTrip.driverName}{' '}
+                · {nextTrip.campusLabel}
               </Text>
               <Text style={styles.nextDetail}>
-                Campus arrival {time(nextTrip.plan.riderDestinationArrival)} · New York time
+                Campus arrival {time(nextTrip.plan.riderDestinationArrival)} ·
+                New York time
               </Text>
               <AppButton
                 label="View ride"
                 variant="secondary"
-                onPress={() => router.navigate('/rides')}
+                onPress={() => router.push(`/rides/${nextTrip.id}`)}
               />
             </Card>
           ) : (
@@ -164,13 +220,15 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
               {nextScheduled ? (
                 <>
                   <Text style={styles.nextHeadline}>
-                    {dateLabel(nextScheduled.date)} · {dayModeLabels[nextScheduled.day.mode]}
+                    {dateLabel(nextScheduled.date)} ·{' '}
+                    {dayModeLabels[nextScheduled.day.mode]}
                   </Text>
                   <Text style={styles.nextDetail}>
                     {nextScheduled.day.startAt != null
                       ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
                       : ''}
-                    Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New York time
+                    Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New
+                    York time
                   </Text>
                   <Text style={styles.nextDetail}>
                     {nextScheduled.day.mode === 'drive'
@@ -181,7 +239,8 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   </Text>
                   {nextScheduled.day.startAt == null && (
                     <Text style={styles.nextDetail}>
-                      Add your morning start time in your usual commute before matching.
+                      Add your morning start time in your usual commute before
+                      matching.
                     </Text>
                   )}
                   <Pressable
@@ -209,7 +268,11 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                             ? 'Find drivers'
                             : 'Find drivers or passengers'}
                     </Text>
-                    <Ionicons name="arrow-forward" size={16} color={colors.accentSoft} />
+                    <Ionicons
+                      name="arrow-forward"
+                      size={16}
+                      color={colors.accentSoft}
+                    />
                   </Pressable>
                 </>
               ) : (
@@ -228,26 +291,64 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
           )}
           <Card>
             <View style={styles.row}>
-              <Text style={styles.heading}>This week</Text>
+              <Text style={styles.heading}>Weekly View</Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Calendar View"
                 onPress={() => setCalendarOpen(true)}
                 style={styles.calendarButton}
               >
-                <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+                <Ionicons
+                  name="calendar-outline"
+                  size={18}
+                  color={colors.accent}
+                />
                 <Text style={styles.calendarText}>Calendar View</Text>
+              </Pressable>
+            </View>
+            <View style={styles.weekNavigation}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Previous week"
+                style={styles.weekArrow}
+                onPress={() => chooseDate(shiftDate(selected, -7))}
+              >
+                <Ionicons name="chevron-back" size={21} color={colors.text} />
+              </Pressable>
+              <Text style={styles.monthTitle}>
+                {new Date(
+                  `${week[0]?.date ?? selected}T12:00:00Z`,
+                ).toLocaleDateString('en-US', {
+                  month: 'long',
+                  year: 'numeric',
+                  timeZone: 'UTC',
+                })}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Next week"
+                style={styles.weekArrow}
+                onPress={() => chooseDate(shiftDate(selected, 7))}
+              >
+                <Ionicons
+                  name="chevron-forward"
+                  size={21}
+                  color={colors.text}
+                />
               </Pressable>
             </View>
             <WeekStrip
               overview={week}
               dates={
-                Object.fromEntries(week.map((d) => [d.day, Number(d.date.slice(-2))])) as Record<
-                  Weekday,
-                  number
-                >
+                Object.fromEntries(
+                  week.map((d) => [d.day, Number(d.date.slice(-2))]),
+                ) as Record<Weekday, number>
               }
-              today={weekdayForDate(today)}
+              today={
+                week.some((d) => d.date === today)
+                  ? weekdayForDate(today)
+                  : undefined
+              }
               showModes
               actionableDays={week.map((d) => d.day)}
               selectedDay={week.find((d) => d.date === selected)?.day}
@@ -256,19 +357,17 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                 if (date) chooseDate(date);
               }}
             />
-            <Text style={styles.muted}>
-              {requests.loaded && overrides.loaded
-                ? `${confirmedCount} of ${commuteCount} trips to campus confirmed`
-                : 'Loading your saved week…'}
-            </Text>
+            {(!requests.loaded || !overrides.loaded) && (
+              <Text style={styles.muted}>Loading your saved week…</Text>
+            )}
           </Card>
           {needsDecision.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.heading}>Needs you</Text>
-              <Card>
+              <Card style={styles.needsYou}>
                 <Text style={styles.heading}>
-                  {needsDecision.length} ride request{needsDecision.length === 1 ? '' : 's'} to
-                  review
+                  {needsDecision.length} ride request
+                  {needsDecision.length === 1 ? '' : 's'} to review
                 </Text>
                 <Text>
                   {needsDecision
@@ -277,9 +376,9 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     .join('\n')}
                 </Text>
                 <AppButton
-                  label="Review requests"
+                  label={`Review ${needsDecision.length} request${needsDecision.length === 1 ? '' : 's'}`}
                   variant="secondary"
-                  onPress={() => router.navigate('/rides')}
+                  onPress={() => router.push('/rides/requests')}
                 />
               </Card>
             </View>
@@ -294,19 +393,23 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     ? 'Find drivers and passengers'
                     : 'Find a driver'}
             </Text>
-            <Card>
+            <Card style={styles.searchCard}>
               <View style={styles.row}>
-                <Text style={styles.heading}>{dateLabel(selected)}</Text>
+                <Text style={styles.searchDate}>{dateLabel(selected)}</Text>
                 <Pressable
                   accessibilityLabel="Choose another date"
                   accessibilityRole="button"
                   hitSlop={10}
                   onPress={() => setCalendarOpen(true)}
                 >
-                  <Ionicons name="calendar-outline" size={22} color={colors.accent} />
+                  <Ionicons
+                    name="calendar-outline"
+                    size={22}
+                    color={colors.accent}
+                  />
                 </Pressable>
               </View>
-              <Text>
+              <Text style={styles.searchRole}>
                 {accepted
                   ? accepted.driverId === user?.id
                     ? 'Driving'
@@ -319,30 +422,39 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                 <>
                   <Text style={{ color: colors.success }}>
                     Accepted with{' '}
-                    {accepted.driverId === user?.id ? accepted.riderName : accepted.driverName}
+                    {accepted.driverId === user?.id
+                      ? accepted.riderName
+                      : accepted.driverName}
                   </Text>
                   <Text>
                     Pickup {time(accepted.plan.pickup)} · campus{' '}
                     {time(accepted.plan.riderDestinationArrival)}
                   </Text>
-                  <AppButton label="View accepted ride" onPress={() => router.navigate('/rides')} />
+                  <AppButton
+                    label="View accepted ride"
+                    onPress={() => router.push(`/rides/${accepted.id}`)}
+                  />
                 </>
               ) : (
                 <>
                   {day?.arriveBy != null && (
-                    <Text>Arrive on campus by {formatTime(day.arriveBy)} · New York time</Text>
+                    <Text style={styles.searchDetail}>
+                      Arrive on campus by {formatTime(day.arriveBy)} · New York
+                      time
+                    </Text>
                   )}
                   {pendingForDay.length > 0 && (
                     <Text style={styles.muted}>
-                      {pendingForDay.length} pending request{pendingForDay.length === 1 ? '' : 's'}{' '}
-                      for this date. Follow decisions in Rides.
+                      {pendingForDay.length} pending request
+                      {pendingForDay.length === 1 ? '' : 's'} for this date.
+                      Follow decisions in Rides.
                     </Text>
                   )}
                   {!day || day.arriveBy === null ? (
                     <>
                       <Text style={styles.muted}>
-                        No trip to campus is saved for this date. Use the calendar to choose another
-                        day or adjust this date.
+                        No trip to campus is saved for this date. Use the
+                        calendar to choose another day or adjust this date.
                       </Text>
                       <AppButton
                         label="Open calendar"
@@ -350,7 +462,9 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                         onPress={() => setCalendarOpen(true)}
                       />
                     </>
-                  ) : !commute.startPoint || !commute.discoveryEnabled || day.startAt == null ? (
+                  ) : !commute.startPoint ||
+                    !commute.discoveryEnabled ||
+                    day.startAt == null ? (
                     <>
                       <Text style={styles.muted}>
                         {!commute.startPoint
@@ -369,12 +483,14 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     <>
                       {day.mode === 'either' && (
                         <Text style={styles.muted}>
-                          See drivers and passengers. Your role is confirmed when a ride is
-                          accepted.
+                          See drivers and passengers. Your role is confirmed
+                          when a ride is accepted.
                         </Text>
                       )}
                       {!withinHorizon && (
-                        <Text style={styles.muted}>Search dates within the next 30 days.</Text>
+                        <Text style={styles.muted}>
+                          Search dates within the next 30 days.
+                        </Text>
                       )}
                       <AppButton
                         label={
@@ -386,7 +502,12 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                                 ? 'Find matches'
                                 : 'Find drivers'
                         }
-                        disabled={busy || !withinHorizon || !overrides.loaded || !requests.loaded}
+                        disabled={
+                          busy ||
+                          !withinHorizon ||
+                          !overrides.loaded ||
+                          !requests.loaded
+                        }
                         onPress={() => void search()}
                       />
                     </>
@@ -399,7 +520,8 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
       )}
       {requests.truncated && (
         <Text style={styles.muted}>
-          Only 100 ride records are loaded. Your trip list and weekly totals may be incomplete.
+          Some ride records could not be loaded. Your trip list may be
+          incomplete.
         </Text>
       )}
       {(message || overrides.error || requests.error) && (
@@ -412,16 +534,17 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
           {result.incomplete && (
             <Card>
               <Text style={{ color: colors.warning }}>
-                Incomplete search: this public-routing demo checks at most two accounts and two
-                driver/rider arrangements. Other matches may exist.
+                Incomplete search: this public-routing demo checks at most two
+                accounts and two driver/rider arrangements. Other matches may
+                exist.
               </Text>
             </Card>
           )}
           <Text style={styles.heading}>Potential matches</Text>
           <Text style={styles.muted}>
-            Suggested pickup times use saved arrival deadlines, not confirmed availability. Sending
-            a request proposes these times; the driver decides. No seats are reserved until
-            acceptance.
+            Proposed times use saved morning availability, arrival deadlines and
+            road estimates. Sending a request proposes these times; the driver
+            decides. No seats are reserved until acceptance.
           </Text>
           {result.matches.map((match) => {
             const request = requests.items.find(
@@ -431,9 +554,13 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                 r.localDate === selected,
             );
             return (
-              <Card key={`${match.driverId}:${match.riderId}`}>
+              <Card
+                style={styles.searchCard}
+                key={`${match.driverId}:${match.riderId}`}
+              >
                 <Text style={styles.heading}>
-                  {match.name} · {match.role === 'driver' ? 'Driving' : 'Looking for a ride'}
+                  {match.name} ·{' '}
+                  {match.role === 'driver' ? 'Driving' : 'Looking for a ride'}
                 </Text>
                 <Text>{match.area.label} · approximate area</Text>
                 <Text>
@@ -441,8 +568,8 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   {time(match.plan.riderDestinationArrival)}
                 </Text>
                 <Text>
-                  Adds {Math.ceil(match.addedDrivingSeconds / 60)} minutes driving, including
-                  boarding
+                  Adds {Math.ceil(match.addedDrivingSeconds / 60)} minutes
+                  driving, including boarding
                 </Text>
                 {request ? (
                   <Text>{request.status}</Text>
@@ -467,7 +594,9 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                         driverRevision: match.driverRevision,
                       })
                         .then(() =>
-                          setMessage('Request sent. Follow the driver’s decision in Rides.'),
+                          setMessage(
+                            'Request sent. Follow the driver’s decision in Rides.',
+                          ),
                         )
                         .catch((e: Error) => setMessage(e.message))
                         .finally(() => setBusy(false));
@@ -475,11 +604,21 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   />
                 ) : (
                   <>
-                    <Text>Riders send the request; you review and accept it in Rides.</Text>
-                    <AppButton label="Review ride requests" disabled={busy || !vehicle.loaded} onPress={() => {
-                      if (!vehicle.vehicle) { setVehicleRequired(true); return; }
-                      router.navigate('/rides');
-                    }} />
+                    <Text>
+                      Riders send the request; you review and accept it in
+                      Rides.
+                    </Text>
+                    <AppButton
+                      label="Review ride requests"
+                      disabled={busy || !vehicle.loaded}
+                      onPress={() => {
+                        if (!vehicle.vehicle) {
+                          setVehicleRequired(true);
+                          return;
+                        }
+                        router.navigate('/rides');
+                      }}
+                    />
                   </>
                 )}
               </Card>
@@ -490,8 +629,8 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
           )}
           {result.unknownCount > 0 && (
             <Text>
-              Commute timing, locations or road estimates were incomplete for {result.unknownCount}{' '}
-              candidate(s). Retry later.
+              Commute timing, locations or road estimates were incomplete for{' '}
+              {result.unknownCount} candidate(s). Retry later.
             </Text>
           )}
         </>
@@ -509,10 +648,53 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   section: { gap: spacing.md },
-  calendarButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44 },
+  weekNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  weekArrow: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
+  needsYou: {
+    borderColor: colors.accent,
+    borderWidth: 1.5,
+    gap: spacing.md,
+    padding: spacing.xl,
+  },
+  searchCard: { gap: spacing.lg, padding: spacing.xl },
+  searchDate: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.text },
+  searchRole: {
+    alignSelf: 'flex-start',
+    color: colors.accent,
+    backgroundColor: colors.accentSoft,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  searchDetail: { fontSize: 15, lineHeight: 23, color: colors.textMuted },
+  calendarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+  },
   calendarText: { color: colors.accent, fontWeight: '700', fontSize: 14 },
   nextTrip: { backgroundColor: colors.accent },
-  nextEyebrow: { color: colors.accentSoft, fontSize: 12, fontWeight: '800', letterSpacing: 0.8 },
+  nextEyebrow: {
+    color: colors.accentSoft,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
   nextHeadline: { color: colors.surface, fontSize: 28, fontWeight: '800' },
   nextDetail: { color: colors.accentSoft, lineHeight: 21, fontSize: 15 },
 });

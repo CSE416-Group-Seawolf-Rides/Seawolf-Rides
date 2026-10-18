@@ -8,7 +8,7 @@ import { DayOverview, DayStatus } from '../rideModel';
 interface WeekStripProps {
   overview: DayOverview[];
   dates: Record<Weekday, number>;
-  today: Weekday;
+  today?: Weekday;
   showModes: boolean;
   selectedDay?: Weekday;
   // Days with somewhere to go: a trip to open, or drivers to find.
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success,
   },
   dotPending: {
-    backgroundColor: colors.warning,
+    backgroundColor: colors.accent,
   },
   dotSkipped: {
     backgroundColor: colors.border,
