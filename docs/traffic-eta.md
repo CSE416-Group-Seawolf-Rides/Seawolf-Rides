@@ -76,4 +76,8 @@ Unit tests mock the provider's actual HTTP contract, including dated requests, f
 
 Stop the manual emulator suite before running the standard test commands because they use its normal ports. During development these tests can be copied to isolated ports/configuration with a disposable Functions bundle; never overwrite a developer's environment or import their demo data into an automated test.
 
-No real TomTom key, live provider comparison or physical-device test is implied by mocked tests. A key and minimal live smoke are still required before claiming actual traffic-provider activation or improved real-world accuracy. The code uses the provider forecast rather than asserting an empirically measured accuracy gain.
+Mocked tests do not establish provider accuracy or physical-device behavior. The bounded live check below confirms the local provider path; a measured accuracy comparison and device walkthrough remain outstanding. The code uses the provider forecast rather than asserting an empirically measured accuracy gain.
+
+## Bounded live backend check (October 18, 2026)
+
+One authenticated `estimateCommuteStart` request through the actual local Functions emulator and shared routing scheduler succeeded against TomTom. The public Stony Brook LIRR station → West Side route, arriving Monday October 19 at 9:00 AM New York time, returned `TRAFFIC_FORECAST`, 308 seconds, and an editable 8:50 AM suggestion (rounded earlier to five minutes). The private key was not printed or sent to the mobile app. The temporary verified emulator account used for this check was deleted afterward; existing accounts and saved commutes were preserved. This confirms one live arrival-based backend request, not device onboarding or a measured accuracy improvement.
