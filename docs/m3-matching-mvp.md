@@ -72,8 +72,8 @@ No device UI smoke test or live OSRM verification is claimed by automated tests.
 
 ## Preserved work and later milestones
 
-The three ZIP snapshots and native Google Navigation dependency/plugin/screens were removed. Their original content remains in PR #12's Git history. Existing map/routing helpers, regression tests and multi-rider work remain available. Simulations are explicitly labeled development-only; Rides and Inbox explain that booking/messaging are coming later. They cannot create a real booking through the MVP matching flow.
+The three ZIP snapshots and native Google Navigation dependency/plugin/screens were removed. Their original content remains in PR #12's Git history. Existing map/routing helpers, regression tests and multi-rider work remain available. Simulations remain development-only and no longer automatically accept requests. The main Rides tab uses shared server-owned requests and accepted rides; Inbox messaging remains deferred.
 
-Next: persisted requests, participant authorization, transactional seat accounting and cancellation, messaging/history, multi-rider insertion/waiting semantics, and return trips. Navigation, tracking and payments remain later work.
+The local demo now supports [persisted dated requests, participant authorization and atomic acceptance](local-ride-requests.md). Rides shows shared PENDING, ACCEPTED and DECLINED records. Next: cancellation/release, recurring requests, messaging/history, multi-rider insertion/waiting semantics, and return trips. Navigation, tracking and payments remain later work.
 
 The public demo profile caps candidate work, caches routes and coordinates all matching/preview traffic across invocations. See [the scheduling and crash-recovery contract](public-osrm-demo.md).

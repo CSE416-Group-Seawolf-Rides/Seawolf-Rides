@@ -13,7 +13,8 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
-import { commuteKey, localDateAt, weekdayForDate } from '../src/mvp/settings.ts';
+import { localDateAt, weekdayForDate } from '../src/mvp/settings.ts';
+import { saveMatchingFixture } from './matching-fixtures.mjs';
 
 const require = createRequire(new URL('../../functions/package.json', import.meta.url));
 const { initializeApp: initializeAdmin, deleteApp: deleteAdmin } = require('firebase-admin/app');
@@ -83,63 +84,7 @@ async function client(uid, verified = true) {
     },
   };
 }
-async function saveSetup(client, mode) {
-  const commute = {
-    schemaVersion: 1,
-    ownerId: client.uid,
-    startArea: {
-      center: { latitude: 40.9, longitude: -73.1 },
-      radiusMiles: 2,
-      label: 'Stony Brook area',
-    },
-    campusLot: 'westSide',
-    days: [
-      {
-        day: weekday,
-        mode: mode === 'driver' ? 'drive' : 'ride',
-        arriveBy: 540,
-        leaveAt: null,
-      },
-    ],
-    ...(mode === 'driver' ? { seats: 2 } : {}),
-  };
-  const setup = {
-    schemaVersion: 1,
-    ownerId: client.uid,
-    revision: 'v1',
-    commuteKey: commuteKey(commute),
-    mode,
-    active: true,
-    optIn: true,
-    campusLot: 'westSide',
-    weekdays: [weekday],
-    pointId: 'stony-brook-station',
-    startWindow: { earliest: mode === 'driver' ? 460 : 480, latest: 510 },
-    arrivalWindow: { earliest: 480, latest: 540 },
-    seatsRequested: 1,
-    maxDetourSeconds: 600,
-    maxExtraRideSeconds: 900,
-    accessWalkSeconds: 0,
-    egressWalkSeconds: 0,
-    maxAccessWalkSeconds: 300,
-    maxEgressWalkSeconds: 300,
-  };
-  await setDoc(doc(client.db, 'users', client.uid), {
-    schemaVersion: 1,
-    firstName: client.uid,
-    role: mode,
-    updatedAt: serverTimestamp(),
-  });
-  await setDoc(doc(client.db, 'users', client.uid, 'commutes', 'primary'), {
-    ...commute,
-    updatedAt: serverTimestamp(),
-  });
-  await setDoc(doc(client.db, 'matchingSetups', client.uid), {
-    ...setup,
-    updatedAt: serverTimestamp(),
-  });
-  return setup;
-}
+const saveSetup = (client, mode) => saveMatchingFixture(client, mode, weekday);
 before(async () => {
   server = createServer(async (request, response) => {
     assert.match(request.headers['user-agent'] ?? '', /SeawolfRides-M3-Demo/);
