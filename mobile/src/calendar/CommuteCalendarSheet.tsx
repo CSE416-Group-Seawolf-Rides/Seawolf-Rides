@@ -1,5 +1,13 @@
 import { useRef, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppButton } from '../components/AppButton';
@@ -8,7 +16,12 @@ import { dayModeLabels, formatTime, type CommuteSchedule } from '../commute/comm
 import type { CommuteRole } from '../onboarding/onboardingModel';
 import type { RideRequest } from '../mvp/rideRequestModel';
 import { weekdayForDate } from '../mvp/settings';
-import { calendarDay, shiftDate, type CalendarMode, type DayOverride } from './commuteCalendar';
+import {
+  calendarDay,
+  shiftDate,
+  type CalendarMode,
+  type DayOverride,
+} from './commuteCalendar';
 import { saveCalendarDay } from './calendarClient';
 import { colors, radii, spacing } from '../theme';
 
@@ -58,7 +71,8 @@ export function CommuteCalendarSheet({
         : { mode: pendingMode },
   );
   const savedDay = calendarDay(commute, role, date, overrides[date]);
-  const canEdit = !accepted && date >= today && date <= shiftDate(today, 30) && ready && !busy;
+  const canEdit =
+    !accepted && date >= today && date <= shiftDate(today, 30) && ready && !busy;
   const daysInMonth = new Date(
     Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0),
   ).getUTCDate();
@@ -113,7 +127,6 @@ export function CommuteCalendarSheet({
           style={styles.sheet}
           accessibilityViewIsModal
         >
-          <View style={styles.handle} />
           <View style={styles.header}>
             <Text accessibilityRole="header" style={styles.title}>
               Your calendar
@@ -128,7 +141,10 @@ export function CommuteCalendarSheet({
               <Ionicons name="close" size={24} color={colors.text} />
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.row}>
               <Pressable
                 accessibilityLabel="Previous month"
@@ -150,7 +166,9 @@ export function CommuteCalendarSheet({
                 accessibilityLabel="Next month"
                 accessibilityRole="button"
                 disabled={busy}
-                onPress={() => setMonth(shiftDate(`${month}-${daysInMonth}`, 1).slice(0, 7))}
+                onPress={() =>
+                  setMonth(shiftDate(`${month}-${daysInMonth}`, 1).slice(0, 7))
+                }
                 style={styles.iconButton}
               >
                 <Ionicons name="chevron-forward" size={22} color={colors.accent} />
@@ -214,45 +232,48 @@ export function CommuteCalendarSheet({
             <Text style={styles.legend}>
               Car: driving · Person: riding · Arrows: either · Dot: changed date
             </Text>
-            <Card>
-              <Text style={styles.heading}>
-                {new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  month: 'short',
-                  day: 'numeric',
-                  timeZone: 'UTC',
-                })}{' '}
-                ·{' '}
-                {accepted
-                  ? accepted.driverId === uid
-                    ? 'Driving'
-                    : 'Riding'
-                  : day
-                    ? labels[day.mode]
-                    : 'No commute'}
-              </Text>
+            <Card style={styles.dayCard}>
+              <View style={styles.dayHeader}>
+                <Text style={[styles.heading, styles.dayTitle]}>
+                  {new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'short',
+                    day: 'numeric',
+                    timeZone: 'UTC',
+                  })}{' '}
+                  ·{' '}
+                  {accepted
+                    ? accepted.driverId === uid
+                      ? 'Driving'
+                      : 'Riding'
+                    : day
+                      ? labels[day.mode]
+                      : 'No commute'}
+                </Text>
+                {pendingMode !== null && (
+                  <Text accessibilityLiveRegion="polite" style={styles.unsaved}>
+                    Unsaved
+                  </Text>
+                )}
+              </View>
               {accepted ? (
                 <>
                   <Text>
                     Accepted ride with{' '}
-                    {accepted.driverId === uid ? accepted.riderName : accepted.driverName}.
+                    {accepted.driverId === uid ? accepted.riderName : accepted.driverName}
+                    .
                   </Text>
                   <Text style={styles.muted}>
-                    Role and timing are confirmed. This calendar cannot change an accepted ride.
+                    Role and timing are confirmed. This calendar cannot change an accepted
+                    ride.
                   </Text>
                 </>
               ) : (
                 <>
-                  <Text style={styles.muted}>
-                    {pendingMode !== null
-                      ? 'Unsaved change for this date only'
-                      : overrides[date]
-                        ? 'Changed for this date only'
-                        : 'From your usual weekly commute'}
-                  </Text>
                   {day?.startAt != null && (
                     <Text>
-                      {day.mode === 'drive' ? 'Leave at' : 'Ready from'} {formatTime(day.startAt)}
+                      {day.mode === 'drive' ? 'Leave at' : 'Ready from'}{' '}
+                      {formatTime(day.startAt)}
                     </Text>
                   )}
                   {day?.arriveBy != null && (
@@ -266,24 +287,51 @@ export function CommuteCalendarSheet({
                   <View style={styles.modes}>
                     {(['drive', 'ride', 'either', 'off'] as const).map((mode) => {
                       const disabled =
-                        !canEdit || ((mode === 'drive' || mode === 'either') && !commute.seats);
+                        !canEdit ||
+                        ((mode === 'drive' || mode === 'either') && !commute.seats);
                       return (
                         <Pressable
                           key={mode}
                           accessibilityRole="radio"
-                          accessibilityState={{ selected: (day?.mode ?? 'off') === mode, disabled }}
+                          accessibilityState={{
+                            checked: (day?.mode ?? 'off') === mode,
+                            selected: (day?.mode ?? 'off') === mode,
+                            disabled,
+                          }}
                           disabled={disabled}
                           onPress={() => {
-                            setPendingMode(mode === (savedDay?.mode ?? 'off') ? null : mode);
+                            setPendingMode(
+                              mode === (savedDay?.mode ?? 'off') ? null : mode,
+                            );
                             setMessage(null);
                           }}
                           style={[
                             styles.mode,
-                            (day?.mode ?? 'off') === mode && styles.selected,
+                            (day?.mode ?? 'off') === mode && styles.modeSelected,
                             disabled && styles.disabled,
                           ]}
                         >
-                          <Text>{labels[mode]}</Text>
+                          <Ionicons
+                            name={
+                              (day?.mode ?? 'off') === mode
+                                ? 'checkmark-circle'
+                                : 'ellipse-outline'
+                            }
+                            size={18}
+                            color={
+                              (day?.mode ?? 'off') === mode
+                                ? colors.surface
+                                : colors.textMuted
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.modeLabel,
+                              (day?.mode ?? 'off') === mode && styles.modeLabelSelected,
+                            ]}
+                          >
+                            {labels[mode]}
+                          </Text>
                         </Pressable>
                       );
                     })}
@@ -293,27 +341,33 @@ export function CommuteCalendarSheet({
                       Save passenger seats in your usual commute before offering a ride.
                     </Text>
                   )}
-                  {(overrides[date] || pendingMode !== null) && (
-                    <AppButton
-                      label="Use weekly default"
-                      variant="secondary"
-                      disabled={!canEdit}
-                      onPress={() => setPendingMode('default')}
-                    />
-                  )}
-                  {!ready && (
-                    <Text style={styles.muted}>Loading your saved calendar and rides…</Text>
-                  )}
-                  {(date < today || date > shiftDate(today, 30)) && (
-                    <Text style={styles.muted}>Edit and match dates within the next 30 days.</Text>
-                  )}
-                  {pendingMode !== null && (
-                    <AppButton
-                      label={busy ? 'Saving…' : 'Save this date'}
-                      disabled={!canEdit}
-                      onPress={() => void save()}
-                    />
-                  )}
+                  <View style={styles.dayActions}>
+                    {(overrides[date] || pendingMode !== null) && (
+                      <AppButton
+                        label="Use weekly default"
+                        variant="secondary"
+                        disabled={!canEdit}
+                        onPress={() => setPendingMode('default')}
+                      />
+                    )}
+                    {!ready && (
+                      <Text style={styles.muted}>
+                        Loading your saved calendar and rides…
+                      </Text>
+                    )}
+                    {(date < today || date > shiftDate(today, 30)) && (
+                      <Text style={styles.muted}>
+                        Edit and match dates within the next 30 days.
+                      </Text>
+                    )}
+                    {pendingMode !== null && (
+                      <AppButton
+                        label={busy ? 'Saving…' : 'Save this date'}
+                        disabled={!canEdit}
+                        onPress={() => void save()}
+                      />
+                    )}
+                  </View>
                 </>
               )}
               {message && (
@@ -328,10 +382,6 @@ export function CommuteCalendarSheet({
               disabled={busy}
               onPress={() => dismiss(onEditCommute)}
             />
-            <Text style={styles.muted}>
-              Role changes are saved only with “Save this date.” Closing or choosing another date
-              discards an unsaved change.
-            </Text>
           </ScrollView>
           <View style={styles.footer}>
             <AppButton
@@ -355,14 +405,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     overflow: 'hidden',
   },
-  handle: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -372,11 +414,21 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, color: colors.text, fontWeight: '800' },
   heading: { fontSize: 16, color: colors.text, fontWeight: '700' },
-  iconButton: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' },
+  iconButton: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  weekday: { width: '14.2857%', minHeight: 28, justifyContent: 'center', alignItems: 'center' },
+  weekday: {
+    width: '14.2857%',
+    minHeight: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   cell: {
     width: '14.2857%',
     minHeight: 52,
@@ -398,14 +450,36 @@ const styles = StyleSheet.create({
   },
   muted: { color: colors.textMuted, lineHeight: 20 },
   legend: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
+  dayCard: { padding: spacing.xl, gap: spacing.lg },
+  dayHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  dayTitle: { flex: 1, lineHeight: 24 },
+  unsaved: {
+    color: colors.warning,
+    backgroundColor: colors.warningSoft,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  dayActions: { gap: spacing.lg, marginTop: spacing.sm },
   modes: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   mode: {
-    padding: spacing.sm,
-    minHeight: 44,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    minHeight: 52,
+    flexBasis: '47%',
+    flexGrow: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.surface,
   },
+  modeSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  modeLabel: { color: colors.text, fontWeight: '700', flexShrink: 1 },
+  modeLabelSelected: { color: colors.surface },
   disabled: { opacity: 0.45 },
   footer: {
     paddingHorizontal: spacing.xl,

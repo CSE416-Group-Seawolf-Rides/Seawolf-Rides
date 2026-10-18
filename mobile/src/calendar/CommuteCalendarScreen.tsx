@@ -9,35 +9,21 @@ import { AppButton } from '../components/AppButton';
 import { WeekStrip } from '../rides/components/WeekStrip';
 import { calendarDay, shiftDate } from './commuteCalendar';
 import { useCalendarOverrides, searchCalendar } from './calendarClient';
-import {
-  calendarWeek,
-  nextAcceptedRide,
-  nextScheduledCommute,
-} from './calendarHome';
+import { calendarWeek, nextAcceptedRide, nextScheduledCommute } from './calendarHome';
 import { CommuteCalendarSheet } from './CommuteCalendarSheet';
-import {
-  dayModeLabels,
-  formatTime,
-  type Weekday,
-} from '../commute/commuteModel';
-import {
-  localDateAt,
-  localMinuteToEpoch,
-  weekdayForDate,
-} from '../mvp/settings';
+import { CommuteMatchesSheet } from './CommuteMatchesSheet';
+import { dayModeLabels, formatTime, type Weekday } from '../commute/commuteModel';
+import { localDateAt, weekdayForDate } from '../mvp/settings';
 import { useRideRequests, sendRideRequest } from '../mvp/rideRequestClient';
 import {
   mergeCalendarPages,
+  type CalendarMatch,
   type CalendarSearchResult,
 } from './calendarMatching';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 import { useHomeClock } from '../rides/useHomeClock';
-import {
-  homeHeaderDate,
-  requestNeedsAnswer,
-  rideEnd,
-} from '../mvp/ridePresentation';
+import { homeHeaderDate, requestNeedsAnswer, rideEnd } from '../mvp/ridePresentation';
 import { colors, spacing } from '../theme';
 
 const time = (epoch: number) =>
@@ -53,19 +39,16 @@ const dateLabel = (date: string) =>
     day: 'numeric',
     timeZone: 'UTC',
   });
-export function CommuteCalendarScreen({
-  initialDate,
-}: { initialDate?: string } = {}) {
+export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } = {}) {
   const { user, profile, commute } = useSession();
   const requests = useRideRequests(user?.id);
   const { now, greeting } = useHomeClock(
-    requests.items.map((r) =>
-      r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure,
-    ),
+    requests.items.map((r) => (r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure)),
   );
   const today = localDateAt(now.getTime() / 1000);
   const [selected, setSelected] = useState(initialDate ?? today);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [matchesOpen, setMatchesOpen] = useState(false);
   const overrides = useCalendarOverrides(user?.id);
   const vehicle = useVehicle(user?.id);
   const [vehicleRequired, setVehicleRequired] = useState(false);
@@ -74,6 +57,7 @@ export function CommuteCalendarScreen({
   const basis = JSON.stringify([selected, commute, overrides.days]);
   const result = resultKey === basis ? searchResult : null;
   const [busy, setBusy] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const generation = useRef(0);
   const day =
@@ -117,6 +101,7 @@ export function CommuteCalendarScreen({
     setSelected(date);
     setMessage(null);
     setCalendarOpen(false);
+    setMatchesOpen(false);
   };
   // An agenda link may revisit the already-mounted Home tab with a different date.
   useFocusEffect(
@@ -135,15 +120,13 @@ export function CommuteCalendarScreen({
     if (more && !previous?.nextCursor) return;
     if (date !== selected) chooseDate(date);
     const requestGeneration = ++generation.current;
+    setMatchesOpen(true);
     setBusy(true);
     setMessage(null);
     if (!more) setResult(null);
     setResultKey(JSON.stringify([date, commute, overrides.days]));
     try {
-      const next = await searchCalendar(
-        date,
-        previous?.nextCursor ?? undefined,
-      );
+      const next = await searchCalendar(date, previous?.nextCursor ?? undefined);
       const combined = previous ? mergeCalendarPages(previous, next) : next;
       if (generation.current === requestGeneration) setResult(combined);
     } catch (error) {
@@ -155,12 +138,37 @@ export function CommuteCalendarScreen({
           error.code === 'functions/aborted'
         )
           setResult(null);
-        setMessage(
-          error instanceof Error ? error.message : 'Search unavailable.',
-        );
+        setMessage(error instanceof Error ? error.message : 'Search unavailable.');
       }
     } finally {
       setBusy(false);
+    }
+  };
+  const requestMatch = async (match: CalendarMatch) => {
+    if (busy) return;
+    setBusy(true);
+    setRequesting(true);
+    setMessage(null);
+    try {
+      await sendRideRequest({
+        source: 'CALENDAR',
+        proposedPlan: {
+          departure: match.plan.departure,
+          pickup: match.plan.pickup,
+          vehicleCampusArrival: match.plan.vehicleCampusArrival,
+        },
+        driverId: match.driverId,
+        localDate: selected,
+        direction: 'TO_CAMPUS',
+        riderRevision: match.riderRevision,
+        driverRevision: match.driverRevision,
+      });
+      setMessage('Request sent. Follow the driver’s decision in Rides.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not send this request.');
+    } finally {
+      setBusy(false);
+      setRequesting(false);
     }
   };
   return (
@@ -173,6 +181,29 @@ export function CommuteCalendarScreen({
             visible={vehicleRequired}
             onClose={() => setVehicleRequired(false)}
           />
+          {matchesOpen && commute?.startPoint && day && user && (
+            <CommuteMatchesSheet
+              date={selected}
+              mode={day.mode}
+              uid={user.id}
+              ownPoint={commute.startPoint}
+              result={result}
+              busy={busy}
+              requesting={requesting}
+              message={message}
+              requests={requests.items}
+              onLoadMore={() => void search(selected, true)}
+              onRetry={() => void search()}
+              reviewReady={vehicle.loaded}
+              onRequest={(match) => void requestMatch(match)}
+              onClose={() => setMatchesOpen(false)}
+              onReviewRequests={() => {
+                setMatchesOpen(false);
+                if (!vehicle.loaded || !vehicle.vehicle) setVehicleRequired(true);
+                else router.navigate('/rides');
+              }}
+            />
+          )}
           {calendarOpen && commute && profile && user ? (
             <CommuteCalendarSheet
               initialDate={selected}
@@ -227,8 +258,8 @@ export function CommuteCalendarScreen({
                 · {nextTrip.campusLabel}
               </Text>
               <Text style={styles.nextDetail}>
-                Campus arrival {time(nextTrip.plan.riderDestinationArrival)} ·
-                New York time
+                Campus arrival {time(nextTrip.plan.riderDestinationArrival)} · New York
+                time
               </Text>
               <AppButton
                 label="View ride"
@@ -249,8 +280,8 @@ export function CommuteCalendarScreen({
                     {nextScheduled.day.startAt != null
                       ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
                       : ''}
-                    Arrive around {formatTime(nextScheduled.day.arriveBy!)} ·
-                    New York time
+                    Arrive around {formatTime(nextScheduled.day.arriveBy!)} · New York
+                    time
                   </Text>
                   <Text style={styles.nextDetail}>
                     {nextScheduled.day.mode === 'drive'
@@ -261,8 +292,7 @@ export function CommuteCalendarScreen({
                   </Text>
                   {nextScheduled.day.startAt == null && (
                     <Text style={styles.nextDetail}>
-                      Add your morning start time in your usual commute before
-                      matching.
+                      Add your morning start time in your usual commute before matching.
                     </Text>
                   )}
                   <Pressable
@@ -290,11 +320,7 @@ export function CommuteCalendarScreen({
                             ? 'Find drivers'
                             : 'Find drivers or passengers'}
                     </Text>
-                    <Ionicons
-                      name="arrow-forward"
-                      size={16}
-                      color={colors.accentSoft}
-                    />
+                    <Ionicons name="arrow-forward" size={16} color={colors.accentSoft} />
                   </Pressable>
                 </>
               ) : (
@@ -320,11 +346,7 @@ export function CommuteCalendarScreen({
                 onPress={() => setCalendarOpen(true)}
                 style={styles.calendarButton}
               >
-                <Ionicons
-                  name="calendar-outline"
-                  size={18}
-                  color={colors.accent}
-                />
+                <Ionicons name="calendar-outline" size={18} color={colors.accent} />
                 <Text style={styles.calendarText}>Calendar View</Text>
               </Pressable>
             </View>
@@ -338,13 +360,14 @@ export function CommuteCalendarScreen({
                 <Ionicons name="chevron-back" size={21} color={colors.text} />
               </Pressable>
               <Text style={styles.monthTitle}>
-                {new Date(
-                  `${week[0]?.date ?? selected}T12:00:00Z`,
-                ).toLocaleDateString('en-US', {
-                  month: 'long',
-                  year: 'numeric',
-                  timeZone: 'UTC',
-                })}
+                {new Date(`${week[0]?.date ?? selected}T12:00:00Z`).toLocaleDateString(
+                  'en-US',
+                  {
+                    month: 'long',
+                    year: 'numeric',
+                    timeZone: 'UTC',
+                  },
+                )}
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -352,11 +375,7 @@ export function CommuteCalendarScreen({
                 style={styles.weekArrow}
                 onPress={() => chooseDate(shiftDate(selected, 7))}
               >
-                <Ionicons
-                  name="chevron-forward"
-                  size={21}
-                  color={colors.text}
-                />
+                <Ionicons name="chevron-forward" size={21} color={colors.text} />
               </Pressable>
             </View>
             <WeekStrip
@@ -367,9 +386,7 @@ export function CommuteCalendarScreen({
                 ) as Record<Weekday, number>
               }
               today={
-                week.some((d) => d.date === today)
-                  ? weekdayForDate(today)
-                  : undefined
+                week.some((d) => d.date === today) ? weekdayForDate(today) : undefined
               }
               showModes
               actionableDays={week.map((d) => d.day)}
@@ -424,11 +441,7 @@ export function CommuteCalendarScreen({
                   hitSlop={10}
                   onPress={() => setCalendarOpen(true)}
                 >
-                  <Ionicons
-                    name="calendar-outline"
-                    size={22}
-                    color={colors.accent}
-                  />
+                  <Ionicons name="calendar-outline" size={22} color={colors.accent} />
                 </Pressable>
               </View>
               <Text style={styles.searchRole}>
@@ -461,22 +474,21 @@ export function CommuteCalendarScreen({
                 <>
                   {day?.arriveBy != null && (
                     <Text style={styles.searchDetail}>
-                      Arrive on campus around {formatTime(day.arriveBy)} · New
-                      York time
+                      Arrive on campus around {formatTime(day.arriveBy)} · New York time
                     </Text>
                   )}
                   {pendingForDay.length > 0 && (
                     <Text style={styles.muted}>
                       {pendingForDay.length} pending request
-                      {pendingForDay.length === 1 ? '' : 's'} for this date.
-                      Follow decisions in Rides.
+                      {pendingForDay.length === 1 ? '' : 's'} for this date. Follow
+                      decisions in Rides.
                     </Text>
                   )}
                   {!day || day.arriveBy === null ? (
                     <>
                       <Text style={styles.muted}>
-                        No trip to campus is saved for this date. Use the
-                        calendar to choose another day or adjust this date.
+                        No trip to campus is saved for this date. Use the calendar to
+                        choose another day or adjust this date.
                       </Text>
                       <AppButton
                         label="Open calendar"
@@ -505,8 +517,8 @@ export function CommuteCalendarScreen({
                     <>
                       {day.mode === 'either' && (
                         <Text style={styles.muted}>
-                          See drivers and passengers. Your role is confirmed
-                          when a ride is accepted.
+                          See drivers and passengers. Your role is confirmed when a ride
+                          is accepted.
                         </Text>
                       )}
                       {!withinHorizon && (
@@ -525,10 +537,7 @@ export function CommuteCalendarScreen({
                                 : 'Find drivers'
                         }
                         disabled={
-                          busy ||
-                          !withinHorizon ||
-                          !overrides.loaded ||
-                          !requests.loaded
+                          busy || !withinHorizon || !overrides.loaded || !requests.loaded
                         }
                         onPress={() => void search()}
                       />
@@ -542,167 +551,13 @@ export function CommuteCalendarScreen({
       )}
       {requests.truncated && (
         <Text style={styles.muted}>
-          Some ride records could not be loaded. Your trip list may be
-          incomplete.
+          Some ride records could not be loaded. Your trip list may be incomplete.
         </Text>
       )}
       {(message || overrides.error || requests.error) && (
         <Text accessibilityLiveRegion="polite" style={styles.muted}>
           {message || overrides.error || requests.error}
         </Text>
-      )}
-      {result && !accepted && (
-        <>
-          {result.incomplete && (
-            <Card>
-              <Text style={{ color: colors.warning }}>
-                More candidates are available. Load more to check them; each
-                batch keeps road requests within the demo’s routing limits.
-              </Text>
-            </Card>
-          )}
-          <Text style={styles.heading}>Potential matches</Text>
-          <Text style={styles.muted}>
-            Arrivals may be up to 30 minutes before or after your preferred
-            time. Checked matches are sorted by the closest estimated arrival,
-            then added driving time. Proposed times use saved morning
-            availability and road estimates. Sending a request proposes these
-            times; the driver decides. No seats are reserved until acceptance.
-          </Text>
-          <Text style={styles.muted}>
-            Checked {result.checkedCandidatePlans} of{' '}
-            {result.totalCandidatePlans} candidate plans.
-          </Text>
-          {result.matches.map((match) => {
-            const request = requests.items.find(
-              (r) =>
-                r.driverId === match.driverId &&
-                r.riderId === match.riderId &&
-                r.localDate === selected,
-            );
-            return (
-              <Card
-                style={styles.searchCard}
-                key={`${match.driverId}:${match.riderId}`}
-              >
-                <Text style={styles.heading}>
-                  {match.name} ·{' '}
-                  {match.role === 'driver' ? 'Driving' : 'Looking for a ride'}
-                </Text>
-                <Text>{match.area.label} · approximate area</Text>
-                <Text style={styles.muted}>Estimated times · New York</Text>
-                <View style={styles.matchTimes}>
-                  <View style={styles.matchTimeCell}>
-                    <Text style={styles.matchTimeLabel}>DEPARTURE</Text>
-                    <Text style={styles.matchTimeValue}>
-                      {time(match.plan.departure)}
-                    </Text>
-                    <Text style={styles.matchTimeNote}>Driver leaves</Text>
-                  </View>
-                  <View style={styles.matchTimeCell}>
-                    <Text style={styles.matchTimeLabel}>PICKUP</Text>
-                    <Text style={styles.matchTimeValue}>
-                      {time(match.plan.pickup)}
-                    </Text>
-                    <Text style={styles.matchTimeNote}>
-                      {Math.ceil(
-                        (match.plan.pickup - match.plan.departure) / 60,
-                      )}{' '}
-                      min to pickup
-                    </Text>
-                  </View>
-                  <View style={styles.matchTimeCell}>
-                    <Text style={styles.matchTimeLabel}>ARRIVAL</Text>
-                    <Text style={styles.matchTimeValue}>
-                      {time(
-                        match.driverId === user?.id
-                          ? match.plan.vehicleCampusArrival
-                          : match.plan.riderDestinationArrival,
-                      )}
-                    </Text>
-                    <Text style={styles.matchTimeNote}>On campus</Text>
-                  </View>
-                </View>
-                <Text style={styles.muted}>
-                  {match.arrivalDifferenceSeconds === 0
-                    ? 'Matches your preferred arrival time.'
-                    : `${Math.ceil(match.arrivalDifferenceSeconds / 60)} min ${(match.driverId === user?.id ? match.plan.vehicleCampusArrival : match.plan.riderDestinationArrival) < localMinuteToEpoch(selected, day!.arriveBy!) ? 'earlier' : 'later'} than your preferred arrival.`}
-                </Text>
-                <Text>
-                  Adds {Math.ceil(match.addedDrivingSeconds / 60)} minutes
-                  driving, including boarding
-                </Text>
-                {request ? (
-                  <Text>{request.status}</Text>
-                ) : match.riderId === user?.id ? (
-                  <AppButton
-                    label="Request this trip"
-                    disabled={busy}
-                    onPress={() => {
-                      setBusy(true);
-                      setMessage(null);
-                      void sendRideRequest({
-                        source: 'CALENDAR',
-                        proposedPlan: {
-                          departure: match.plan.departure,
-                          pickup: match.plan.pickup,
-                          vehicleCampusArrival: match.plan.vehicleCampusArrival,
-                        },
-                        driverId: match.driverId,
-                        localDate: selected,
-                        direction: 'TO_CAMPUS',
-                        riderRevision: match.riderRevision,
-                        driverRevision: match.driverRevision,
-                      })
-                        .then(() =>
-                          setMessage(
-                            'Request sent. Follow the driver’s decision in Rides.',
-                          ),
-                        )
-                        .catch((e: Error) => setMessage(e.message))
-                        .finally(() => setBusy(false));
-                    }}
-                  />
-                ) : (
-                  <>
-                    <Text>
-                      Riders send the request; you review and accept it in
-                      Rides.
-                    </Text>
-                    <AppButton
-                      label="Review ride requests"
-                      disabled={busy || !vehicle.loaded}
-                      onPress={() => {
-                        if (!vehicle.vehicle) {
-                          setVehicleRequired(true);
-                          return;
-                        }
-                        router.navigate('/rides');
-                      }}
-                    />
-                  </>
-                )}
-              </Card>
-            );
-          })}
-          {result.nextCursor && (
-            <AppButton
-              label={busy ? 'Checking more…' : 'Load more matches'}
-              disabled={busy}
-              variant="secondary"
-              onPress={() => void search(selected, true)}
-            />
-          )}
-          {!result.matches.length && (
-            <Text>No potential matches found in the checked accounts.</Text>
-          )}
-          {result.unknownCount > 0 && (
-            <Text>
-              Commute timing, locations or road estimates were incomplete for{' '}
-              {result.unknownCount} candidate(s). Retry later.
-            </Text>
-          )}
-        </>
       )}
     </Screen>
   );
@@ -738,18 +593,6 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   searchCard: { gap: spacing.lg, padding: spacing.xl },
-  matchTimes: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  matchTimeCell: { flex: 1, gap: spacing.sm },
-  matchTimeLabel: { fontSize: 10, fontWeight: '800', color: colors.textMuted },
-  matchTimeValue: { fontSize: 18, fontWeight: '800', color: colors.text },
-  matchTimeNote: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
   searchDate: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.text },
   searchRole: {
     alignSelf: 'flex-start',
