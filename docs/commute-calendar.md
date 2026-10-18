@@ -26,7 +26,7 @@ Only when acceptance succeeds does the transaction create `ridePickups/{requestI
 
 ## Matching without another form
 
-The new path reuses `evaluatePair()`; it does not replace the canonical feasibility evaluator. The old explicit-setup API remains for existing requests and regression tests, but Home and Map no longer render its technical form.
+The new path reuses `evaluatePair()`; it does not replace the canonical feasibility evaluator. The old explicit-setup backend API remains for existing requests and regression tests. Its unused mobile form and client helpers have been removed; Home and Map use the saved commute calendar and map instead.
 
 - Uses the chosen date, saved per-day role, campus arrival deadline, available passenger seats, private points, and discovery preference.
 - Compares driver → campus with driver → rider → campus, with two minutes for boarding. Routing anchors must snap within 75 m.
