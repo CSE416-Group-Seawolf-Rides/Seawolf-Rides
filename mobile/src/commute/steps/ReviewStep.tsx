@@ -83,8 +83,8 @@ export function ReviewStep({
         <Text style={styles.value}>{draft.campusLot ? lotTitle(draft.campusLot) : '—'}</Text>
       </Section>
 
-      <Section onEdit={() => onEdit('timing')} title="Morning departure / pickup readiness">
-        <Text>Review or change your morning times, including road-based suggestions.</Text>
+      <Section onEdit={() => onEdit('timing')} title="Morning start">
+        <Text>Set when you leave or are ready for pickup.</Text>
       </Section>
 
       <Section onEdit={() => onEdit('schedule')} title="Your week">
@@ -97,17 +97,21 @@ export function ReviewStep({
               {schedule.arriveBy !== null && (
                 <Text style={styles.value}>
                   {schedule.mode === 'drive'
-                    ? 'Leave at'
+                    ? 'Depart at'
                     : schedule.mode === 'ride'
-                      ? 'Ready for pickup from'
-                      : 'Ready to head out at'}{' '}
+                      ? 'Ready from'
+                      : 'Start at'}{' '}
                   {schedule.startAt != null
                     ? formatTime(schedule.startAt)
                     : '— add a morning start time'}
                 </Text>
               )}
               <Text style={styles.value}>{describeLeg(schedule.arriveBy, 'arriveBy')}</Text>
-              <Text style={styles.value}>{describeLeg(schedule.leaveAt, 'leaveAt')}</Text>
+              <Text style={styles.value}>
+                {schedule.leaveAt === null
+                  ? describeLeg(null, 'leaveAt')
+                  : `Leave campus at ${formatTime(schedule.leaveAt)}`}
+              </Text>
               {role === 'both' && <Text style={styles.meta}>{dayModeLabels[schedule.mode]}</Text>}
             </View>
           </View>
