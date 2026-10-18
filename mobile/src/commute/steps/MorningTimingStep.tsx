@@ -54,7 +54,9 @@ export function MorningTimingStep({
     } catch (e) {
       if (active.current)
         setError(
-          e instanceof Error
+          e && typeof e === 'object' && 'code' in e && e.code === 'functions/not-found'
+            ? 'The route estimator is unavailable. Restart your local backend, then retry. You can also choose a time manually.'
+            : e instanceof Error
             ? e.message
             : 'Choose your time manually or retry later.',
         );

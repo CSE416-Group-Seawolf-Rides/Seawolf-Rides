@@ -28,6 +28,8 @@ The launcher creates `functions/.env.local` exclusively, with the public OSRM UR
 node scripts/start-local-demo.mjs --live-osrm
 ```
 
+The launcher builds Functions before starting the emulators. After pulling backend changes or adding a new callable, restart the backend: press Ctrl-C once in its terminal, wait for the data export and shutdown to finish, then run the launcher again. Do not rely on hot reload in a hidden `.codex` worktree. On this branch, startup must list `estimateCommuteStart` and `saveVehicleDetails` as initialized. A callable `not-found [404]` means that endpoint is absent from the running backend; it is not an OSRM routing failure. Preserve `.local-demo-data/` and let the launcher import it.
+
 This selects `firebase.demo.json`, fixes the project to `demo-seawolf-rides`, starts Auth 9099, Firestore 9095 and Functions 5001 on `0.0.0.0`, and enables the Mac-only Emulator UI at http://127.0.0.1:4000. The hub stays on 127.0.0.1:4400. `0.0.0.0` is a listening address, never a client address. Use a trusted local network: emulators and their administrative endpoints are not hardened public servers. Do not port-forward them.
 
 The launcher imports `.local-demo-data/` when an export exists and exports Auth/Firestore data there on graceful Ctrl-C. Wait for export completion before closing the terminal. A hard kill can lose changes since the previous export. Both accounts, saved commutes, matching settings, route cache and scheduler state share this export. Do not run automated tests against a running manual demo: they require the same ports but use temporary data.

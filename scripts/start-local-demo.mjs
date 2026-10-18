@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { writeFile, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,14 @@ try {
   const hasExport = existsSync(`${data}/firebase-export-metadata.json`);
   if (existsSync(data) && readdirSync(data).length > 0 && !hasExport)
     throw new Error('Local demo data exists without an export manifest. Preserve/repair it before starting.');
+  // Emulators execute compiled JavaScript. Always compile before discovering endpoints;
+  // a running emulator can retain old exports, particularly in hidden worktree paths.
+  const build = spawnSync('npm', ['run', 'build', '--prefix', 'functions'], {
+    cwd: root,
+    stdio: 'inherit',
+  });
+  if (build.error) throw build.error;
+  if (build.status !== 0) throw new Error('Functions build failed. The demo backend was not started.');
   const args = [
     '--yes',
     'firebase-tools@15.33.0',
