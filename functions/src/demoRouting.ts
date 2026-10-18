@@ -18,6 +18,7 @@ export interface DemoRoutingStore {
   release(owner: string): Promise<void>;
   cached(key: string): Promise<RoutingResult | null>;
   cache(key: string, result: RoutingResult): Promise<void>;
+  reserveProviderRequest?(): Promise<boolean>;
 }
 export interface SchedulerClock {
   now(): number;
@@ -49,9 +50,12 @@ export async function withDemoRouting<T>(
   let calls = 0;
   let tail: Promise<void> = Promise.resolve();
   const adapter: RoutingAdapter = {
-    route(points: readonly RouteCoordinate[]) {
-      const key = JSON.stringify(points);
-      const request = tail.then(async () => {
+    timeDependent: upstream.timeDependent,
+    route(points: readonly RouteCoordinate[], options) {
+      const key = upstream.timeDependent
+        ? JSON.stringify([points, options?.departureEpochSeconds ?? null])
+        : JSON.stringify(points);
+      const request = tail.then(async (): Promise<RoutingResult> => {
         if (timer.now() - started >= ROUTING_BUDGET_MS) return exhausted();
         const cached = await store.cached(key);
         if (cached) return cached;
@@ -59,11 +63,19 @@ export async function withDemoRouting<T>(
         if (completed !== null)
           await timer.sleep(Math.max(0, completed + REQUEST_GAP_MS - timer.now()));
         // Leave enough time for the complete upstream timeout. No unbounded waiter queue.
-        if (timer.now() - started + ROUTE_TIMEOUT_MS > ROUTING_BUDGET_MS) return exhausted();
+        if (timer.now() - started + ROUTE_TIMEOUT_MS > ROUTING_BUDGET_MS)
+          return exhausted();
+        if (store.reserveProviderRequest && !(await store.reserveProviderRequest()))
+          return {
+            status: 'FAILURE',
+            code: 'CONFIGURATION_ERROR',
+            message: 'The local demo traffic request limit was reached.',
+            retryable: false,
+          };
         calls++;
         let result: RoutingResult;
         try {
-          result = await upstream.route(points);
+          result = await upstream.route(points, options);
         } finally {
           completed = timer.now();
         }

@@ -299,7 +299,7 @@ export const createRideRequest = onCall(options, async (request) => {
     const id = requestIdFor(riderId, data.driverId, data.localDate);
     const existing = await getFirestore().doc(`rideRequests/${id}`).get();
     if (existing.exists) return result(existing);
-    const prepared = await withMatchingRouting((routing) => preparePair(riderId, data, routing));
+    const prepared = await withMatchingRouting((routing) => preparePair(riderId, data, routing), data.source === 'CALENDAR');
     if (
       data.source === 'CALENDAR' &&
       (['departure', 'pickup', 'vehicleCampusArrival'] as const).some(
@@ -362,7 +362,7 @@ export const respondToRideRequest = onCall(options, async (call) => {
           driverRevision: saved.driverRevision,
         },
         routing,
-      ),
+      ), saved.source === 'CALENDAR',
     );
     return await commitAcceptance(ref.id, uid, prepared);
   } catch (error) {

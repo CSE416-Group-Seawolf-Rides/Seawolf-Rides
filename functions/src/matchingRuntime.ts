@@ -1,3 +1,4 @@
+import { createTomtomRouting } from './tomtomRouting';
 import { randomUUID } from 'node:crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -14,7 +15,9 @@ const routeUrl = defineString('OSRM_BASE_URL', {
 export const eligible = async (uid: string) => {
   try {
     const user = await getAuth().getUser(uid);
-    return !user.disabled && user.emailVerified && /@stonybrook[.]edu$/.test(user.email ?? '');
+    return (
+      !user.disabled && user.emailVerified && /@stonybrook[.]edu$/.test(user.email ?? '')
+    );
   } catch {
     return false;
   }
@@ -36,9 +39,50 @@ export const load = async (uid: string): Promise<SavedParticipant | null> => {
   };
 };
 
+/** Traffic is opt-in and only used by the fixed-departure calendar API. */
+export function trafficRoutingEnabled() {
+  return process.env.ROUTING_PROVIDER === 'tomtom';
+}
 export async function withMatchingRouting<T>(
   work: (routing: RoutingAdapter) => Promise<T>,
+  scheduled = false,
 ): Promise<T> {
+  if (
+    scheduled &&
+    process.env.ROUTING_PROVIDER &&
+    !['osrm', 'tomtom'].includes(process.env.ROUTING_PROVIDER)
+  )
+    throw new HttpsError('failed-precondition', 'Unknown routing provider.');
+  if (scheduled && trafficRoutingEnabled()) {
+    if (
+      process.env.FUNCTIONS_EMULATOR !== 'true' ||
+      process.env.GCLOUD_PROJECT !== 'demo-seawolf-rides' ||
+      !process.env.FIRESTORE_EMULATOR_HOST ||
+      !process.env.FIREBASE_AUTH_EMULATOR_HOST
+    )
+      throw new HttpsError(
+        'failed-precondition',
+        'Traffic routing is available only in the local demo.',
+      );
+    const key = process.env.TOMTOM_API_KEY ?? '';
+    if (!/^[A-Za-z0-9_-]{16,256}$/.test(key))
+      throw new HttpsError(
+        'failed-precondition',
+        'Configure the backend TOMTOM_API_KEY before enabling traffic estimates.',
+      );
+    const baseUrl = process.env.TOMTOM_BASE_URL ?? 'https://api.tomtom.com';
+    return withDemoRouting(
+      firestoreDemoRouting(getFirestore(), 'tomtom-scheduled-v1:' + baseUrl, true),
+      createTomtomRouting({
+        apiKey: key,
+        timeoutMs: ROUTE_TIMEOUT_MS,
+        baseUrl,
+        allowTestLoopback: true,
+      }),
+      randomUUID(),
+      work,
+    );
+  }
   const endpoint = routeUrl.value();
   try {
     const url = new URL(endpoint);
@@ -46,10 +90,17 @@ export async function withMatchingRouting<T>(
       process.env.FUNCTIONS_EMULATOR === 'true' &&
       url.protocol === 'http:' &&
       url.hostname === '127.0.0.1';
-    if ((!local && endpoint !== 'https://router.project-osrm.org') || url.username || url.password)
+    if (
+      (!local && endpoint !== 'https://router.project-osrm.org') ||
+      url.username ||
+      url.password
+    )
       throw new Error('Invalid endpoint');
   } catch {
-    throw new HttpsError('failed-precondition', 'Routing is not configured for this environment.');
+    throw new HttpsError(
+      'failed-precondition',
+      'Routing is not configured for this environment.',
+    );
   }
   const upstream = createOsrmRoutingAdapter({
     baseUrl: endpoint,
@@ -66,7 +117,23 @@ export async function withMatchingRouting<T>(
   });
   return withDemoRouting(
     firestoreDemoRouting(getFirestore(), endpoint),
-    upstream,
+    {
+      route: async (points, options) => {
+        const result = await upstream.route(points, options);
+        return result.status === 'SUCCESS'
+          ? {
+              ...result,
+              route: {
+                ...result.route,
+                estimate: {
+                  model: 'STATIC_ROAD',
+                  computedAtEpochSeconds: Math.floor(Date.now() / 1000),
+                },
+              },
+            }
+          : result;
+      },
+    },
     randomUUID(),
     work,
   );

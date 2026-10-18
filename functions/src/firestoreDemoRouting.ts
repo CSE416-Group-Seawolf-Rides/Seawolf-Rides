@@ -1,17 +1,40 @@
 import { createHash } from 'node:crypto';
 import type { Firestore } from 'firebase-admin/firestore';
-import type { RoutingResult } from '../../mobile/src/routing/types';
+import {
+  TRAFFIC_ESTIMATE_MAX_AGE_SECONDS,
+  type RoutingResult,
+} from '../../mobile/src/routing/types';
 import { REQUEST_GAP_MS, type DemoRoutingStore } from './demoRouting';
 
 const CACHE_MS = 10 * 60_000;
 /** Firestore readTime, not host clocks, arbitrates cross-instance admission/cooldown. */
-export function firestoreDemoRouting(db: Firestore, endpoint: string): DemoRoutingStore {
+export function firestoreDemoRouting(
+  db: Firestore,
+  endpoint: string,
+  traffic = false,
+): DemoRoutingStore {
   const gate = db.doc('_m3Routing/publicOsrm');
   const keyFor = (key: string) =>
     createHash('sha256')
       .update(endpoint + key)
       .digest('hex');
   return {
+    ...(traffic
+      ? {
+          reserveProviderRequest: () =>
+            db.runTransaction(async (transaction) => {
+              const ref = db.doc('_m3Routing/tomtomBudget');
+              const snapshot = await transaction.get(ref);
+              const day = new Date(snapshot.readTime.toMillis())
+                .toISOString()
+                .slice(0, 10);
+              const count = snapshot.data()?.day === day ? snapshot.data()!.count : 0;
+              if (!Number.isSafeInteger(count) || count < 0 || count >= 50) return false;
+              transaction.set(ref, { day, count: count + 1 });
+              return true;
+            }),
+        }
+      : {}),
     acquire: (owner) =>
       db.runTransaction(async (transaction) => {
         const snapshot = await transaction.get(gate);
@@ -33,7 +56,8 @@ export function firestoreDemoRouting(db: Firestore, endpoint: string): DemoRouti
     cached: async (key) => {
       const snapshot = await db.doc(`_m3RouteCache/${keyFor(key)}`).get();
       const data = snapshot.data();
-      return data?.expiresAtMs > snapshot.readTime.toMillis() && data?.result?.status === 'SUCCESS'
+      return data?.expiresAtMs > snapshot.readTime.toMillis() &&
+        data?.result?.status === 'SUCCESS'
         ? (data.result as RoutingResult)
         : null;
     },
@@ -42,7 +66,12 @@ export function firestoreDemoRouting(db: Firestore, endpoint: string): DemoRouti
       if (Buffer.byteLength(JSON.stringify(result)) > 700_000) return;
       const reference = db.doc(`_m3RouteCache/${keyFor(key)}`);
       const snapshot = await reference.get();
-      await reference.set({ expiresAtMs: snapshot.readTime.toMillis() + CACHE_MS, result });
+      await reference.set({
+        expiresAtMs:
+          snapshot.readTime.toMillis() +
+          (traffic ? TRAFFIC_ESTIMATE_MAX_AGE_SECONDS * 1000 : CACHE_MS),
+        result,
+      });
     },
   };
 }

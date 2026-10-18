@@ -23,7 +23,7 @@ import {
 } from '../../mobile/src/mvp/settings';
 import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
 import type { RoutingAdapter } from '../../mobile/src/routing/types';
-import { eligible, withMatchingRouting } from './matchingRuntime';
+import { eligible, withMatchingRouting, trafficRoutingEnabled } from './matchingRuntime';
 import { DemoBusyError, DEMO_CANDIDATE_LIMIT } from './demoRouting';
 
 const commitmentId = (uid: string, date: string) =>
@@ -265,7 +265,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
     const searchRevision = createHash('sha256')
       .update(
         JSON.stringify([
-          date,
+          date, trafficRoutingEnabled() ? 'tomtom-v1' : 'osrm',
           own.participant.revision,
           proposals.map((p) => [
             p.driver.uid,
@@ -276,6 +276,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
         ]),
       )
       .digest('hex');
+    const pageLimit = trafficRoutingEnabled() ? 1 : DEMO_CANDIDATE_LIMIT;
     let offset = 0;
     if (call.data.cursor !== undefined) {
       let cursor: { offset: number; revision: string };
@@ -289,7 +290,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
           Object.keys(cursor).sort().join(',') !== 'offset,revision' ||
           !Number.isSafeInteger(cursor.offset) ||
           cursor.offset < 0 ||
-          cursor.offset % DEMO_CANDIDATE_LIMIT !== 0 ||
+          cursor.offset % pageLimit !== 0 ||
           typeof cursor.revision !== 'string' ||
           !/^[a-f0-9]{64}$/.test(cursor.revision)
         )
@@ -309,7 +310,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
       if (offset > proposals.length)
         throw new HttpsError('invalid-argument', 'Invalid search page.');
     }
-    const page = proposals.slice(offset, offset + DEMO_CANDIDATE_LIMIT);
+    const page = proposals.slice(offset, offset + pageLimit);
     const checked = offset + page.length;
     const result: CalendarSearchResult = {
       policyVersion: 2,
@@ -327,7 +328,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
       unknownCount: offset === 0 ? unreadable : 0,
       incompatibleCount: 0,
     };
-    // At most two arrangements/four uncached routes per explicitly requested page.
+    // Two static pairs or one traffic pair (three timed routes), within the four-request budget.
     if (page.length)
       await withMatchingRouting(async (routing) => {
         for (const { driver, rider, other } of page) {
@@ -351,6 +352,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
               ? evaluation.plan.vehicleCampusArrival
               : evaluation.plan.riderDestinationArrival;
           result.matches.push({
+            eta: evaluation.eta,
             driverId: driver.uid,
             riderId: rider.uid,
             driverRevision: driver.revision,
@@ -367,7 +369,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
             metrics: evaluation.metrics,
           });
         }
-      });
+      }, true);
     // Never return results based on inputs edited during routing.
     const fresh = await loadCalendarParticipant(uid, date);
     if (

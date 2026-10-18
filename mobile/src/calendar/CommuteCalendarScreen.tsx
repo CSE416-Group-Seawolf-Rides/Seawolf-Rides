@@ -24,6 +24,7 @@ import { useVehicle } from '../vehicle/vehicleClient';
 import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 import { useHomeClock } from '../rides/useHomeClock';
 import { homeHeaderDate, requestNeedsAnswer, rideEnd } from '../mvp/ridePresentation';
+import { TRAFFIC_ESTIMATE_MAX_AGE_SECONDS } from '../routing/types';
 import { colors, spacing } from '../theme';
 
 const time = (epoch: number) =>
@@ -42,9 +43,17 @@ const dateLabel = (date: string) =>
 export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } = {}) {
   const { user, profile, commute } = useSession();
   const requests = useRideRequests(user?.id);
-  const { now, greeting } = useHomeClock(
-    requests.items.map((r) => (r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure)),
-  );
+  const [searchResult, setResult] = useState<CalendarSearchResult | null>(null);
+  const { now, greeting } = useHomeClock([
+    ...requests.items.map((r) =>
+      r.status === 'ACCEPTED' ? rideEnd(r) : r.plan.departure,
+    ),
+    ...(searchResult?.matches.flatMap((m) =>
+      m.eta?.model === 'TRAFFIC_FORECAST'
+        ? [m.eta.computedAtEpochSeconds + TRAFFIC_ESTIMATE_MAX_AGE_SECONDS]
+        : [],
+    ) ?? []),
+  ]);
   const today = localDateAt(now.getTime() / 1000);
   const [selected, setSelected] = useState(initialDate ?? today);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -52,7 +61,6 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
   const overrides = useCalendarOverrides(user?.id);
   const vehicle = useVehicle(user?.id);
   const [vehicleRequired, setVehicleRequired] = useState(false);
-  const [searchResult, setResult] = useState<CalendarSearchResult | null>(null);
   const [resultKey, setResultKey] = useState('');
   const basis = JSON.stringify([selected, commute, overrides.days]);
   const result = resultKey === basis ? searchResult : null;
@@ -189,6 +197,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
               ownPoint={commute.startPoint}
               result={result}
               busy={busy}
+              nowEpochSeconds={now.getTime() / 1000}
               requesting={requesting}
               message={message}
               requests={requests.items}

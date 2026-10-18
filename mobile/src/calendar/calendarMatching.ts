@@ -1,20 +1,13 @@
 import { evaluatePair } from '../matching/evaluatePair';
 import type { PairEvaluation, StaticRouteEstimate } from '../matching/types';
-import type {
-  CommuteSchedule,
-  DaySchedule,
-  PrivacyArea,
-} from '../commute/commuteModel';
+import type { CommuteSchedule, DaySchedule, PrivacyArea } from '../commute/commuteModel';
 import type { RoutingAdapter, RoutingResult } from '../routing/types';
 import {
   CAMPUS_POINTS,
   localMinuteToEpoch,
   PICKUP_SERVICE_SECONDS,
 } from '../mvp/settings';
-import {
-  ARRIVAL_FLEX_MINUTES,
-  preferredArrivalWindow,
-} from '../commute/arrivalPolicy';
+import { ARRIVAL_FLEX_MINUTES, preferredArrivalWindow } from '../commute/arrivalPolicy';
 
 export interface CalendarParticipant {
   uid: string;
@@ -22,6 +15,12 @@ export interface CalendarParticipant {
   revision: string;
   commute: CommuteSchedule;
   day: DaySchedule;
+}
+export interface CalendarEta {
+  model: 'STATIC_ROAD' | 'TRAFFIC_FORECAST';
+  provider: 'OSRM' | 'TomTom';
+  computedAtEpochSeconds: number;
+  departureEpochSeconds: number;
 }
 export interface CalendarMatch {
   driverId: string;
@@ -35,6 +34,7 @@ export interface CalendarMatch {
   addedDrivingSeconds: number;
   /** Absolute difference between this proposed arrival and the searching user's target. */
   arrivalDifferenceSeconds: number;
+  eta?: CalendarEta;
   metrics: Extract<PairEvaluation, { status: 'FEASIBLE' }>['metrics'];
 }
 export interface CalendarSearchResult {
@@ -48,10 +48,7 @@ export interface CalendarSearchResult {
   unknownCount: number;
   incompatibleCount: number;
 }
-export function arrivalTargetsOverlap(
-  a: number | null,
-  b: number | null,
-): boolean {
+export function arrivalTargetsOverlap(a: number | null, b: number | null): boolean {
   return (
     a !== null &&
     b !== null &&
@@ -64,10 +61,7 @@ export function arrivalTargetsOverlap(
     Math.abs(a - b) <= ARRIVAL_FLEX_MINUTES
   );
 }
-export function compareCalendarMatches(
-  a: CalendarMatch,
-  b: CalendarMatch,
-): number {
+export function compareCalendarMatches(a: CalendarMatch, b: CalendarMatch): number {
   return (
     a.arrivalDifferenceSeconds - b.arrivalDifferenceSeconds ||
     a.addedDrivingSeconds - b.addedDrivingSeconds ||
@@ -81,9 +75,7 @@ export function mergeCalendarPages(
 ): CalendarSearchResult {
   if (previous.searchRevision !== next.searchRevision)
     throw new Error('The candidate list changed. Search again.');
-  const matches = new Map(
-    previous.matches.map((m) => [`${m.driverId}:${m.riderId}`, m]),
-  );
+  const matches = new Map(previous.matches.map((m) => [`${m.driverId}:${m.riderId}`, m]));
   next.matches.forEach((m) => matches.set(`${m.driverId}:${m.riderId}`, m));
   return {
     ...next,
@@ -92,10 +84,7 @@ export function mergeCalendarPages(
     incompatibleCount: previous.incompatibleCount + next.incompatibleCount,
   };
 }
-function routeEstimate(
-  result: RoutingResult,
-  index?: number,
-): StaticRouteEstimate {
+function routeEstimate(result: RoutingResult, index?: number): StaticRouteEstimate {
   if (result.status === 'FAILURE')
     return { status: result.code === 'NO_ROUTE' ? 'UNREACHABLE' : 'MISSING' };
   const route = index === undefined ? result.route : result.route.legs[index];
@@ -119,7 +108,7 @@ export async function evaluateCalendarPair(
   date: string,
   routing: RoutingAdapter,
   now: number,
-): Promise<PairEvaluation> {
+): Promise<PairEvaluation & { eta?: CalendarEta }> {
   if (driver.uid === rider.uid)
     return { status: 'INFEASIBLE', reasonCodes: ['SELF_MATCH'] };
   if (
@@ -131,8 +120,7 @@ export async function evaluateCalendarPair(
     r = rider.commute;
   if (!d.discoveryEnabled || !r.discoveryEnabled)
     return { status: 'INFEASIBLE', reasonCodes: ['SKIPPED_OCCURRENCE'] };
-  if (!(d.seats ?? 0))
-    return { status: 'INFEASIBLE', reasonCodes: ['NO_SEAT'] };
+  if (!(d.seats ?? 0)) return { status: 'INFEASIBLE', reasonCodes: ['NO_SEAT'] };
   const campus = CAMPUS_POINTS.find((p) => p.id === d.campusLot);
   if (!d.startPoint || !r.startPoint || !campus || d.campusLot !== r.campusLot)
     return { status: 'UNKNOWN', reasonCodes: ['LOCATION_UNCONFIRMED'] };
@@ -157,10 +145,7 @@ export async function evaluateCalendarPair(
     };
   const earliest = Math.max(now + 1, localMinuteToEpoch(date, 0));
   const driverStart = localMinuteToEpoch(date, driver.day.startAt);
-  const riderStart = Math.max(
-    earliest,
-    localMinuteToEpoch(date, rider.day.startAt),
-  );
+  const riderStart = Math.max(earliest, localMinuteToEpoch(date, rider.day.startAt));
   const driverArrival = preferredArrivalWindow(
     date,
     { ...driver.day, arriveBy: driver.day.arriveBy },
@@ -181,12 +166,17 @@ export async function evaluateCalendarPair(
     return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
   const safeRoute = async (
     points: Parameters<RoutingAdapter['route']>[0],
+    departure = driverStart,
   ): Promise<RoutingResult> => {
     try {
-      const result = await routing.route(points);
+      const result = await routing.route(points, { departureEpochSeconds: departure });
       if (
         result.status === 'SUCCESS' &&
-        (result.route.legs.length !== points.length - 1 ||
+        ((routing.timeDependent &&
+          (result.route.estimate?.model !== 'TRAFFIC_FORECAST' ||
+            result.route.estimate.departureEpochSeconds !== departure ||
+            !Number.isSafeInteger(result.route.estimate.computedAtEpochSeconds))) ||
+          result.route.legs.length !== points.length - 1 ||
           result.route.snappedWaypoints.length !== points.length ||
           result.route.snappedWaypoints.some(
             (p, i) =>
@@ -215,11 +205,24 @@ export async function evaluateCalendarPair(
   };
   const [baseline, shared] = await Promise.all([
     safeRoute([d.startPoint, campus.coordinate]),
-    safeRoute([d.startPoint, r.startPoint, campus.coordinate]),
+    safeRoute(
+      routing.timeDependent
+        ? [d.startPoint, r.startPoint]
+        : [d.startPoint, r.startPoint, campus.coordinate],
+    ),
   ]);
+  // A traffic-dependent second leg must start AFTER driving to pickup and boarding.
+  const pickupToCampus = routing.timeDependent
+    ? shared.status === 'SUCCESS'
+      ? await safeRoute(
+          [r.startPoint, campus.coordinate],
+          driverStart + Math.round(shared.route.durationSeconds) + PICKUP_SERVICE_SECONDS,
+        )
+      : shared
+    : shared;
   // A whole date is the finite domain bound, not an asserted user detour preference.
   const dateBound = 86400;
-  return evaluatePair({
+  const evaluation = evaluatePair({
     driver: {
       userId: driver.uid,
       occurrence: { localDate: date, direction: 'TO_CAMPUS' },
@@ -261,7 +264,30 @@ export async function evaluateCalendarPair(
     travel: {
       startToCampus: routeEstimate(baseline),
       startToPickup: routeEstimate(shared, 0),
-      pickupToCampus: routeEstimate(shared, 1),
+      pickupToCampus: routeEstimate(pickupToCampus, routing.timeDependent ? 0 : 1),
     },
   });
+  if (evaluation.status !== 'FEASIBLE') return evaluation;
+  const sources = [baseline, shared, pickupToCampus];
+  const traffic = sources.every(
+    (result) =>
+      result.status === 'SUCCESS' && result.route.estimate?.model === 'TRAFFIC_FORECAST',
+  );
+  if (routing.timeDependent && !traffic)
+    return { status: 'UNKNOWN', reasonCodes: ['MISSING_TRAVEL_ESTIMATE'] };
+  return {
+    ...evaluation,
+    eta: {
+      model: traffic ? 'TRAFFIC_FORECAST' : 'STATIC_ROAD',
+      provider: traffic ? 'TomTom' : 'OSRM',
+      departureEpochSeconds: driverStart,
+      computedAtEpochSeconds: Math.min(
+        ...sources.map((result) =>
+          result.status === 'SUCCESS'
+            ? (result.route.estimate?.computedAtEpochSeconds ?? now)
+            : now,
+        ),
+      ),
+    },
+  };
 }

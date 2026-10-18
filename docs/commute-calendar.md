@@ -39,6 +39,8 @@ Only when acceptance succeeds does the transaction create `ridePickups/{requestI
 
 ## Matching without another form
 
+Optional departure-aware traffic forecasts for this flow are documented in [the traffic ETA guide](traffic-eta.md). Static OSRM remains the default.
+
 The new path reuses `evaluatePair()`; it does not replace the canonical feasibility evaluator. The old explicit-setup backend API remains for existing requests and regression tests. Its unused mobile form and client helpers have been removed; Home and Map use the saved commute calendar and map instead.
 
 - Uses the chosen date, saved per-day role, morning start time, preferred campus arrival, available passenger seats, private points, and discovery preference.

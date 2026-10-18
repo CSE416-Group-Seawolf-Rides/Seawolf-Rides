@@ -4,19 +4,35 @@ import { writeFile, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 // Explicit opt-in: ordinary automated tests must never contact the public router.
-if (process.argv.slice(2).join(' ') !== '--live-osrm')
-  throw new Error('Usage: node scripts/start-local-demo.mjs --live-osrm');
+const mode = process.argv.slice(2).join(' ');
+if (!['--live-osrm', '--traffic-eta'].includes(mode))
+  throw new Error(
+    'Usage: node scripts/start-local-demo.mjs --live-osrm OR --traffic-eta',
+  );
+const traffic = mode === '--traffic-eta';
+const key = process.env.TOMTOM_API_KEY ?? '';
+if (traffic && !/^[A-Za-z0-9_-]{16,256}$/.test(key))
+  throw new Error('Set a backend-only TOMTOM_API_KEY before starting --traffic-eta.');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const file = new URL('../functions/.env.local', import.meta.url);
-await writeFile(file, 'OSRM_BASE_URL=https://router.project-osrm.org\n', {
-  flag: 'wx',
-  mode: 0o600,
-});
+await writeFile(
+  file,
+  'OSRM_BASE_URL=https://router.project-osrm.org\n' +
+    (traffic
+      ? `ROUTING_PROVIDER=tomtom\nTOMTOM_API_KEY=${key}\n`
+      : 'ROUTING_PROVIDER=osrm\n'),
+  {
+    flag: 'wx',
+    mode: 0o600,
+  },
+);
 try {
   const data = fileURLToPath(new URL('../.local-demo-data', import.meta.url));
   const hasExport = existsSync(`${data}/firebase-export-metadata.json`);
   if (existsSync(data) && readdirSync(data).length > 0 && !hasExport)
-    throw new Error('Local demo data exists without an export manifest. Preserve/repair it before starting.');
+    throw new Error(
+      'Local demo data exists without an export manifest. Preserve/repair it before starting.',
+    );
   // Emulators execute compiled JavaScript. Always compile before discovering endpoints;
   // a running emulator can retain old exports, particularly in hidden worktree paths.
   const build = spawnSync('npm', ['run', 'build', '--prefix', 'functions'], {
@@ -24,7 +40,8 @@ try {
     stdio: 'inherit',
   });
   if (build.error) throw build.error;
-  if (build.status !== 0) throw new Error('Functions build failed. The demo backend was not started.');
+  if (build.status !== 0)
+    throw new Error('Functions build failed. The demo backend was not started.');
   const args = [
     '--yes',
     'firebase-tools@15.33.0',

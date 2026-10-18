@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const file = new URL('../../functions/.env.local', import.meta.url);
 // Never overwrite a developer's local configuration or accidentally call a live router.
-await writeFile(file, 'OSRM_BASE_URL=http://127.0.0.1:5009\n', { flag: 'wx' });
+await writeFile(file, 'OSRM_BASE_URL=http://127.0.0.1:5009\nROUTING_PROVIDER=osrm\n', {
+  flag: 'wx',
+  mode: 0o600,
+});
 const exported = await mkdtemp(join(tmpdir(), 'seawolf-emulator-export-'));
 const run = (only, command, dataArgs) =>
   new Promise((resolve, reject) => {
@@ -35,9 +38,29 @@ try {
     [`--export-on-exit=${exported}`],
   );
   if (process.exitCode === 0)
-    process.exitCode = await run('auth,firestore', 'node integration/verify-matching-import.mjs', [
-      `--import=${exported}`,
-    ]);
+    process.exitCode = await run(
+      'auth,firestore',
+      'node integration/verify-matching-import.mjs',
+      [`--import=${exported}`],
+    );
+  if (process.exitCode === 0) {
+    // Owned test configuration only: initial exclusive creation above protects local settings.
+    await writeFile(
+      file,
+      'OSRM_BASE_URL=http://127.0.0.1:5009\nROUTING_PROVIDER=tomtom\nTOMTOM_API_KEY=fake_backend_only_key\nTOMTOM_BASE_URL=http://127.0.0.1:5009\n',
+    );
+    process.exitCode = await run(
+      'auth,firestore,functions',
+      'node --import ./scripts/node-test/register-ts-resolver.mjs --test integration/traffic-routing.integration.mjs',
+      [`--export-on-exit=${join(exported, 'traffic')}`],
+    );
+    if (process.exitCode === 0)
+      process.exitCode = await run(
+        'auth,firestore',
+        'node integration/verify-traffic-import.mjs',
+        [`--import=${join(exported, 'traffic')}`],
+      );
+  }
 } finally {
   await unlink(file);
   await rm(exported, { recursive: true, force: true });

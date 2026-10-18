@@ -23,6 +23,7 @@ import {
 } from '../commute/commuteModel';
 import type { RideRequest } from '../mvp/rideRequestModel';
 import { rideTime } from '../mvp/ridePresentation';
+import { trafficForecastIsStale } from '../routing/types';
 import type { CalendarMatch, CalendarSearchResult } from './calendarMatching';
 import {
   MATCH_PAGE_SIZES,
@@ -40,6 +41,7 @@ export function CommuteMatchesSheet({
   ownPoint,
   result,
   busy,
+  nowEpochSeconds,
   requesting,
   message,
   requests,
@@ -56,6 +58,7 @@ export function CommuteMatchesSheet({
   ownPoint: Coordinates;
   result: CalendarSearchResult | null;
   busy: boolean;
+  nowEpochSeconds: number;
   requesting: boolean;
   message: string | null;
   requests: RideRequest[];
@@ -82,6 +85,7 @@ export function CommuteMatchesSheet({
   const match =
     person?.options.find((item) => item.driverId === driverOption) ?? person?.options[0];
   const detailOpen = !!person && !!match;
+  const staleTraffic = trafficForecastIsStale(match?.eta, nowEpochSeconds);
   const request =
     match &&
     requests.find(
@@ -274,6 +278,9 @@ export function CommuteMatchesSheet({
                       </View>
                     </View>
                     <Text style={styles.muted}>{item.area.label}</Text>
+                    {best.eta?.model === 'TRAFFIC_FORECAST' && (
+                      <Text style={styles.muted}>Traffic-aware forecast · TomTom</Text>
+                    )}
                     <MatchTimes match={best} uid={uid} />
                     <AppButton
                       label="View more"
@@ -443,9 +450,34 @@ export function CommuteMatchesSheet({
                       driving, including boarding
                     </Text>
                     <Text style={styles.muted}>
-                      New York time · road estimates without live traffic
+                      New York time ·{' '}
+                      {match.eta?.model === 'TRAFFIC_FORECAST'
+                        ? 'Traffic-aware forecast · TomTom'
+                        : 'Road estimate · no live traffic'}
                     </Text>
+                    {match.eta && (
+                      <Text style={styles.muted}>
+                        Estimated {rideTime(match.eta.computedAtEpochSeconds)} · for
+                        departure {rideTime(match.eta.departureEpochSeconds)}
+                      </Text>
+                    )}
                   </Card>
+                  {staleTraffic && !request && (
+                    <Card style={styles.personCard}>
+                      <Text style={styles.muted}>
+                        This traffic forecast is over two minutes old.
+                      </Text>
+                      <AppButton
+                        label="Refresh estimates"
+                        disabled={busy}
+                        onPress={() => {
+                          setDetailId(null);
+                          changePage(0);
+                          onRetry();
+                        }}
+                      />
+                    </Card>
+                  )}
                   {request ? (
                     <Card style={styles.personCard}>
                       <Text style={styles.name}>
@@ -459,7 +491,7 @@ export function CommuteMatchesSheet({
                   ) : match.riderId === uid ? (
                     <AppButton
                       label={busy ? 'Sending…' : 'Request this trip'}
-                      disabled={busy}
+                      disabled={busy || staleTraffic}
                       onPress={() => onRequest(match)}
                     />
                   ) : (
