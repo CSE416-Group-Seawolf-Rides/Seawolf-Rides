@@ -38,9 +38,13 @@ function distance(a: RouteCoordinate, b: RouteCoordinate) {
 export function parseTomtomRoute(
   body: unknown,
   inputs: readonly RouteCoordinate[],
-  departure: number,
+  departure: number | undefined,
   now: number,
+  arrival?: number,
 ): RoutingResult {
+  if ((departure === undefined) === (arrival === undefined) ||
+      !Number.isSafeInteger(departure ?? arrival))
+    return fail('MALFORMED_RESPONSE', 'Traffic routing needs a validated dated context.');
   if (!record(body) || !Array.isArray(body.routes) || !record(body.routes[0]))
     return fail('MALFORMED_RESPONSE', 'Traffic route data is unavailable.', true);
   const raw = body.routes[0];
@@ -58,9 +62,11 @@ export function parseTomtomRoute(
   const providerArrival = Date.parse(String(raw.summary.arrivalTime)) / 1000;
   if (
     !Number.isFinite(providerDeparture) ||
-    Math.abs(providerDeparture - departure) > 1 ||
+    (departure !== undefined && Math.abs(providerDeparture - departure) > 1) ||
+    (arrival !== undefined && Math.abs(providerArrival - arrival) > 1) ||
+    providerDeparture < now ||
     !Number.isFinite(providerArrival) ||
-    Math.abs(providerArrival - departure - raw.summary.travelTimeInSeconds) > 2 ||
+    Math.abs(providerArrival - providerDeparture - raw.summary.travelTimeInSeconds) > 2 ||
     !numeric(raw.summary.historicTrafficTravelTimeInSeconds)
   )
     return fail(
@@ -147,7 +153,7 @@ export function parseTomtomRoute(
       })),
       estimate: {
         model: 'TRAFFIC_FORECAST',
-        departureEpochSeconds: departure,
+        departureEpochSeconds: providerDeparture,
         computedAtEpochSeconds: now,
       },
     },
@@ -186,6 +192,8 @@ export function createTomtomRouting(options: {
     timeDependent: true,
     async route(points, requestOptions) {
       const departure = requestOptions?.departureEpochSeconds;
+      const arrival = requestOptions?.arrivalEpochSeconds;
+      const target = departure ?? arrival;
       if (
         !endpoint ||
         !/^[A-Za-z0-9_-]{16,256}$/.test(options.apiKey) ||
@@ -196,13 +204,14 @@ export function createTomtomRouting(options: {
       if (points.length < 2 || points.length > 3 || !points.every(isValidRouteCoordinate))
         return fail('INVALID_COORDINATES', 'Choose valid traffic route points.');
       if (
-        !Number.isSafeInteger(departure) ||
-        departure! < now() ||
-        departure! > now() + 31 * 86400
+        (departure === undefined) === (arrival === undefined) ||
+        !Number.isSafeInteger(target) ||
+        target! < now() ||
+        target! > now() + 31 * 86400
       )
         return fail(
           'CONFIGURATION_ERROR',
-          'Traffic routing needs a future departure within 31 days.',
+          'Traffic routing needs exactly one future departure or arrival within 31 days.',
         );
       if (requestOptions?.signal?.aborted)
         return fail('CANCELLED', 'Traffic route cancelled.');
@@ -211,7 +220,9 @@ export function createTomtomRouting(options: {
       );
       url.search = new URLSearchParams({
         key: options.apiKey,
-        departAt: new Date(departure! * 1000).toISOString(),
+        ...(arrival !== undefined
+          ? { arriveAt: new Date(arrival * 1000).toISOString() }
+          : { departAt: new Date(departure! * 1000).toISOString() }),
         traffic: 'true',
         travelMode: 'car',
         routeType: 'fastest',
@@ -237,7 +248,7 @@ export function createTomtomRouting(options: {
               : 'Traffic estimates are unavailable.',
             response.status === 429 || response.status >= 500,
           );
-        const result = parseTomtomRoute(await response.json(), points, departure!, now());
+        const result = parseTomtomRoute(await response.json(), points, departure, now(), arrival);
         if (abort.signal.aborted)
           return fail(
             timedOut ? 'TIMEOUT' : 'CANCELLED',

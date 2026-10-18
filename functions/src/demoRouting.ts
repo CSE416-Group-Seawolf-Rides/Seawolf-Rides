@@ -53,7 +53,7 @@ export async function withDemoRouting<T>(
     timeDependent: upstream.timeDependent,
     route(points: readonly RouteCoordinate[], options) {
       const key = upstream.timeDependent
-        ? JSON.stringify([points, options?.departureEpochSeconds ?? null])
+        ? JSON.stringify([points, options?.departureEpochSeconds ?? null, options?.arrivalEpochSeconds ?? null])
         : JSON.stringify(points);
       const request = tail.then(async (): Promise<RoutingResult> => {
         if (timer.now() - started >= ROUTING_BUDGET_MS) return exhausted();
@@ -69,7 +69,7 @@ export async function withDemoRouting<T>(
           return {
             status: 'FAILURE',
             code: 'CONFIGURATION_ERROR',
-            message: 'The local demo traffic request limit was reached.',
+            message: 'The local demo monthly traffic request budget was reached.',
             retryable: false,
           };
         calls++;

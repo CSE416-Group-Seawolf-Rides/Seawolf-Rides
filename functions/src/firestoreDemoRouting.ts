@@ -5,6 +5,7 @@ import {
   type RoutingResult,
 } from '../../mobile/src/routing/types';
 import { REQUEST_GAP_MS, type DemoRoutingStore } from './demoRouting';
+import { nextTomtomBudget, tomtomMonthlyLimit } from './tomtomBudget';
 
 const CACHE_MS = 10 * 60_000;
 /** Firestore readTime, not host clocks, arbitrates cross-instance admission/cooldown. */
@@ -25,12 +26,13 @@ export function firestoreDemoRouting(
             db.runTransaction(async (transaction) => {
               const ref = db.doc('_m3Routing/tomtomBudget');
               const snapshot = await transaction.get(ref);
-              const day = new Date(snapshot.readTime.toMillis())
-                .toISOString()
-                .slice(0, 10);
-              const count = snapshot.data()?.day === day ? snapshot.data()!.count : 0;
-              if (!Number.isSafeInteger(count) || count < 0 || count >= 50) return false;
-              transaction.set(ref, { day, count: count + 1 });
+              const next = nextTomtomBudget(
+                snapshot.data(),
+                snapshot.readTime.toMillis(),
+                tomtomMonthlyLimit(process.env.TOMTOM_MONTHLY_REQUEST_LIMIT),
+              );
+              if (!next) return false;
+              transaction.set(ref, next);
               return true;
             }),
         }

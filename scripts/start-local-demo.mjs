@@ -13,13 +13,16 @@ const traffic = mode === '--traffic-eta';
 const key = process.env.TOMTOM_API_KEY ?? '';
 if (traffic && !/^[A-Za-z0-9_-]{16,256}$/.test(key))
   throw new Error('Set a backend-only TOMTOM_API_KEY before starting --traffic-eta.');
+const monthlyLimit = process.env.TOMTOM_MONTHLY_REQUEST_LIMIT ?? '18000';
+if (traffic && (!/^[1-9]\d*$/.test(monthlyLimit) || Number(monthlyLimit) > 20000))
+  throw new Error('TOMTOM_MONTHLY_REQUEST_LIMIT must be an integer from 1 to 20000.');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const file = new URL('../functions/.env.local', import.meta.url);
 await writeFile(
   file,
   'OSRM_BASE_URL=https://router.project-osrm.org\n' +
     (traffic
-      ? `ROUTING_PROVIDER=tomtom\nTOMTOM_API_KEY=${key}\n`
+      ? `ROUTING_PROVIDER=tomtom\nTOMTOM_API_KEY=${key}\nTOMTOM_MONTHLY_REQUEST_LIMIT=${monthlyLimit}\n`
       : 'ROUTING_PROVIDER=osrm\n'),
   {
     flag: 'wx',

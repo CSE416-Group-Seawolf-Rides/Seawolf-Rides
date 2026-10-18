@@ -81,11 +81,13 @@ export type RoutingResult =
 
 export interface RouteRequestOptions {
   departureEpochSeconds?: number;
+  /** Arrival-based suggestions use exactly one of arrival or departure. */
+  arrivalEpochSeconds?: number;
   signal?: AbortSignal;
 }
 
 export interface RoutingAdapter {
-  /** Requires an explicit departure for each leg, including a pause at pickup. */
+  /** Requires a dated departure (matching) or arrival (onboarding suggestion). */
   timeDependent?: boolean;
   route(
     coordinates: readonly RouteCoordinate[],

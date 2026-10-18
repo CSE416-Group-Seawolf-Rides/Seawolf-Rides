@@ -1,4 +1,4 @@
-/** Direct-road baseline, rounded earlier to five minutes; no passenger detour or traffic. */
+/** Direct-trip suggestion, rounded earlier to five minutes; supplied duration may include traffic. */
 export function suggestedStartMinute(
   arriveBy: number,
   durationSeconds: number,

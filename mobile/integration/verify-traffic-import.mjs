@@ -30,7 +30,7 @@ try {
       .size,
     2,
   );
-  assert.equal((await db.doc('_m3Routing/tomtomBudget').get()).data().count, 50);
+  assert.equal((await db.doc('_m3Routing/tomtomBudget').get()).data().count, 18000);
   for (const uid of ['traffic-rider', 'traffic-a-driver']) {
     const app = initializeApp(
       { projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' },

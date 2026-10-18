@@ -4,7 +4,10 @@ const {
   createTomtomRouting,
   parseTomtomRoute,
 } = require('../lib/functions/src/tomtomRouting');
-const { withDemoRouting, REQUEST_GAP_MS } = require('../lib/functions/src/demoRouting');
+const {
+  withDemoRouting,
+  REQUEST_GAP_MS,
+} = require('../lib/functions/src/demoRouting');
 const points = [
   { latitude: 40.9, longitude: -73.1 },
   { latitude: 40.91, longitude: -73.12 },
@@ -46,7 +49,9 @@ test('traffic requests use exact dated UTC departure, correct coordinate order a
       return Response.json(body());
     },
   });
-  const result = await adapter.route(points, { departureEpochSeconds: departure });
+  const result = await adapter.route(points, {
+    departureEpochSeconds: departure,
+  });
   assert.equal(result.status, 'SUCCESS');
   assert.equal(called.hostname, 'api.tomtom.com');
   assert.match(called.pathname, /40.9,-73.1:40.91,-73.12/);
@@ -98,8 +103,11 @@ test('bad input, missing/past/nonfinite departure and missing key never issue a 
   };
   for (const date of [undefined, NaN, Infinity, now - 1, now + 32 * 86400])
     assert.equal(
-      (await createTomtomRouting(config).route(points, { departureEpochSeconds: date }))
-        .status,
+      (
+        await createTomtomRouting(config).route(points, {
+          departureEpochSeconds: date,
+        })
+      ).status,
       'FAILURE',
     );
   assert.equal(
@@ -129,7 +137,8 @@ test('malformed/nonfinite estimates, wrong dated context and unconfirmed snaps f
     (b) => (b.routes[0].legs[0].points[0] = { latitude: 42, longitude: -73.1 }),
     (b) => (b.routes[0].legs = []),
     (b) => (b.routes[0].summary.travelTimeInSeconds += 300),
-    (b) => (b.routes[0].summary.departureTime = new Date(now * 1000).toISOString()),
+    (b) =>
+      (b.routes[0].summary.departureTime = new Date(now * 1000).toISOString()),
     (b) => delete b.routes[0].summary.historicTrafficTravelTimeInSeconds,
   ]) {
     const b = body();
@@ -146,7 +155,9 @@ test('auth/quota/provider/network failures never expose credentials or fabricate
       fetchImplementation: async () =>
         new Response(JSON.stringify({ secret: key }), { status }),
     });
-    const result = await adapter.route(points, { departureEpochSeconds: departure });
+    const result = await adapter.route(points, {
+      departureEpochSeconds: departure,
+    });
     assert.equal(result.status, 'FAILURE');
     assert.equal(result.code, 'PROVIDER_ERROR');
     assert.equal(JSON.stringify(result).includes(key), false);
@@ -173,7 +184,9 @@ test('traffic provider timeouts and cancellation finish with typed failures', as
     now: () => now,
     fetchImplementation: async (_url, options) =>
       new Promise((_resolve, reject) =>
-        options.signal.addEventListener('abort', () => reject(new Error('aborted'))),
+        options.signal.addEventListener('abort', () =>
+          reject(new Error('aborted')),
+        ),
       ),
   });
   assert.equal(
@@ -210,7 +223,10 @@ test('date-aware cache isolates departures, shares same-date searches and enforc
     timeDependent: true,
     route: async (_points, options) => {
       calls++;
-      return { status: 'SUCCESS', route: { departure: options.departureEpochSeconds } };
+      return {
+        status: 'SUCCESS',
+        route: { departure: options.departureEpochSeconds },
+      };
     },
   };
   const clock = {
@@ -229,7 +245,11 @@ test('date-aware cache isolates departures, shares same-date searches and enforc
       await r.route(points, { departureEpochSeconds: departure });
       await r.route(points, { departureEpochSeconds: departure + 86400 });
       assert.equal(
-        (await r.route(points, { departureEpochSeconds: departure + 2 * 86400 })).status,
+        (
+          await r.route(points, {
+            departureEpochSeconds: departure + 2 * 86400,
+          })
+        ).status,
         'FAILURE',
       );
     },
@@ -240,7 +260,9 @@ test('date-aware cache isolates departures, shares same-date searches and enforc
   assert.ok(time >= REQUEST_GAP_MS);
 });
 test('traffic configuration fails before accessing cloud resources or sending requests', async () => {
-  const { withMatchingRouting } = require('../lib/functions/src/matchingRuntime');
+  const {
+    withMatchingRouting,
+  } = require('../lib/functions/src/matchingRuntime');
   const before = process.env.ROUTING_PROVIDER;
   process.env.ROUTING_PROVIDER = 'tomtom';
   try {
@@ -265,4 +287,88 @@ test('provider-confirmed coincident pickup points support zero driving time with
   assert.equal(result.status, 'SUCCESS');
   assert.equal(result.route.durationSeconds, 0);
   assert.equal(result.route.distanceMeters, 0);
+});
+
+test('arrival-based traffic suggestions send arriveAt alone and validate the returned departure and arrival', async () => {
+  const arrival = departure + 3600;
+  let query;
+  const adapter = createTomtomRouting({
+    apiKey: key,
+    timeoutMs: 100,
+    now: () => now,
+    fetchImplementation: async (url) => {
+      query = new URL(url).searchParams;
+      return Response.json(body(2700, arrival - 2700));
+    },
+  });
+  const result = await adapter.route(points, { arrivalEpochSeconds: arrival });
+  assert.equal(result.status, 'SUCCESS');
+  assert.equal(query.get('arriveAt'), new Date(arrival * 1000).toISOString());
+  assert.equal(query.has('departAt'), false);
+  assert.equal(result.route.estimate.departureEpochSeconds, arrival - 2700);
+  assert.equal(
+    parseTomtomRoute(
+      body(2700, arrival - 2701),
+      points,
+      undefined,
+      now,
+      arrival,
+    ).status,
+    'SUCCESS',
+  );
+  assert.equal(
+    parseTomtomRoute(
+      body(2700, arrival - 3000),
+      points,
+      undefined,
+      now,
+      arrival,
+    ).status,
+    'FAILURE',
+  );
+  assert.equal(
+    parseTomtomRoute(body(2700, now - 1000), points, undefined, now, now + 1700)
+      .status,
+    'FAILURE',
+  );
+  for (const options of [
+    { departureEpochSeconds: departure, arrivalEpochSeconds: arrival },
+    { arrivalEpochSeconds: NaN },
+    { arrivalEpochSeconds: Infinity },
+    { arrivalEpochSeconds: now - 1 },
+    { arrivalEpochSeconds: now + 32 * 86400 },
+  ])
+    assert.equal((await adapter.route(points, options)).status, 'FAILURE');
+});
+
+test('shared traffic cache distinguishes arrive-at plans from depart-at plans and other arrival times', async () => {
+  let calls = 0;
+  const cache = new Map();
+  const store = {
+    acquire: async () => true,
+    release: async () => {},
+    cached: async (key) => cache.get(key) ?? null,
+    cache: async (key, result) => {
+      cache.set(key, result);
+    },
+  };
+  await withDemoRouting(
+    store,
+    {
+      timeDependent: true,
+      route: async () => {
+        calls++;
+        return { status: 'SUCCESS', route: {} };
+      },
+    },
+    'arrival-cache',
+    async (router) => {
+      await router.route(points, { arrivalEpochSeconds: departure });
+      await router.route(points, { arrivalEpochSeconds: departure });
+      await router.route(points, { departureEpochSeconds: departure });
+      await router.route(points, { arrivalEpochSeconds: departure + 3600 });
+    },
+    { now: () => 0, sleep: async () => {} },
+  );
+  assert.equal(calls, 3);
 });
