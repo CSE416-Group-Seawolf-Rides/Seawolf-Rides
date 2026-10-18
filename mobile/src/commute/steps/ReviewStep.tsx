@@ -7,8 +7,10 @@ import { colors, spacing } from '../../theme';
 import {
   CommuteStepId,
   dayModeLabels,
+  formatTime,
   describeLeg,
   isScheduleValid,
+  hasMorningTimes,
   lotTitle,
   weekdays,
 } from '../commuteModel';
@@ -39,7 +41,9 @@ export function ReviewStep({
   onSave,
 }: ReviewStepProps) {
   const { draft, updateDraft } = useCommuteDraft();
-  const complete = Boolean(draft.startArea && draft.campusLot && isScheduleValid(draft.days));
+  const complete = Boolean(
+    draft.startArea && draft.campusLot && isScheduleValid(draft.days) && hasMorningTimes(draft.days),
+  );
 
   return (
     <FlowStep
@@ -86,6 +90,18 @@ export function ReviewStep({
               {weekdays.find((weekday) => weekday.value === schedule.day)?.short}
             </Text>
             <View style={styles.dayDetail}>
+              {schedule.arriveBy !== null && (
+                <Text style={styles.value}>
+                  {schedule.mode === 'drive'
+                    ? 'Leave at'
+                    : schedule.mode === 'ride'
+                      ? 'Ready for pickup from'
+                      : 'Ready to head out at'}{' '}
+                  {schedule.startAt != null
+                    ? formatTime(schedule.startAt)
+                    : '— add a morning start time'}
+                </Text>
+              )}
               <Text style={styles.value}>{describeLeg(schedule.arriveBy, 'arriveBy')}</Text>
               <Text style={styles.value}>{describeLeg(schedule.leaveAt, 'leaveAt')}</Text>
               {role === 'both' && <Text style={styles.meta}>{dayModeLabels[schedule.mode]}</Text>}

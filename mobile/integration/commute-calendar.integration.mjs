@@ -6,7 +6,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
-import { localDateAt, weekdayForDate } from '../src/mvp/settings.ts';
+import { localDateAt, weekdayForDate, localMinuteToEpoch } from '../src/mvp/settings.ts';
 import { toPrivacyArea } from '../src/commute/commuteModel.ts';
 import { shiftDate } from '../src/calendar/commuteCalendar.ts';
 if (
@@ -126,7 +126,7 @@ test(
           startArea: toPrivacyArea(point, 'Stony Brook area'),
           discoveryEnabled: true,
           campusLot: 'westSide',
-          days: [{ day: weekdayForDate(date), mode, arriveBy: 540, leaveAt: 1020 }],
+          days: [{ day: weekdayForDate(date), mode, startAt: 450, arriveBy: 540, leaveAt: 1020 }],
           ...(role === 'driver' ? { seats: 1 } : {}),
           updatedAt: new Date(),
         });
@@ -147,6 +147,14 @@ test(
       const match = search.matches[0];
       assert.equal(match.driverId, driver.uid);
       assert.equal(match.riderId, rider.uid);
+      assert.equal(match.plan.departure, localMinuteToEpoch(date, 450));
+      const riderDoc = db.doc(`users/${rider.uid}/commutes/primary`);
+      const savedDays = (await riderDoc.get()).data().days;
+      await riderDoc.update({ days: savedDays.map((d) => ({ ...d, startAt: 480 })) });
+      const tooEarly = await action(rider, 'findCommuteMatches', { localDate: date });
+      assert.equal(tooEarly.matches.length, 0);
+      assert.equal(tooEarly.incompatibleCount, 1);
+      await riderDoc.update({ days: savedDays });
       assert.equal('startPoint' in match, false);
       assert.equal('riderPickup' in match, false);
       assert.notDeepEqual(match.area.center, point);

@@ -250,6 +250,11 @@ export function CommuteCalendarSheet({
                         ? 'Changed for this date only'
                         : 'From your usual weekly commute'}
                   </Text>
+                  {day?.startAt != null && (
+                    <Text>
+                      {day.mode === 'drive' ? 'Leave at' : 'Ready from'} {formatTime(day.startAt)}
+                    </Text>
+                  )}
                   {day?.arriveBy != null && (
                     <Text>Arrive by {formatTime(day.arriveBy)} · New York time</Text>
                   )}

@@ -23,6 +23,8 @@ export interface PrivacyArea {
 export interface DaySchedule {
   day: Weekday;
   arriveBy: number | null;
+  /** Driver departure / rider ready-from time, in local minutes. Absent on legacy commutes. */
+  startAt?: number | null;
   leaveAt: number | null;
   mode: DayMode;
 }
@@ -52,6 +54,7 @@ const MILES_PER_DEGREE_LATITUDE = 69;
 const EARTH_RADIUS_MILES = 3958.8;
 export const METERS_PER_MILE = 1609.344;
 
+export const DEFAULT_START_AT = 8 * 60;
 export const DEFAULT_ARRIVE_BY = 9 * 60;
 export const DEFAULT_LEAVE_AT = 17 * 60;
 export const MIN_SEATS = 1;
@@ -163,6 +166,7 @@ export function toggleDay(days: DaySchedule[], day: Weekday, role: CommuteRole):
     ...days,
     {
       day,
+      ...(template?.startAt !== undefined ? { startAt: template.startAt } : {}),
       arriveBy: template ? template.arriveBy : DEFAULT_ARRIVE_BY,
       leaveAt: template ? template.leaveAt : DEFAULT_LEAVE_AT,
       mode: defaultDayMode(role),
@@ -185,9 +189,31 @@ export function setDayMode(days: DaySchedule[], day: Weekday, mode: DayMode): Da
   return days.map((schedule) => (schedule.day === day ? { ...schedule, mode } : schedule));
 }
 
+export function setStartTime(
+  days: DaySchedule[],
+  target: Weekday | 'all',
+  minutes: number | null,
+): DaySchedule[] {
+  return days.map((day) =>
+    target === 'all' || day.day === target ? { ...day, startAt: minutes } : day,
+  );
+}
+export function hasMorningTimes(days: DaySchedule[]): boolean {
+  return days.every(
+    (day) =>
+      day.arriveBy === null ||
+      (day.startAt != null &&
+        Number.isInteger(day.startAt) &&
+        day.startAt >= 0 &&
+        day.startAt < day.arriveBy),
+  );
+}
 export function hasSameTimes(days: DaySchedule[]): boolean {
   return days.every(
-    (schedule) => schedule.arriveBy === days[0].arriveBy && schedule.leaveAt === days[0].leaveAt,
+    (schedule) =>
+      schedule.arriveBy === days[0].arriveBy &&
+      schedule.leaveAt === days[0].leaveAt &&
+      (schedule.startAt ?? null) === (days[0].startAt ?? null),
   );
 }
 
@@ -201,6 +227,15 @@ export function getDayError(schedule: DaySchedule): string | null {
     schedule.leaveAt <= schedule.arriveBy
   ) {
     return 'Leave time should be after you arrive.';
+  }
+  if (
+    schedule.startAt != null &&
+    (!Number.isInteger(schedule.startAt) ||
+      schedule.startAt < 0 ||
+      schedule.startAt >= 1440 ||
+      (schedule.arriveBy !== null && schedule.startAt >= schedule.arriveBy))
+  ) {
+    return 'Your morning start should be before your campus arrival deadline.';
   }
   return null;
 }

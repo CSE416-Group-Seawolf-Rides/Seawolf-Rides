@@ -26,6 +26,7 @@ interface MatchingDemoScreenProps {
 }
 
 const reasonExplanations: Record<ReasonCode, string> = {
+  MISSING_START_TIME: 'A saved driver departure or rider ready-from time is missing.',
   SELF_MATCH: 'A person cannot be matched with themself.',
   OCCURRENCE_MISMATCH: 'The driver and rider are not requesting the same dated trip.',
   SKIPPED_OCCURRENCE: 'The driver or rider has skipped this occurrence.',

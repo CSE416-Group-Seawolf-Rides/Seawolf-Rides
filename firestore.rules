@@ -45,6 +45,18 @@ service cloud.firestore {
         && request.resource.data.startArea.label.size() <= 120;
     }
 
+    function validLocalTime(t) { return t == null || (t is int && t >= 0 && t < 1440); }
+    function validDay(d) {
+      return d is map && d.keys().hasAll(['day', 'mode', 'arriveBy', 'leaveAt'])
+        && d.keys().hasOnly(['day', 'mode', 'arriveBy', 'leaveAt', 'startAt'])
+        && d.day in ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        && d.mode in ['drive', 'ride', 'either']
+        && validLocalTime(d.arriveBy) && validLocalTime(d.leaveAt)
+        && (d.arriveBy != null || d.leaveAt != null)
+        && (!d.keys().hasAny(['startAt']) || (validLocalTime(d.startAt)
+          && (d.startAt == null || d.arriveBy == null || d.startAt < d.arriveBy)));
+    }
+
     function validCommute(userId) {
       return request.resource.data.keys().hasOnly([
           'schemaVersion',
@@ -80,6 +92,13 @@ service cloud.firestore {
         && request.resource.data.days is list
         && request.resource.data.days.size() > 0
         && request.resource.data.days.size() <= 7
+        && validDay(request.resource.data.days[0])
+        && (request.resource.data.days.size() < 2 || validDay(request.resource.data.days[1]))
+        && (request.resource.data.days.size() < 3 || validDay(request.resource.data.days[2]))
+        && (request.resource.data.days.size() < 4 || validDay(request.resource.data.days[3]))
+        && (request.resource.data.days.size() < 5 || validDay(request.resource.data.days[4]))
+        && (request.resource.data.days.size() < 6 || validDay(request.resource.data.days[5]))
+        && (request.resource.data.days.size() < 7 || validDay(request.resource.data.days[6]))
         && (!request.resource.data.keys().hasAny(['seats'])
           || (request.resource.data.seats is int
             && request.resource.data.seats >= 1

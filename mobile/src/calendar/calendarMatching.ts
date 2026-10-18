@@ -42,8 +42,9 @@ function routeEstimate(result: RoutingResult, index?: number): StaticRouteEstima
     : { status: 'MISSING' };
 }
 /** Proposed timing only: no claim that participants are ready before they agree.
- * Midnight is a date boundary, not a user availability assertion. Latest feasible
- * departure is preferred. No user detour/walking preferences are invented.
+ * The saved driver departure is fixed, while the rider can be picked up from
+ * their saved ready-from time until their arrival deadline. No user detour/walking
+ * preferences are invented.
  */
 export async function evaluateCalendarPair(
   driver: CalendarParticipant,
@@ -68,10 +69,14 @@ export async function evaluateCalendarPair(
     return { status: 'UNKNOWN', reasonCodes: ['LOCATION_UNCONFIRMED'] };
   if (driver.day.arriveBy === null || rider.day.arriveBy === null)
     return { status: 'INFEASIBLE', reasonCodes: ['SKIPPED_OCCURRENCE'] };
+  if (driver.day.startAt == null || rider.day.startAt == null)
+    return { status: 'UNKNOWN', reasonCodes: ['MISSING_START_TIME'] };
   const earliest = Math.max(now + 1, localMinuteToEpoch(date, 0));
+  const driverStart = localMinuteToEpoch(date, driver.day.startAt);
+  const riderStart = Math.max(earliest, localMinuteToEpoch(date, rider.day.startAt));
   const driverDeadline = localMinuteToEpoch(date, driver.day.arriveBy);
   const riderDeadline = localMinuteToEpoch(date, rider.day.arriveBy);
-  if (earliest > Math.min(driverDeadline, riderDeadline))
+  if (driverStart < earliest || driverStart >= driverDeadline || riderStart >= riderDeadline)
     return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
   const safeRoute = async (
     points: Parameters<RoutingAdapter['route']>[0],
@@ -117,16 +122,16 @@ export async function evaluateCalendarPair(
     driver: {
       userId: driver.uid,
       occurrence: { localDate: date, direction: 'TO_CAMPUS' },
-      departureWindow: { earliest, latest: driverDeadline },
+      departureWindow: { earliest: driverStart, latest: driverStart },
       campusArrivalWindow: { earliest, latest: driverDeadline },
-      preferredDeparture: driverDeadline,
+      preferredDeparture: driverStart,
       seatsRemaining: d.seats ?? 0,
       maxExtraDurationSeconds: dateBound,
     },
     rider: {
       userId: rider.uid,
       occurrence: { localDate: date, direction: 'TO_CAMPUS' },
-      pickupWindow: { earliest, latest: riderDeadline },
+      pickupWindow: { earliest: riderStart, latest: riderDeadline },
       destinationArrivalWindow: { earliest, latest: riderDeadline },
       seatsRequested: 1,
       accessWalkSeconds: 0,

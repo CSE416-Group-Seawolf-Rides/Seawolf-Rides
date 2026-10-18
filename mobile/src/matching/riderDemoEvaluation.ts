@@ -362,6 +362,7 @@ export const riderDemoReasonExplanations: Record<
   InfeasibleReasonCode | UnknownReasonCode,
   string
 > = {
+  MISSING_START_TIME: 'A saved morning start time is missing.',
   SELF_MATCH: 'The driver and rider are the same person.',
   OCCURRENCE_MISMATCH: 'The dated trip or travel direction does not match.',
   SKIPPED_OCCURRENCE: 'The driver or rider skipped this dated trip.',

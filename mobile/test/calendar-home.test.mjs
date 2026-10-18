@@ -82,3 +82,26 @@ test('next-trip card chooses a real accepted or ongoing trip, never a pending, d
   assert.equal(nextAcceptedRide(requests, 210).id, 'later');
   assert.equal(nextAcceptedRide(requests, 500), undefined);
 });
+
+test('an unmatched saved commute still supplies Your Next Trip, including date overrides', async () => {
+  const { nextScheduledCommute } = await import('../src/calendar/calendarHome.ts');
+  const { localMinuteToEpoch } = await import('../src/mvp/settings.ts');
+  const timed = { ...commute, days: commute.days.map((d) => ({ ...d, startAt: 450 })) };
+  const now = localMinuteToEpoch('2026-10-18', 600);
+  assert.equal(nextScheduledCommute(timed, 'both', '2026-10-18', {}, now).date, '2026-10-19');
+  const changed = nextScheduledCommute(
+    timed,
+    'both',
+    '2026-10-18',
+    { '2026-10-19': { mode: 'off' } },
+    now,
+  );
+  assert.equal(changed.date, '2026-10-20');
+  assert.equal(changed.day.mode, 'either');
+  // An already-missed driver departure must not be presented as a future trip.
+  assert.equal(
+    nextScheduledCommute(timed, 'both', '2026-10-19', {}, localMinuteToEpoch('2026-10-19', 480))
+      .date,
+    '2026-10-20',
+  );
+});

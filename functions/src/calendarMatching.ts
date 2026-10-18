@@ -151,7 +151,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
     if (!own)
       throw new HttpsError(
         'failed-precondition',
-        'Save your commute, confirm your private starting point, enable matching and select an inbound day.',
+        'Save your commute, confirm your private starting point, enable matching and set the morning start time for an inbound day.',
       );
     if (own.committed)
       throw new HttpsError(
@@ -281,7 +281,7 @@ export async function prepareCalendarPair(
     throw new HttpsError(
       'failed-precondition',
       evaluated.status === 'UNKNOWN'
-        ? 'Routing is unavailable. Retry later.'
+        ? 'Commute timing or routing could not be confirmed. Update the commute or retry later.'
         : 'This trip is no longer feasible.',
     );
   if ((await Promise.all([eligible(riderId), eligible(driverId)])).some((ok) => !ok))

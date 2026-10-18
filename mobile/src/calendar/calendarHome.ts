@@ -2,7 +2,7 @@ import type { CommuteSchedule, DayMode, Weekday } from '../commute/commuteModel'
 import type { CommuteRole } from '../onboarding/onboardingModel';
 import type { RideRequest } from '../mvp/rideRequestModel';
 import type { DayOverview } from '../rides/rideModel';
-import { weekdayForDate } from '../mvp/settings';
+import { localMinuteToEpoch, weekdayForDate } from '../mvp/settings';
 import { calendarDay, shiftDate, type DayOverride } from './commuteCalendar';
 
 export function calendarWeek(
@@ -42,4 +42,28 @@ export function nextAcceptedRide(requests: RideRequest[], nowSeconds: number) {
     .sort(
       (a, b) => a.plan.departure - b.plan.departure || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     )[0];
+}
+
+/** Next saved inbound occurrence, even if it has no request or accepted partner. */
+export function nextScheduledCommute(
+  commute: CommuteSchedule,
+  role: CommuteRole,
+  today: string,
+  overrides: Record<string, DayOverride>,
+  nowSeconds: number,
+) {
+  for (let offset = 0; offset <= 30; offset++) {
+    const date = shiftDate(today, offset);
+    const day = calendarDay(commute, role, date, overrides[date]);
+    if (!day || day.arriveBy === null) continue;
+    if (localMinuteToEpoch(date, day.arriveBy) <= nowSeconds) continue;
+    if (
+      day.mode === 'drive' &&
+      day.startAt != null &&
+      localMinuteToEpoch(date, day.startAt) <= nowSeconds
+    )
+      continue;
+    return { date, day };
+  }
+  return null;
 }

@@ -59,7 +59,7 @@ function parseDays(value: unknown): DaySchedule[] {
     if (!isRecord(candidate)) {
       throw new Error('A persisted commute day is malformed.');
     }
-    const { day, mode, arriveBy, leaveAt } = candidate;
+    const { day, mode, arriveBy, leaveAt, startAt } = candidate;
     if (
       typeof day !== 'string' ||
       !weekdays.has(day as Weekday) ||
@@ -68,12 +68,24 @@ function parseDays(value: unknown): DaySchedule[] {
       !dayModes.has(mode as DayMode) ||
       !isTime(arriveBy) ||
       !isTime(leaveAt) ||
+      (startAt !== undefined &&
+        (!isTime(startAt) ||
+          (startAt !== null &&
+            arriveBy !== null &&
+            typeof arriveBy === 'number' &&
+            startAt >= arriveBy))) ||
       (arriveBy === null && leaveAt === null)
     ) {
       throw new Error('A persisted commute day contains invalid values.');
     }
     seen.add(day as Weekday);
-    return { day: day as Weekday, mode: mode as DayMode, arriveBy, leaveAt };
+    return {
+      day: day as Weekday,
+      mode: mode as DayMode,
+      arriveBy,
+      leaveAt,
+      ...(startAt === undefined ? {} : { startAt: startAt as number | null }),
+    };
   });
 
   return days;

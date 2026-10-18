@@ -4,17 +4,17 @@ This branch builds on merged PRs #12–#14. It keeps the demo on `demo-seawolf-r
 
 ## Product behavior
 
-- Home keeps the next accepted trip, a compact “This week” strip, requests needing a decision and real-account recommendations for the selected date. “Calendar View” opens the full calendar in a bottom sheet; the large route-summary card is removed. Select a date, optionally stage a role change and tap “Save this date,” then “View this day” to return to Home. Closing or choosing another date discards unsaved role changes. Map is a native map again, showing the owner's private starting point, the approximate area others see, the campus destination and the next accepted partner's point.
+- Home always shows “Your Next Trip”: the next accepted trip, otherwise the next saved inbound commute with “Find drivers” / “Find passengers” and an explicit unconfirmed status. An account without a saved commute gets a setup action. Home also keeps a compact “This week” strip, requests needing a decision and real-account recommendations for the selected date. “Calendar View” opens the full calendar in a bottom sheet; the large route-summary card is removed. Select a date, optionally stage a role change and tap “Save this date,” then “View this day” to return to Home. Closing or choosing another date discards unsaved role changes. Map is a native map again, showing the owner's private starting point, the approximate area others see, the campus destination and the next accepted partner's point.
 - Driver-only and rider-only roles fill their selected weekly commute days. For a `both` profile, each weekday keeps its saved Driving / Riding / Either choice. Unselected days are off.
-- A date exception changes only that date. “Use weekly default” removes the exception. An added date uses the first saved day's arrival/return times, shown before editing. Weekly edits affect future defaults; explicit date exceptions remain explicit.
+- A date exception changes only that date. “Use weekly default” removes the exception. An added date uses the first saved day's morning start/arrival/return times, shown before editing. Weekly edits affect future defaults; explicit date exceptions remain explicit.
 - Existing accepted rides retain their agreed role, timing and pickup snapshot. Calendar changes on an accepted date are rejected atomically. Editing the weekly template does not reschedule an accepted ride.
 - Exact locations selected during setup are now retained privately. Setup shows the owner's exact pin for confirmation and a separate two-mile circle with an explanation of what other users see. A public meeting point can be selected instead of a home address.
-- Legacy approximate-only commutes still load; users reconfirm their location and save the commute before using the new matching path. Nothing guesses an exact point from the old circle.
+- Legacy commutes still load; users reconfirm any missing exact location and morning start time in the usual commute setup before matching. Nothing guesses an exact point or silently assigns a start time.
 - Review includes a saved discovery switch and explains that the schedule is reused until changed, and accepted partners receive the exact pickup points. The routing provider receives exact coordinates to compute road estimates, before participant acceptance.
 
 ## Persistence and privacy
 
-`users/{uid}/commutes/primary` has optional `startPoint: {latitude, longitude}` and `discoveryEnabled: boolean`, alongside the existing public-presentation `startArea`. The entire document remains owner-only. Exact points never enter public profiles.
+`users/{uid}/commutes/primary` has optional `startPoint: {latitude, longitude}` and `discoveryEnabled: boolean`, alongside the existing public-presentation `startArea`. Each weekly day optionally stores `startAt` in local minutes after midnight, before `arriveBy`. Absence remains readable for legacy data but produces UNKNOWN / `MISSING_START_TIME` during calendar matching. New onboarding and commute editing require it for inbound days. The entire document remains owner-only. Exact points never enter public profiles.
 
 `users/{uid}/commuteDays/{YYYY-MM-DD}` holds a date-only role exception. Owners can read their exceptions; the emulator-only `setCommuteDay` action performs writes and checks `_rideCommitments` in a transaction. This prevents racing date changes with acceptance. Roles are `drive`, `ride`, `either`, `off`; `default` deletes the override.
 
@@ -28,13 +28,13 @@ Only when acceptance succeeds does the transaction create `ridePickups/{requestI
 
 The new path reuses `evaluatePair()`; it does not replace the canonical feasibility evaluator. The old explicit-setup backend API remains for existing requests and regression tests. Its unused mobile form and client helpers have been removed; Home and Map use the saved commute calendar and map instead.
 
-- Uses the chosen date, saved per-day role, campus arrival deadline, available passenger seats, private points, and discovery preference.
+- Uses the chosen date, saved per-day role, morning start time, campus arrival deadline, available passenger seats, private points, and discovery preference.
 - Compares driver → campus with driver → rider → campus, with two minutes for boarding. Routing anchors must snap within 75 m.
-- Suggests the latest feasible departure that meets both campus arrival deadlines. The date boundary and current time bound the calculation; they are **not** assertions that someone is ready that early. Results are potential matches, pending explicit agreement to the proposed timing.
-- Does not ask for earliest departure, pickup windows, walking values or a detour preference. The vehicle pickup/drop-off is the agreed destination for this scoped trip; walking beyond those points is not modeled. One rider requests one seat.
+- Uses the driver’s saved “Leave your starting point at” as a fixed departure. The rider’s “Ready for pickup from” is the earliest pickup; routing determines the proposed pickup and arrival. Both campus arrival deadlines must be met. For Either days, “Ready to head out at” is interpreted according to the evaluated role. Results are potential matches, pending explicit agreement to the proposed timing.
+- Does not add a separate matching form, extra pickup windows, walking values or a detour preference. The vehicle pickup/drop-off is the agreed destination for this scoped trip; walking beyond those points is not modeled. One rider requests one seat.
 - The evaluator requires finite caps. Calendar proposals use an explicit one-day domain bound, not a claimed user preference. Actual added driving minutes are displayed for the driver's decision.
 - Ranks by least added driving seconds, then stable driver/rider IDs. No compatibility percentage.
-- Missing routing is UNKNOWN, not a false incompatibility. Matching and ride creation/acceptance use PR #13's shared routing gate/cache. No direct mobile routing or pre-acceptance partner geometry is introduced.
+- Missing start times or routing are UNKNOWN, not a false incompatibility. Matching and ride creation/acceptance use PR #13's shared routing gate/cache. No direct mobile routing or pre-acceptance partner geometry is introduced.
 - Public-demo discovery remains bounded to two candidate accounts and two proposed driver/rider arrangements (four uncached routes). Either/Either pairs can appear in both roles; each arrangement consumes one evaluation slot. Skipped accounts or arrangements are labeled as incomplete discovery. Either days can discover drivers and passengers without assigning a role until acceptance.
 - Supported dates for edits/searches are today through 30 days ahead; the calendar can display other months. Inbound trips only. Different campus drop-offs are not matched.
 
@@ -58,7 +58,7 @@ npm ci
 node scripts/start-local-demo.mjs "$(ipconfig getifaddr en0)"
 ```
 
-1. On both clients save a commute with the same campus drop-off and an arrival deadline of 09:00 on a future Monday. Use precise nearby public station points for a controlled demo. Driver offers at least one seat. Enable matching on review.
+1. On both clients save a commute with the same campus drop-off and an arrival deadline of 09:00 on a future Monday (for example October 26, 2026). Set the driver’s departure to 07:30 and the rider’s ready-from time to 07:30; keep actual road travel within the arrival deadline. Use precise nearby public station points for a controlled demo. Driver offers at least one seat. Enable matching on review.
 2. Home shows the recurring week and a “Calendar View” button. Open the sheet, choose the future Monday, select a role and tap “Save this date.” Select “Use weekly default” and save to reset it; verify the following Monday is unaffected. “View this day” returns to Home with that date selected. Close without saving to check that tentative edits are discarded.
 3. Rider finds drivers, reviews the proposed pickup/arrival/added driving time and requests the trip. Driver can independently find passengers and review incoming requests in Rides.
 4. Before acceptance neither participant can see the other's exact point. The driver reviews the proposed times and accepts or declines. Acceptance shows the shared ride on both clients and releases pickup details. Date edits for that accepted trip are disabled.

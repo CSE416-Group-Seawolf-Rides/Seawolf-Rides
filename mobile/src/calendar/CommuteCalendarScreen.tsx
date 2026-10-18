@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '../auth/SessionProvider';
@@ -9,7 +9,7 @@ import { AppButton } from '../components/AppButton';
 import { WeekStrip } from '../rides/components/WeekStrip';
 import { calendarDay, shiftDate } from './commuteCalendar';
 import { useCalendarOverrides, searchCalendar } from './calendarClient';
-import { calendarWeek, nextAcceptedRide } from './calendarHome';
+import { calendarWeek, nextAcceptedRide, nextScheduledCommute } from './calendarHome';
 import { CommuteCalendarSheet } from './CommuteCalendarSheet';
 import { dayModeLabels, formatTime, type Weekday } from '../commute/commuteModel';
 import { localDateAt, weekdayForDate } from '../mvp/settings';
@@ -52,6 +52,10 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
       : null;
   const accepted = requests.items.find((r) => r.localDate === selected && r.status === 'ACCEPTED');
   const nextTrip = nextAcceptedRide(requests.items, now.getTime() / 1000);
+  const nextScheduled =
+    commute && profile
+      ? nextScheduledCommute(commute, profile.role, today, overrides.days, now.getTime() / 1000)
+      : null;
   const needsDecision = requests.items.filter(
     (r) =>
       r.status === 'PENDING' && r.driverId === user?.id && r.plan.departure > now.getTime() / 1000,
@@ -72,17 +76,15 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     setMessage(null);
     setCalendarOpen(false);
   };
-  useEffect(() => {
-    generation.current++;
-  }, [basis]);
-  const search = async () => {
+  const search = async (date = selected) => {
+    if (date !== selected) chooseDate(date);
     const requestGeneration = ++generation.current;
     setBusy(true);
     setMessage(null);
     setResult(null);
-    setResultKey(basis);
+    setResultKey(JSON.stringify([date, commute, overrides.days]));
     try {
-      const next = await searchCalendar(selected);
+      const next = await searchCalendar(date);
       if (generation.current === requestGeneration) setResult(next);
     } catch (error) {
       if (generation.current === requestGeneration)
@@ -118,18 +120,24 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     >
       {!commute ? (
         <Card>
+          <Text style={styles.heading}>Your Next Trip</Text>
+          <Text style={styles.muted}>No trip planned yet.</Text>
           <Text>Save your usual commute to see your week and find matches.</Text>
           <AppButton label="Set up my commute" onPress={() => router.push('/commute-setup')} />
         </Card>
       ) : (
         <>
-          {nextTrip && (
+          {nextTrip ? (
             <Card style={styles.nextTrip}>
               <Text style={styles.nextEyebrow}>
-                YOUR NEXT {nextTrip.driverId === user?.id ? 'DRIVE' : 'RIDE'} ·{' '}
+                YOUR NEXT TRIP ·{' '}
                 {dateLabel(nextTrip.localDate)}
               </Text>
-              <Text style={styles.nextHeadline}>{time(nextTrip.plan.pickup)} pickup</Text>
+              <Text style={styles.nextHeadline}>
+                {nextTrip.driverId === user?.id
+                  ? `${time(nextTrip.plan.departure)} departure`
+                  : `${time(nextTrip.plan.pickup)} pickup`}
+              </Text>
               <Text style={styles.nextDetail}>
                 With {nextTrip.driverId === user?.id ? nextTrip.riderName : nextTrip.driverName} ·{' '}
                 {nextTrip.campusLabel}
@@ -142,6 +150,73 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                 variant="secondary"
                 onPress={() => router.navigate('/rides')}
               />
+            </Card>
+          ) : (
+            <Card>
+              <Text style={styles.heading}>Your Next Trip</Text>
+              {nextScheduled ? (
+                <>
+                  <Text style={styles.heading}>
+                    {dateLabel(nextScheduled.date)} · {dayModeLabels[nextScheduled.day.mode]}
+                  </Text>
+                  <Text>
+                    {nextScheduled.day.startAt != null
+                      ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
+                      : ''}
+                    Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New York time
+                  </Text>
+                  <Text style={styles.muted}>
+                    {nextScheduled.day.mode === 'drive'
+                      ? 'No passenger confirmed yet.'
+                      : nextScheduled.day.mode === 'ride'
+                        ? 'No driver confirmed yet.'
+                        : 'No ride confirmed yet. You can drive or ride.'}
+                  </Text>
+                  {nextScheduled.day.startAt == null && (
+                    <Text style={styles.muted}>
+                      Add your morning start time in your usual commute before matching.
+                    </Text>
+                  )}
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={busy || !requests.loaded || !overrides.loaded}
+                    style={styles.calendarButton}
+                    onPress={() => {
+                      if (
+                        !commute.startPoint ||
+                        !commute.discoveryEnabled ||
+                        nextScheduled.day.startAt == null
+                      ) {
+                        router.push('/commute-setup');
+                        return;
+                      }
+                      void search(nextScheduled.date);
+                    }}
+                  >
+                    <Text style={styles.calendarText}>
+                      {busy
+                        ? 'Finding matches…'
+                        : nextScheduled.day.mode === 'drive'
+                          ? 'Find passengers'
+                          : nextScheduled.day.mode === 'ride'
+                            ? 'Find drivers'
+                            : 'Find drivers or passengers'}
+                    </Text>
+                    <Ionicons name="arrow-forward" size={16} color={colors.accent} />
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.muted}>
+                    No trip to campus is planned in the next 30 days.
+                  </Text>
+                  <AppButton
+                    label="Choose a day"
+                    variant="secondary"
+                    onPress={() => setCalendarOpen(true)}
+                  />
+                </>
+              )}
             </Card>
           )}
           <Card>
@@ -268,12 +343,14 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                         onPress={() => setCalendarOpen(true)}
                       />
                     </>
-                  ) : !commute.startPoint || !commute.discoveryEnabled ? (
+                  ) : !commute.startPoint || !commute.discoveryEnabled || day.startAt == null ? (
                     <>
                       <Text style={styles.muted}>
                         {!commute.startPoint
                           ? 'Confirm your private starting point to get road estimates.'
-                          : 'Matching is turned off in your commute settings.'}
+                          : day.startAt == null
+                            ? 'Add your morning start time in your usual commute before matching.'
+                            : 'Matching is turned off in your commute settings.'}
                       </Text>
                       <AppButton
                         label="Review my commute"
@@ -403,7 +480,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
           )}
           {result.unknownCount > 0 && (
             <Text>
-              Road estimates or confirmed locations were unavailable for {result.unknownCount}{' '}
+              Commute timing, locations or road estimates were incomplete for {result.unknownCount}{' '}
               candidate(s). Retry later.
             </Text>
           )}

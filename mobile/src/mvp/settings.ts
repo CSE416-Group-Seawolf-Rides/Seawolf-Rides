@@ -84,7 +84,13 @@ export function commuteKey(commute: CommuteSchedule): string {
     },
     campusLot: commute.campusLot,
     days: commute.days
-      .map(({ day, mode, arriveBy, leaveAt }) => ({ day, mode, arriveBy, leaveAt }))
+      .map(({ day, mode, arriveBy, leaveAt, startAt }) => ({
+        day,
+        mode,
+        arriveBy,
+        leaveAt,
+        ...(startAt === undefined ? {} : { startAt }),
+      }))
       .sort((a, b) => WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day)),
     seats: commute.seats ?? null,
   });

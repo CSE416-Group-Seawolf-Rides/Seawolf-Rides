@@ -17,9 +17,9 @@ const commute = {
   campusLot: 'westSide',
   seats: 2,
   days: [
-    { day: 'mon', mode: 'drive', arriveBy: 540, leaveAt: 1020 },
-    { day: 'tue', mode: 'either', arriveBy: 540, leaveAt: 1020 },
-    { day: 'wed', mode: 'drive', arriveBy: 540, leaveAt: 1020 },
+    { day: 'mon', mode: 'drive', startAt: 450, arriveBy: 540, leaveAt: 1020 },
+    { day: 'tue', mode: 'either', startAt: 450, arriveBy: 540, leaveAt: 1020 },
+    { day: 'wed', mode: 'drive', startAt: 450, arriveBy: 540, leaveAt: 1020 },
   ],
 };
 const date = '2026-10-19';
@@ -79,11 +79,11 @@ test('exact point and discovery preference survive edit/save; old approximate-on
     }),
   );
 });
-test('proposes latest feasible times from saved arrival deadlines without extra user inputs', async () => {
+test('uses the saved driver departure and rider ready-from time', async () => {
   const result = await evaluateCalendarPair(driver, rider, date, router, now);
   assert.equal(result.status, 'FEASIBLE');
-  assert.equal(result.plan.vehicleCampusArrival, localMinuteToEpoch(date, 540));
-  assert.equal(result.plan.departure, localMinuteToEpoch(date, 540) - 2220);
+  assert.equal(result.plan.vehicleCampusArrival, localMinuteToEpoch(date, 450) + 2220);
+  assert.equal(result.plan.departure, localMinuteToEpoch(date, 450));
   assert.equal(result.plan.pickup, result.plan.departure + 600);
   assert.equal(result.metrics.driverExtraDurationSeconds, 420);
   assert.equal(
@@ -128,4 +128,45 @@ test('missing exact locations, wrong roles, no seats and nonfinite estimates nev
     },
   };
   assert.equal((await evaluateCalendarPair(driver, rider, date, malformed, now)).status, 'UNKNOWN');
+});
+
+test('saved morning timing survives persistence and blocks pickups before rider readiness', async () => {
+  const { setStartTime, toggleDay, hasMorningTimes, hasSameTimes } =
+    await import('../src/commute/commuteModel.ts');
+  let days = toggleDay([], 'mon', 'driver');
+  assert.equal(hasMorningTimes(days), false);
+  days = setStartTime(days, 'all', 450);
+  days = toggleDay(days, 'tue', 'driver');
+  assert.equal(days[1].startAt, 450);
+  assert.equal(hasMorningTimes(days), true);
+  days = setStartTime(days, 'tue', 480);
+  assert.equal(hasSameTimes(days), false);
+  const parsed = parseCommuteDocument(toCommuteDocument('d', { ...commute, days }), 'd');
+  assert.equal(parsed.days[1].startAt, 480);
+  assert.throws(() =>
+    toCommuteDocument('d', { ...commute, days: [{ ...commute.days[0], startAt: Infinity }] }),
+  );
+  assert.throws(() =>
+    toCommuteDocument('d', { ...commute, days: [{ ...commute.days[0], startAt: 600 }] }),
+  );
+  const notReady = await evaluateCalendarPair(
+    driver,
+    { ...rider, day: { ...rider.day, startAt: 480 } },
+    date,
+    router,
+    now,
+  );
+  assert.equal(notReady.status, 'INFEASIBLE');
+  assert.equal(
+    (
+      await evaluateCalendarPair(
+        { ...driver, day: { ...driver.day, startAt: undefined } },
+        rider,
+        date,
+        router,
+        now,
+      )
+    ).status,
+    'UNKNOWN',
+  );
 });

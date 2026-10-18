@@ -114,6 +114,7 @@ export type InfeasibleReasonCode =
   | 'NO_FEASIBLE_DEPARTURE';
 
 export type UnknownReasonCode =
+  | 'MISSING_START_TIME'
   | 'UNSUPPORTED_DIRECTION'
   | 'LOCATION_UNCONFIRMED'
   | 'MISSING_TRAVEL_ESTIMATE'

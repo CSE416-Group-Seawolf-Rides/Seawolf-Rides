@@ -118,6 +118,18 @@ test('commutes are owner-only and must keep the matching owner id', async () => 
   await assertFails(setDoc(ownerCommute, { ...commute, ownerId: 'seawolf' }));
 });
 
+test('saved morning times are validated while legacy commutes remain readable', async () => {
+  const owner = authenticatedUser('wolfie');
+  const ref = doc(owner, 'users/wolfie/commutes/primary');
+  const withStart = (startAt) => ({ ...commute, days: [{ ...commute.days[0], startAt }] });
+  await assertSucceeds(setDoc(ref, commute));
+  await assertSucceeds(setDoc(ref, withStart(450)));
+  assert.equal((await getDoc(ref)).data().days[0].startAt, 450);
+  for (const invalid of [-1, 1440, 450.5, Infinity, NaN, 540, 600, '450']) {
+    await assertFails(setDoc(ref, withStart(invalid)));
+  }
+});
+
 test('the persistence repository round-trips an owner profile and primary commute', async () => {
   const owner = authenticatedUser('wolfie');
   const domainProfile = { firstName: 'Wolfie', role: 'both' };
