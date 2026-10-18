@@ -23,6 +23,7 @@ import { DemoBusyError } from './demoRouting';
 
 import { prepareCalendarPair } from './calendarMatching';
 import { requestInitiator, requestRecipient } from '../../mobile/src/mvp/rideRequestModel';
+import { isValidRouteCoordinate } from '../../mobile/src/routing/types';
 import { vehicleIsComplete } from '../../mobile/src/vehicle/vehicleModel';
 
 const digest = (parts: string[]) =>
@@ -550,4 +551,32 @@ export const cancelRideRequest = onCall(options, async (call) => {
   } catch (error) {
     mapped(error);
   }
+});
+
+/** Read-only preview: participants and points come from the accepted server record. */
+export const previewAcceptedRide = onCall(options, async (call) => {
+  try {
+    const uid = await authenticated(call.auth?.uid);
+    if (!record(call.data) || Object.keys(call.data).some((key) => key !== 'requestId') ||
+        typeof call.data.requestId !== 'string' || !/^[a-f0-9]{64}$/.test(call.data.requestId))
+      throw new HttpsError('invalid-argument', 'Supply an accepted trip ID.');
+    const db = getFirestore();
+    const snapshot = await db.doc(`rideRequests/${call.data.requestId}`).get();
+    const ride = snapshot.data() as RideRequest | undefined;
+    if (!ride || (uid !== ride.driverId && uid !== ride.riderId))
+      throw new HttpsError('permission-denied', 'This trip is not available to your account.');
+    if (ride.status !== 'ACCEPTED' || ride.source !== 'CALENDAR')
+      throw new HttpsError('failed-precondition', 'Exact routes are shared only for accepted calendar trips.');
+    const pickup = (await db.doc(`ridePickups/${snapshot.id}`).get()).data();
+    const campus = pickup?.campus ?? CAMPUS_POINTS.find((point) => point.label === ride.campusLabel)?.coordinate;
+    if (!isValidRouteCoordinate(pickup?.driverStart) || !isValidRouteCoordinate(pickup?.riderPickup) ||
+        !isValidRouteCoordinate(campus))
+      throw new HttpsError('failed-precondition', 'The confirmed route points are unavailable.');
+    const points = [pickup.driverStart, pickup.riderPickup, campus];
+    // Preview only: never modifies agreed timing, commitments, or acceptance state.
+    return await withMatchingRouting(
+      (routing) => routing.route(points, { departureEpochSeconds: Math.max(now() + 60, ride.plan.departure) }),
+      true,
+    );
+  } catch (error) { mapped(error); }
 });

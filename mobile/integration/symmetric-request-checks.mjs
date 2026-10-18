@@ -30,7 +30,7 @@ function observed(account, id, status, attemptId) {
 }
 export async function verifySymmetricRequests(
   t,
-  { client, action, db, date, start, pickup, outsider },
+  { client, action, db, date, start, pickup, outsider, calls, setProviderFails },
 ) {
   const driver = await client('symmetric-driver', 'driver', start, date);
   const rider = await client('symmetric-rider', 'rider', pickup, date);
@@ -120,6 +120,9 @@ export async function verifySymmetricRequests(
         const input = await inputFor(date, 'symmetric-driver-proposal-2');
         const value = await action(driver, 'createRideRequest', input);
         assert.equal(value.status, 'PENDING');
+        await assert.rejects(action(driver, 'previewAcceptedRide', { requestId: value.id }), {
+          code: 'functions/failed-precondition',
+        });
         await assert.rejects(action(driver, 'cancelRideRequest', { requestId: value.id }), {
           code: 'functions/aborted',
         });
@@ -138,6 +141,37 @@ export async function verifySymmetricRequests(
         await respond(rider, value, 'ACCEPTED');
         await Promise.all(updates);
         await assert.rejects(cancel(driver, value), { code: 'functions/failed-precondition' });
+        const previewInput = { requestId: value.id };
+        const beforePreview = calls.length;
+        await assert.rejects(action(outsider, 'previewAcceptedRide', previewInput), {
+          code: 'functions/permission-denied',
+        });
+        await assert.rejects(action(driver, 'previewAcceptedRide', { ...previewInput, points: [start] }), {
+          code: 'functions/invalid-argument',
+        });
+        assert.equal(calls.length, beforePreview, 'unauthorized/forged previews must not route');
+        const preview = await action(driver, 'previewAcceptedRide', previewInput);
+        assert.equal(preview.status, 'SUCCESS');
+        assert.deepEqual(calls.at(-1).points.slice(0, 2), [start, pickup]);
+        assert.equal(calls.at(-1).points.length, 3, 'the route includes campus after pickup');
+        assert.equal(preview.route.legs.length, 2);
+        const afterPreview = calls.length;
+        assert.equal((await action(rider, 'previewAcceptedRide', previewInput)).status, 'SUCCESS');
+        assert.equal(calls.length, afterPreview, 'both participants reuse the same scheduled route');
+        await db.doc('_m3Routing/publicOsrm').update({ owner: 'stopped-test-worker' });
+        await assert.rejects(action(rider, 'previewAcceptedRide', previewInput), {
+          code: 'functions/resource-exhausted',
+        });
+        await db.doc('_m3Routing/publicOsrm').update({ owner: null });
+        const cache = await db.collection('_m3RouteCache').get();
+        await Promise.all(cache.docs.map((entry) => entry.ref.update({ expiresAtMs: 0 })));
+        setProviderFails(true);
+        try {
+          assert.equal((await action(driver, 'previewAcceptedRide', previewInput)).status, 'FAILURE');
+          assert.equal((await db.doc(`rideRequests/${value.id}`).get()).data().status, 'ACCEPTED');
+          assert.equal((await db.doc('_m3Routing/publicOsrm').get()).data().owner, null);
+        } finally { setProviderFails(false); }
+
         assert.equal(
           (await db.collection('_rideCommitments').where('requestId', '==', value.id).get()).size,
           2,

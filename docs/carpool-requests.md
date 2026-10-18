@@ -36,3 +36,16 @@ Use the existing verified driver and rider accounts on the same local backend, w
 6. Stop both clients' actions, gracefully stop/export the backend, and restart with `--traffic-eta`. Reload/sign in on both clients and verify the shared statuses and confirmed ride remain.
 
 The automated suite uses actual emulator accounts and persisted documents with a local fake TomTom router. It verifies both initiators, both-client status streams, participant authorization, vehicle checks, cancellation/resend, stale/missing attempt rejection, crossed/reversed requests, acceptance/cancellation races, reservations/private reads and restart persistence. This is separate from the previously recorded one-request live TomTom backend check. Physical iPhone/simulator UI behavior and this complete live two-client walkthrough remain unverified.
+
+
+## Calendar and confirmed trip maps
+
+Map's **Open my calendar** opens the existing calendar sheet over the Map tab. Closing stays on Map; **View this day** selects that date on Map. Calendar overrides still use the same persisted dates and backend actions as Home.
+
+**Rides → Your carpools → person** shows upcoming dated itineraries. Confirmed trips show the precise pickup pin shared at acceptance. **View trip details → Show road route** loads driver start → rider pickup → campus through the authenticated `previewAcceptedRide({requestId})` callable. Only the accepted trip's participants can use it; it accepts no caller coordinates. New accepted private pickup snapshots include campus; older snapshots fall back to the fixed campus catalog using the saved campus label. Missing historical private points are shown as unavailable, not invented.
+
+The preview uses the shared scheduler/cache and configured OSRM or TomTom adapter (one three-point request, no automatic retry/polling). Busy/provider errors leave the confirmed ride untouched. A future trip uses its agreed departure; a past departure uses current time plus one minute. This road preview does not reschedule the trip or add boarding/waiting time. It is not live navigation. Exact pins do not imply a verified street address: existing saved commutes retain coordinates and approximate area labels, not a verified house number/address.
+
+**Directions to pickup in Maps** hands that exact pickup to the phone's Maps app (Apple Maps on iOS, Google Maps URL elsewhere), where navigation can be started. Maps calculates its own route/ETA from the user's current location; it does not import the carpool schedule or automatically continue through campus. Full in-app GPS, rerouting, tracking, and background navigation remain deferred.
+
+Manual check: open calendar from Map, select/save a date, close without changing tabs; accept a real two-account trip; driver opens the person's carpool to see the exact pickup pin, then trip details to load the road route. Repeat as rider, and try Maps directions. Device layout, map gestures, and external navigation handoff require a physical-device check.

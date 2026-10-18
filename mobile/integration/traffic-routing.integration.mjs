@@ -103,7 +103,10 @@ const server = createServer((req, res) => {
     arrivalTime: new Date((departure + duration) * 1000).toISOString(),
   };
   res.end(
-    JSON.stringify({ routes: [{ summary, legs: [{ summary, points }] }] }),
+    JSON.stringify({ routes: [{ summary, legs: points.slice(1).map((point, i) => ({
+      summary: { ...summary, lengthInMeters: summary.lengthInMeters / (points.length - 1),
+        travelTimeInSeconds: duration / (points.length - 1) }, points: [points[i], point],
+    })) }] }),
   );
 });
 async function client(uid, role, point, date) {
@@ -406,7 +409,9 @@ test(
         (await db.doc('_m3Routing/publicOsrm').get()).data().owner,
         null,
       );
-      await verifySymmetricRequests(t, { client, action, db, date, start, pickup, outsider });
+      await verifySymmetricRequests(t, { client, action, db, date, start, pickup, outsider,
+        calls, setProviderFails: (value) => { providerFails = value; },
+      });
       const quotaCache = await db.collection('_m3RouteCache').get();
       await Promise.all(quotaCache.docs.map((entry) => entry.ref.update({ expiresAtMs: 0 })));
       await db.doc('_m3Routing/tomtomBudget').set({ month, count: 17999 });

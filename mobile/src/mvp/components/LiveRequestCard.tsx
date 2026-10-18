@@ -5,24 +5,20 @@ import { colors, spacing } from '../../theme';
 import { AppButton } from '../../components/AppButton';
 import { requestCanCancel, requestRecipient, type RideRequest } from '../rideRequestModel';
 import { historyLabel, partnerName, rideDate, rideEnd, rideTime } from '../ridePresentation';
-import { useAcceptedPickup } from '../../calendar/acceptedPickups';
 
 export function LiveRequestCard({
   ride,
   uid,
   now,
-  showPickup = false,
   onCancel,
   busyId,
 }: {
   ride: RideRequest;
   uid: string;
   now: number;
-  showPickup?: boolean;
   onCancel?: (ride: RideRequest) => void;
   busyId?: string | null;
 }) {
-  const pickup = useAcceptedPickup(showPickup ? ride : undefined);
   const status =
     ride.status === 'ACCEPTED' && rideEnd(ride) > now
       ? 'Confirmed'
@@ -65,17 +61,6 @@ export function LiveRequestCard({
         Adds {Math.ceil(ride.metrics.driverExtraDurationSeconds / 60)} minutes driving · New York
         time
       </Text>
-      {showPickup && ride.status === 'ACCEPTED' && (
-        <>
-          <Text style={styles.caption}>CONFIRMED PICKUP</Text>
-          <Text style={styles.detail}>
-            {pickup.error ??
-              (pickup.pickup
-                ? `${pickup.pickup.riderPickup.latitude.toFixed(5)}, ${pickup.pickup.riderPickup.longitude.toFixed(5)}`
-                : 'Loading your shared pickup…')}
-          </Text>
-        </>
-      )}
       {ride.status === 'PENDING' && status === 'Pending' && (
         <Text style={styles.detail}>
           {requestRecipient(ride) === uid

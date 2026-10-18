@@ -7,14 +7,19 @@ import { Screen } from '../components/Screen';
 import { useHomeClock } from '../rides/useHomeClock';
 import { colors, spacing } from '../theme';
 import { useRideRequests } from './rideRequestClient';
+import type { RideRequest } from './rideRequestModel';
 import {
   currentCarpools,
   partnerName,
   requestNeedsAnswer,
   rideEnd,
   rideHistory,
+  rideDate,
+  rideTime,
 } from './ridePresentation';
 import { LiveRequestCard } from './components/LiveRequestCard';
+import { AcceptedTripMap } from '../calendar/AcceptedTripMap';
+import { Card } from '../components/Card';
 import { useRideDecision } from './useRideDecision';
 
 function useLiveRides() {
@@ -73,27 +78,39 @@ export function LiveCarpoolScreen({ participantId }: { participantId: string }) 
           />
         </>
       )}
-      {pool &&
-        [...pool.accepted, ...pool.pending]
+      {pool && <>
+        <Text style={{ color: colors.textMuted }}>
+          {pool.accepted.length} confirmed · {pool.pending.length} pending trips together
+        </Text>
+        {[...pool.accepted, ...pool.pending]
           .sort((a, b) => a.plan.departure - b.plan.departure)
           .map((ride) => (
-            <View key={ride.id} style={{ gap: spacing.sm }}>
-              <LiveRequestCard
-                ride={ride}
-                uid={uid}
-                now={now}
-                onCancel={(item) => void decision.cancel(item)}
-                busyId={decision.busy}
-              />
-              <AppButton
-                label="View trip"
-                variant="secondary"
-                onPress={() => router.push(`/rides/${ride.id}`)}
-              />
-            </View>
+            <Card key={ride.id} style={{ gap: spacing.lg }}>
+              {ride.status === 'ACCEPTED' && <TripItinerary ride={ride} uid={uid} />}
+              {ride.status === 'ACCEPTED'
+                ? <AcceptedTripMap key={ride.id} ride={ride} />
+                : <LiveRequestCard ride={ride} uid={uid} now={now}
+                    onCancel={(item) => void decision.cancel(item)} busyId={decision.busy} />}
+              <AppButton label="View trip details" variant="secondary"
+                onPress={() => router.push(`/rides/${ride.id}`)} />
+            </Card>
           ))}
+      </>}
+
     </Screen>
   );
+}
+function TripItinerary({ ride, uid }: { ride: RideRequest; uid: string }) {
+  return <View style={{ gap: spacing.sm }}>
+    <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>{rideDate(ride.localDate)}</Text>
+    <Text style={{ color: ride.status === 'ACCEPTED' ? colors.success : colors.accent }}>
+      {ride.status === 'ACCEPTED' ? 'Confirmed' : ride.status === 'PENDING' ? 'Pending' : ride.status === 'CANCELLED' ? 'Cancelled' : 'Declined'} · {uid === ride.driverId ? `Driving ${ride.riderName}` : `Riding with ${ride.driverName}`}
+    </Text>
+    <Text>Departure · {rideTime(ride.plan.departure)}</Text>
+    <Text>Pickup · {rideTime(ride.plan.pickup)} · {ride.pickupLabel}</Text>
+    <Text>Arrival · {rideTime(ride.plan.riderDestinationArrival)} · {ride.campusLabel}</Text>
+    <Text style={{ color: colors.textMuted }}>New York time · Adds {Math.ceil(ride.metrics.driverExtraDurationSeconds / 60)} min driving</Text>
+  </View>;
 }
 export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
   const { requests, uid, now } = useLiveRides();
@@ -110,14 +127,11 @@ export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
       )}
       {ride && (
         <>
-          <LiveRequestCard
-            ride={ride}
-            uid={uid}
-            now={now}
-            showPickup
-            onCancel={(item) => void decision.cancel(item)}
-            busyId={decision.busy}
-          />
+          {ride.status === 'ACCEPTED' ? <>
+            <TripItinerary ride={ride} uid={uid} />
+            <AcceptedTripMap key={ride.id} ride={ride} routePreview />
+          </> : <LiveRequestCard ride={ride} uid={uid} now={now}
+            onCancel={(item) => void decision.cancel(item)} busyId={decision.busy} />}
           {requestNeedsAnswer(ride, uid, now) && (
             <>
               <AppButton

@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createRideRequest, respondToRideRequest, cancelRideRequest } = require('../lib/functions/src/rideRequests');
+const { createRideRequest, respondToRideRequest, cancelRideRequest, previewAcceptedRide } = require('../lib/functions/src/rideRequests');
 test('ride actions fail closed outside the demo emulator, before account or database access', async () => {
   const keys = [
     'FUNCTIONS_EMULATOR',
@@ -11,7 +11,7 @@ test('ride actions fail closed outside the demo emulator, before account or data
   const before = keys.map((key) => process.env[key]);
   try {
     for (const key of keys) delete process.env[key];
-    for (const action of [createRideRequest, respondToRideRequest, cancelRideRequest])
+    for (const action of [createRideRequest, respondToRideRequest, cancelRideRequest, previewAcceptedRide])
       await assert.rejects(action.run({ auth: { uid: 'test' }, data: {} }), {
         code: 'failed-precondition',
       });
