@@ -15,6 +15,7 @@ import { trafficForecastIsStale } from '../routing/types';
 import { useHomeClock } from '../rides/useHomeClock';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { colors, radii, spacing } from '../theme';
+import { RidePriceChange } from '../payments/components/RidePriceChange';
 import { PriceBreakdown, PriceTag } from '../payments/components/PriceTag';
 import { getChatMatch, useChatRequest } from './chatClient';
 import { chatPartner, type ChatMatchDetails, type ChatThread } from './chatModel';
@@ -168,6 +169,7 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
             </View>
             <Text style={styles.muted}>Your pin · {name}’s approximate area</Text>
           </>}
+          {request?.status === 'ACCEPTED' && <RidePriceChange ride={request} uid={uid} />}
           {request?.status === 'ACCEPTED' && <AcceptedTripMap key={request.id} ride={request} routePreview />}
           {vehicleRequired && <Card style={{ gap: spacing.md }}>
             <Text style={styles.name}>Finish setting up your vehicle</Text>

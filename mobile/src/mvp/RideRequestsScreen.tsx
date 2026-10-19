@@ -24,6 +24,7 @@ import {
 import { LiveCarpoolCard } from './components/LiveCarpoolCard';
 import { useRideDecision } from './useRideDecision';
 import { LiveAgenda } from './components/LiveAgenda';
+import { PriceChangeInbox } from '../payments/components/RidePriceChange';
 import { GasShares } from '../payments/components/GasShares';
 import { useSettlements } from '../payments/paymentsClient';
 import { computeBalances, coveredThisMonth } from '../payments/tally';
@@ -99,7 +100,8 @@ export function RideRequestsScreen() {
           <Text style={styles.action}>Review</Text>
         </Pressable>
       )}
-      <GasShares balances={balances} coveredCents={covered} uid={uid} />
+      <PriceChangeInbox rides={requests.items} uid={uid} />
+      <GasShares balances={balances} coveredCents={covered} uid={uid} rides={requests.items} />
       <View style={styles.section}>
         <Text accessibilityRole="header" style={styles.heading}>
           Your carpools

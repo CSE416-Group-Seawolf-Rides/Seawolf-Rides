@@ -36,26 +36,32 @@ cost per mile = fuel (gas ÷ MPG, or electricity ÷ mi/kWh) + $0.25 car wear
 - **Locked when a request is sent** (`rideRequests/{id}.price`). Weekly price changes and MPG edits
   only affect new requests, never agreed rides.
 
-## Drivers can adjust or waive
+## Price changes require both people to agree
 
-A driver sets one adjustment per rider: **Free · −50% · −25% · Suggested · +10% · +25%**
-(`PRICE_ADJUSTMENTS`). It's reached from that rider's row in Rides → Gas shares, or from the
-carpool screen.
+After a priced ride is accepted, either the rider or driver can request a different gas share
+from Rides, that carpool's dated trip, trip details, or the chat's request details.
 
-- **Why these limits:**
-  - **+25% max.** The suggestion covers fuel and wear at the weekly average. +25% leaves room for prices
-    rising mid-week, idling and worse-than-listed MPG, while staying well under the IRS cap, so it
-    stays a cost share. The cap still applies after a raise, and adjusted prices round down.
-  - **Lowering is generous**, so it gets more room. Below half, "Free" is the honest option.
-- **Fixed steps**, so prices stay comparable and never land on odd amounts.
-- **Only the driver adjusts.** Riders never change prices, which avoids haggling. The saved preference is labeled for new requests; saving confirms the preference and how many unpaid rides were lowered.
-- **Changes only go in the rider's favor:** a lower price also applies to that rider's unpaid
-  accepted and pending rides; a higher one only applies to new requests.
-- **Riders see the change:** "Alex lowered it from $1.00", "Alex covers the gas", or
-  "includes Alex's +25% (suggested $1.00)".
+- A request applies to **one specific ride**, in $0.25 steps, from Free up to the existing
+  +25% cost-share limit. Repeated negotiations retain the original suggestion so raises do not compound.
+- Both participants see the **current and proposed amounts**. Only the other person can accept
+  or reject. The proposer can cancel while waiting; one price-change request can be pending per ride.
+- Sending a request never changes the agreed price. Acceptance updates it atomically. Rejection
+  or cancellation keeps the original price and the confirmed ride.
+- Pending price changes appear under **Rides → Price-change requests** for both participants.
+  Live ride subscriptions update chat and trip details when the other person replies.
+- Paid rides cannot change price. Settling the current agreement expires an unanswered proposal.
+  A stale payment total is rejected so it cannot silently record a newly negotiated amount.
+- Older accepted rides without a recorded price do not acquire a charge through this flow.
 
-Stored at `priceAdjustments/{driverId}_{riderId}`. Each price records `suggestedCents` and
-`adjustment`, so re-adjusting starts from the suggestion and never compounds.
+The last proposal is stored at `rideRequests/{id}.priceChange`; accepted amounts carry
+`price.negotiated`. Trusted callables `proposeRidePriceChange` and `respondToRidePriceChange`
+check participants, stale proposal IDs, the original amount, bounds, and settlement markers
+inside Firestore transactions. Private `_priceChangeAttempts` records make retries idempotent,
+even after a newer proposal replaces an older one. Clients cannot write these records.
+
+The existing driver preference at `priceAdjustments/{driverId}_{riderId}` now affects **new
+requests only**. It never rewrites pending or accepted quotes; changing an accepted ride uses
+the approval flow above.
 
 ## Weekly fuel prices
 
@@ -93,7 +99,7 @@ emulator, so the demo uses the defaults unless `pricing/fuel` is written.
 | `paymentHandles/{uid}` | Owner only. Riders get a driver's handles through `getPayeeHandles`, which requires an accepted ride together | `savePaymentHandles` |
 | `settlements/{id}` | The payer and payee | `recordSettlement` (rider; past, accepted, priced rides only; each ride once via `_settledRequests/{requestId}`), `confirmSettlement` (payee) |
 | `pricing/fuel` | Verified students | `refreshFuelPrices` |
-| `priceAdjustments/{driverId}_{riderId}` | That driver and rider | `setPriceAdjustment` (driver only, for riders who asked to ride with them) |
+| `priceAdjustments/{driverId}_{riderId}` | That driver and rider | `setPriceAdjustment` (driver only; future quotes only) |
 | `users/{uid}/vehicles/primary` `fuelType`, `efficiency` | Owner | `saveFuelEfficiency`; `saveVehicleDetails` keeps these fields |
 
 Tests: `mobile/test/payments.test.mjs` (pricing, EIA parsing, handles, links, tally),

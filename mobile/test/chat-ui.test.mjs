@@ -49,6 +49,7 @@ function harness() {
     '../components/Avatar': { Avatar: () => null }, '../components/Card': { Card: View },
     '../components/Screen': { Screen: View }, '../components/AppButton': { AppButton: Button },
     '../theme': { colors: {}, spacing: {}, radii: {} },
+    '../payments/components/RidePriceChange': { RidePriceChange: () => null },
   };
   mocks['../payments/components/PriceTag'] = loadComponent('../src/payments/components/PriceTag.tsx', {
     'react-native': native, '../../theme': mocks['../theme'], '../fuelPrices': { formatWeekOf }, '../pricing': pricing,

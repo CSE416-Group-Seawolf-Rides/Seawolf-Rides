@@ -78,6 +78,7 @@ export function SettleUpSheet({ balance, onClose }: { balance: Balance; onClose:
         balance.counterpartId,
         balance.due.map((ride) => ride.requestId),
         method,
+        balance.dueCents,
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();

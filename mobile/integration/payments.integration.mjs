@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createRequire } from 'node:module';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator, doc, getDoc } from 'firebase/firestore';
+import { getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
 import { localDateAt, localMinuteToEpoch } from '../src/mvp/settings.ts';
 import { shiftDate } from '../src/calendar/commuteCalendar.ts';
@@ -120,7 +120,7 @@ test('riders settle gas shares with drivers they rode with, once, and only drive
     await driver.call('confirmSettlement', { settlementId: settled.id });
     assert.equal((await getDoc(doc(driver.db, `settlements/${settled.id}`))).data().status, 'CONFIRMED');
 
-    // Drivers can lower or waive a rider's price; it applies to unpaid rides but never raises agreed ones.
+    // Driver preferences affect new quotes only; existing prices require explicit approval.
     await acceptedRide('pay-unpaid', { driver: driver.uid, rider: rider.uid, localDate: shiftDate(today, -3), cents: 100 });
     await assert.rejects(rider.call('setPriceAdjustment', { riderId: driver.uid, adjustment: -100 }), {
       code: 'functions/permission-denied',
@@ -129,13 +129,13 @@ test('riders settle gas shares with drivers they rode with, once, and only drive
       code: 'functions/invalid-argument',
     });
     const lowered = await driver.call('setPriceAdjustment', { riderId: rider.uid, adjustment: -50 });
-    assert.equal(lowered.lowered, 2); // the unpaid past ride and the upcoming one; settled rides keep their price
+    assert.equal(lowered.lowered, 0);
     const priceOf = async (id) => (await db.doc(`rideRequests/${id}`).get()).data().price;
-    assert.equal((await priceOf('pay-unpaid')).cents, 50);
-    assert.equal((await priceOf('pay-future')).cents, 50);
+    assert.equal((await priceOf('pay-unpaid')).cents, 100);
+    assert.equal((await priceOf('pay-future')).cents, 100);
     assert.equal((await priceOf('pay-past-1')).cents, 125);
     await driver.call('setPriceAdjustment', { riderId: rider.uid, adjustment: 25 });
-    assert.equal((await priceOf('pay-future')).cents, 50, 'raising never changes an agreed ride');
+    assert.equal((await priceOf('pay-future')).cents, 100, 'raising never changes an agreed ride');
     const seen = await getDoc(doc(rider.db, `priceAdjustments/${driver.uid}_${rider.uid}`));
     assert.equal(seen.data().adjustment, 25);
 
@@ -172,6 +172,93 @@ test('riders settle gas shares with drivers they rode with, once, and only drive
     assert.equal((await rider.call('recordSettlement', {
       payeeId: driver.uid, requestIds: ['pay-today'], method: 'other',
     })).cents, 300);
+
+    // Both participants can propose; only the other person can approve an agreed-price change.
+    const negotiable = async (id) => {
+      await acceptedRide(id, { driver: driver.uid, rider: rider.uid, localDate: shiftDate(today, -1), cents: 300 });
+      await db.doc(`rideRequests/${id}`).update({ price: { ...price(300), baseCents: 100, suggestedCents: 300, costPerMile: 0.4 } });
+    };
+    const readRide = async (id) => (await db.doc(`rideRequests/${id}`).get()).data();
+    const propose = (actor, requestId, proposalId, cents, expectedCents = 300) => actor.call('proposeRidePriceChange', { requestId, proposalId, cents, expectedCents });
+    const respond = (actor, requestId, proposalId, decision) => actor.call('respondToRidePriceChange', { requestId, proposalId, decision });
+    await negotiable('price-change');
+    await assert.rejects(propose(outsider, 'price-change', 'outsider-proposal-001', 350), { code: 'functions/permission-denied' });
+    for (const cents of [-25, 10, 400, '350'])
+      await assert.rejects(propose(driver, 'price-change', 'invalid-proposal-0001', cents), { code: 'functions/invalid-argument' });
+    await assert.rejects(propose(driver, 'price-change', 'stale-proposal-00001', 350, 250), { code: 'functions/aborted' });
+    await propose(driver, 'price-change', 'driver-proposal-0001', 350);
+    const attemptDoc = (await db.collection('_priceChangeAttempts').where('id', '==', 'driver-proposal-0001').get()).docs[0];
+    await assert.rejects(getDoc(doc(rider.db, attemptDoc.ref.path)), { code: 'permission-denied' });
+    await propose(driver, 'price-change', 'driver-proposal-0001', 350); // retry is idempotent
+    assert.equal((await readRide('price-change')).price.cents, 300, 'sending a proposal never changes the agreed price');
+    await assert.rejects(respond(driver, 'price-change', 'driver-proposal-0001', 'ACCEPTED'), { code: 'functions/permission-denied' });
+    await assert.rejects(respond(rider, 'price-change', 'driver-proposal-0001', 'CANCELLED'), { code: 'functions/permission-denied' });
+    await assert.rejects(respond(outsider, 'price-change', 'driver-proposal-0001', 'ACCEPTED'), { code: 'functions/permission-denied' });
+    await assert.rejects(propose(rider, 'price-change', 'crossed-proposal-001', 250), { code: 'functions/failed-precondition' });
+    await assert.rejects(setDoc(doc(rider.db, 'rideRequests/price-change'), { price: price(1) }, { merge: true }), { code: 'permission-denied' });
+    await respond(rider, 'price-change', 'driver-proposal-0001', 'DECLINED');
+    assert.equal((await readRide('price-change')).price.cents, 300);
+    assert.equal((await readRide('price-change')).status, 'ACCEPTED', 'rejecting a price does not cancel the ride');
+    assert.equal((await propose(driver, 'price-change', 'driver-proposal-0001', 350)).status, 'DECLINED');
+    await propose(rider, 'price-change', 'rider-proposal-00001', 250);
+    await assert.rejects(respond(rider, 'price-change', 'rider-proposal-00001', 'ACCEPTED'), { code: 'functions/permission-denied' });
+    await respond(driver, 'price-change', 'rider-proposal-00001', 'ACCEPTED');
+    await respond(driver, 'price-change', 'rider-proposal-00001', 'ACCEPTED');
+    assert.equal((await propose(driver, 'price-change', 'driver-proposal-0001', 350)).status, 'DECLINED', 'a delayed retry cannot recreate an old request');
+    const agreed = await readRide('price-change');
+    assert.equal(agreed.price.cents, 250);
+    assert.equal(agreed.price.suggestedCents, 300);
+    assert.equal(agreed.price.negotiated, true);
+    await assert.rejects(respond(rider, 'price-change', 'driver-proposal-0001', 'ACCEPTED'), { code: 'functions/aborted' });
+    await assert.rejects(rider.call('recordSettlement', {
+      payeeId: driver.uid, requestIds: ['price-change'], method: 'other', expectedCents: 300,
+    }), { code: 'functions/aborted' });
+    assert.equal((await db.doc('_settledRequests/price-change').get()).exists, false);
+    await propose(driver, 'price-change', 'cancelled-proposal-01', 350, 250);
+    await respond(driver, 'price-change', 'cancelled-proposal-01', 'CANCELLED');
+    assert.equal((await readRide('price-change')).price.cents, 250);
+    await propose(driver, 'price-change', 'free-ride-proposal-01', 0, 250);
+    await respond(rider, 'price-change', 'free-ride-proposal-01', 'ACCEPTED');
+    assert.equal((await readRide('price-change')).price.cents, 0);
+    await assert.rejects(propose(driver, 'price-change', 'ratchet-proposal-0001', 400, 0), { code: 'functions/invalid-argument' });
+
+    await negotiable('price-crossed');
+    const crossed = await Promise.allSettled([
+      propose(driver, 'price-crossed', 'crossed-driver-00001', 350),
+      propose(rider, 'price-crossed', 'crossed-rider-000001', 250),
+    ]);
+    assert.equal(crossed.filter((r) => r.status === 'fulfilled').length, 1);
+    assert.equal((await readRide('price-crossed')).price.cents, 300);
+    const activeChange = (await readRide('price-crossed')).priceChange;
+    const recipient = activeChange.recipientId === driver.uid ? driver : rider;
+    const decisions = await Promise.allSettled([
+      respond(recipient, 'price-crossed', activeChange.id, 'ACCEPTED'),
+      respond(recipient, 'price-crossed', activeChange.id, 'DECLINED'),
+    ]);
+    assert.equal(decisions.filter((r) => r.status === 'fulfilled').length, 1);
+    const decided = await readRide('price-crossed');
+    assert.equal(decided.price.cents, decided.priceChange.status === 'ACCEPTED' ? activeChange.toCents : 300);
+
+    // Paying the current agreement expires the outstanding proposal and prevents further edits.
+    await negotiable('price-settled');
+    await propose(driver, 'price-settled', 'settled-proposal-001', 350);
+    await rider.call('recordSettlement', { payeeId: driver.uid, requestIds: ['price-settled'], method: 'other', expectedCents: 300 });
+    assert.equal((await readRide('price-settled')).priceChange.status, 'EXPIRED');
+    await assert.rejects(respond(rider, 'price-settled', 'settled-proposal-001', 'ACCEPTED'), { code: 'functions/failed-precondition' });
+    await assert.rejects(propose(rider, 'price-settled', 'after-paid-proposal1', 250), { code: 'functions/failed-precondition' });
+
+    // An acceptance/payment race either pays the old price or accepts the new one, never both.
+    await negotiable('price-race');
+    await propose(driver, 'price-race', 'race-price-proposal1', 350);
+    const race = await Promise.allSettled([
+      respond(rider, 'price-race', 'race-price-proposal1', 'ACCEPTED'),
+      rider.call('recordSettlement', { payeeId: driver.uid, requestIds: ['price-race'], method: 'other', expectedCents: 300 }),
+    ]);
+    assert.equal(race.filter((r) => r.status === 'fulfilled').length, 1);
+    const raced = await readRide('price-race');
+    assert.equal(raced.price.cents, raced.settledAt === undefined ? 350 : 300);
+    assert.equal(raced.priceChange.status, raced.settledAt === undefined ? 'ACCEPTED' : 'EXPIRED');
+
   } finally {
     await Promise.all(apps.map((app) => deleteApp(app)));
     await deleteAdmin(admin);

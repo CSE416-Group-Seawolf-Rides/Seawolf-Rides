@@ -28,7 +28,7 @@ const mocks = {
   '../pricing': { formatCents },
   '../tally': { describeDates },
   './SettleUpSheet': { SettleUpSheet: () => null },
-  './AdjustPriceButton': { AdjustPriceButton: () => null },
+  './RidePriceChange': { RidePriceChange: () => null },
 };
 const compiled = ts.transpileModule(
   readFileSync(new URL('../src/payments/components/GasShares.tsx', import.meta.url), 'utf8'),

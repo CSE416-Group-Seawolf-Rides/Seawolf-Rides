@@ -263,3 +263,18 @@ test('monthly coverage counts confirmed receipts only', () => {
   assert.equal(coveredThisMonth('me', [{ ...base, status: 'MARKED_PAID' }], '2026-10'), 0);
   assert.equal(coveredThisMonth('me', [{ ...base, status: 'MARKED_PAID' }, { ...base, status: 'CONFIRMED' }], '2026-10'), 300);
 });
+
+test('mutually agreed prices keep the original suggestion and never compound the negotiation ceiling', async () => {
+  const { maximumAgreedPrice, validProposedPrice, agreedPrice } = await import('../src/payments/priceChanges.ts');
+  const base = { cents: 300, baseCents: 100, suggestedCents: 300, riderMiles: 6, extraMiles: 1, costPerMile: .4, fuelType: 'gas', gasWeekOf: '2026-10-12', adjustment: -25 };
+  assert.equal(maximumAgreedPrice(base), 375);
+  for (const value of [0, 25, 250, 350, 375]) assert.equal(validProposedPrice(value, base), true);
+  for (const value of [-25, 10, 400, NaN, Infinity, '350']) assert.equal(validProposedPrice(value, base), false);
+  const changed = agreedPrice(base, 350);
+  assert.equal(changed.negotiated, true);
+  assert.equal(changed.adjustment, undefined);
+  assert.equal(changed.suggestedCents, 300);
+  assert.equal(maximumAgreedPrice(changed), 375);
+  assert.equal(maximumAgreedPrice(agreedPrice(changed, 0)), 375);
+  assert.equal(parseRidePrice(changed).cents, 350);
+});

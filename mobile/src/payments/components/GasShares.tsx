@@ -9,7 +9,8 @@ import { confirmSettlement } from '../paymentsClient';
 import { formatCents } from '../pricing';
 import { describeDates, type Balance } from '../tally';
 import { SettleUpSheet } from './SettleUpSheet';
-import { AdjustPriceButton } from './AdjustPriceButton';
+import { RidePriceChange } from './RidePriceChange';
+import type { RideRequest } from '../../mvp/rideRequestModel';
 
 // Running balances by person and payment direction, only when there is something to settle.
 // Riders get "Settle up"; drivers confirm payments they've received.
@@ -17,10 +18,12 @@ export function GasShares({
   uid,
   balances,
   coveredCents,
+  rides = [],
 }: {
   uid: string;
   balances: Balance[];
   coveredCents: number;
+  rides?: RideRequest[];
 }) {
   const [settling, setSettling] = useState<Balance | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -57,6 +60,10 @@ export function GasShares({
           {balances.map((balance, index) => {
             const owe = balance.direction === 'owe';
             const name = balance.counterpartName;
+            const editableRide = rides.filter((ride) => ride.status === 'ACCEPTED' && ride.price && ride.settledAt === undefined
+              && (owe ? ride.riderId === uid && ride.driverId === balance.counterpartId
+                : ride.driverId === uid && ride.riderId === balance.counterpartId))
+              .sort((a, b) => b.localDate.localeCompare(a.localDate))[0];
             const later =
               balance.upcomingCents > 0 ? `${formatCents(balance.upcomingCents)} for upcoming rides` : '';
             let title: string;
@@ -86,14 +93,7 @@ export function GasShares({
                       {owe && balance.upcomingCents > 0 && <Text style={styles.detail}>
                         Payment becomes due after each ride finishes.
                       </Text>}
-                      {!owe && (
-                        <AdjustPriceButton
-                          driverId={uid}
-                          reference={balance.latestPrice}
-                          riderId={balance.counterpartId}
-                          riderName={name}
-                        />
-                      )}
+
                     </View>
                     {balance.dueCents > 0 && (
                       <Text style={[styles.amount, owe && styles.amountOwe]}>
@@ -115,6 +115,9 @@ export function GasShares({
                     )}
                   </View>
                 )}
+                {editableRide && editableRide.priceChange?.status !== 'PENDING' && <View style={{ padding: spacing.lg, paddingTop: 0 }}>
+                  <RidePriceChange ride={editableRide} uid={uid} />
+                </View>}
                 {balance.awaitingConfirmation.map((payment) => (
                   <View key={payment.id} style={styles.row}>
                     <Avatar name={name} size={40} />

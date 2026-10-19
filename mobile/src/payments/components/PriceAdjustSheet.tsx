@@ -102,11 +102,7 @@ export function PriceAdjustSheet({
             })}
           </View>
 
-          <Text style={styles.rule}>
-            {raising
-              ? `A higher price applies only to new requests. Rides ${riderName} already agreed to keep their price.`
-              : `A lower price also applies to rides ${riderName} hasn’t paid for yet.`}
-          </Text>
+          <Text style={styles.rule}>New requests use this preference. To change an agreed ride, send a price-change request from its trip details.</Text>
 
           {error && (
             <Text accessibilityRole="alert" style={styles.error}>
