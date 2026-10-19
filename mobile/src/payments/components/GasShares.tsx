@@ -11,7 +11,7 @@ import { describeDates, type Balance } from '../tally';
 import { SettleUpSheet } from './SettleUpSheet';
 import { AdjustPriceButton } from './AdjustPriceButton';
 
-// One running balance per person (Splitwise's model), only when there's something to settle.
+// Running balances by person and payment direction, only when there is something to settle.
 // Riders get "Settle up"; drivers confirm payments they've received.
 export function GasShares({
   uid,
@@ -55,7 +55,6 @@ export function GasShares({
           {balances.map((balance, index) => {
             const owe = balance.direction === 'owe';
             const name = balance.counterpartName;
-            const pendingConfirm = balance.awaitingConfirmation[0];
             const later =
               balance.upcomingCents > 0 ? `${formatCents(balance.upcomingCents)} more later this week` : '';
             let title: string;
@@ -65,63 +64,77 @@ export function GasShares({
               detail = [describeDates(balance.due.map((ride) => ride.localDate)), later]
                 .filter(Boolean)
                 .join(' · ');
-            } else if (pendingConfirm) {
-              title = owe ? `Sent to ${name}` : `${name} sent ${formatCents(pendingConfirm.cents)}`;
-              detail = owe
-                ? `Waiting for ${name} to confirm`
-                : `Marked paid${pendingConfirm.method === 'other' ? '' : ` on ${methodLabels[pendingConfirm.method]}`}`;
             } else {
-              title = owe ? `${name} this week` : `${name} this week`;
+              title = `${name} this week`;
               detail = later || 'All settled';
             }
             return (
               <View
-                key={balance.counterpartId}
-                style={[styles.row, index < balances.length - 1 && styles.divider]}
+                key={`${balance.counterpartId}:${balance.direction}`}
+                style={index < balances.length - 1 && styles.divider}
               >
-                <Avatar name={name} size={40} />
-                <View style={styles.copy}>
-                  <Text style={styles.title}>{title}</Text>
-                  <Text numberOfLines={2} style={styles.detail}>
-                    {detail}
-                  </Text>
-                  {!owe && (
-                    <AdjustPriceButton
-                      driverId={uid}
-                      reference={balance.latestPrice}
-                      riderId={balance.counterpartId}
-                      riderName={name}
-                    />
-                  )}
-                </View>
-                {balance.dueCents > 0 && (
-                  <Text style={[styles.amount, owe && styles.amountOwe]}>
-                    {formatCents(balance.dueCents)}
-                  </Text>
+                {(balance.dueCents > 0 || balance.upcomingCents > 0) && (
+                  <View style={styles.row}>
+                    <Avatar name={name} size={40} />
+                    <View style={styles.copy}>
+                      <Text style={styles.title}>{title}</Text>
+                      <Text numberOfLines={2} style={styles.detail}>
+                        {detail}
+                      </Text>
+                      {!owe && (
+                        <AdjustPriceButton
+                          driverId={uid}
+                          reference={balance.latestPrice}
+                          riderId={balance.counterpartId}
+                          riderName={name}
+                        />
+                      )}
+                    </View>
+                    {balance.dueCents > 0 && (
+                      <Text style={[styles.amount, owe && styles.amountOwe]}>
+                        {formatCents(balance.dueCents)}
+                      </Text>
+                    )}
+                    {owe && balance.dueCents > 0 && (
+                      <Pressable
+                        accessibilityLabel={`Settle up ${formatCents(balance.dueCents)} with ${name}`}
+                        accessibilityRole="button"
+                        onPress={() => setSettling(balance)}
+                        style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                      >
+                        <Text style={styles.actionText}>Settle up</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 )}
-                {owe && balance.dueCents > 0 && (
-                  <Pressable
-                    accessibilityLabel={`Settle up ${formatCents(balance.dueCents)} with ${name}`}
-                    accessibilityRole="button"
-                    onPress={() => setSettling(balance)}
-                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.actionText}>Settle up</Text>
-                  </Pressable>
-                )}
-                {!owe && pendingConfirm && balance.dueCents === 0 && (
-                  <Pressable
-                    accessibilityLabel={`Confirm you received ${formatCents(pendingConfirm.cents)} from ${name}`}
-                    accessibilityRole="button"
-                    disabled={confirming !== null}
-                    onPress={() => void confirm(pendingConfirm.id)}
-                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.actionText}>
-                      {confirming === pendingConfirm.id ? 'Saving…' : 'Got it'}
-                    </Text>
-                  </Pressable>
-                )}
+                {balance.awaitingConfirmation.map((payment) => (
+                  <View key={payment.id} style={styles.row}>
+                    <Avatar name={name} size={40} />
+                    <View style={styles.copy}>
+                      <Text style={styles.title}>
+                        {owe ? `Sent ${formatCents(payment.cents)} to ${name}` : `${name} sent ${formatCents(payment.cents)}`}
+                      </Text>
+                      <Text style={styles.detail}>
+                        {owe
+                          ? `Waiting for ${name} to confirm`
+                          : `Marked paid${payment.method === 'other' ? '' : ` on ${methodLabels[payment.method]}`}`}
+                      </Text>
+                    </View>
+                    {!owe && (
+                      <Pressable
+                        accessibilityLabel={`Confirm you received ${formatCents(payment.cents)} from ${name}`}
+                        accessibilityRole="button"
+                        disabled={confirming !== null}
+                        onPress={() => void confirm(payment.id)}
+                        style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                      >
+                        <Text style={styles.actionText}>
+                          {confirming === payment.id ? 'Saving…' : 'Got it'}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
               </View>
             );
           })}

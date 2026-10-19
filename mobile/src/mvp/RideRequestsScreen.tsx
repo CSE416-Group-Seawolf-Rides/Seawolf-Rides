@@ -63,7 +63,7 @@ export function RideRequestsScreen() {
     overrides.days,
   );
   const today = localToday(epoch);
-  const balances = computeBalances(uid, requests.items, settlements.items, today, shiftDate(monday, 6));
+  const balances = computeBalances(uid, requests.items, settlements.items, epoch, shiftDate(monday, 6));
   const covered = coveredThisMonth(uid, settlements.items, today.slice(0, 7));
   const history = rideHistory(requests.items, uid, epoch);
   const past = history.filter((r) => r.status === 'ACCEPTED');

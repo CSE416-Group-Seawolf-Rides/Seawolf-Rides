@@ -3,7 +3,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { eligible } from './matchingRuntime';
 import { requireLocalDemo } from './calendarMatching';
-import { localDateAt } from '../../mobile/src/mvp/settings';
+import { rideHasFinished } from '../../mobile/src/payments/rideCompletion';
 import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
 import {
   applyAdjustment,
@@ -250,7 +250,6 @@ export const recordSettlement = onCall(options, async (call) => {
     throw new HttpsError('invalid-argument', 'Choose which rides you paid for.');
   const requestIds = data.requestIds as string[];
   const payeeId = data.payeeId;
-  const today = localDateAt(now());
   const db = getFirestore();
   return db.runTransaction(async (tx) => {
     const refs = requestIds.map((id) => db.doc(`rideRequests/${id}`));
@@ -268,7 +267,7 @@ export const recordSettlement = onCall(options, async (call) => {
         request.riderId !== uid ||
         request.driverId !== payeeId ||
         !price ||
-        request.localDate > today
+        !rideHasFinished(request, now())
       )
         throw new HttpsError('failed-precondition', 'Only rides you have taken with this driver can be settled.');
       cents += price.cents;

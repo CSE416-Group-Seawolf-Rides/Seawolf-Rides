@@ -72,9 +72,13 @@ emulator, so the demo uses the defaults unless `pricing/fuel` is written.
 ## Settling up
 
 - **Rides → Gas shares** lists one balance per person with something to settle.
-  - Rides that already happened are "due".
+  - If two people take turns driving, each payment direction has its own balance so a
+    settlement only includes rides with the same rider and driver.
+  - Rides become "due" after both agreed campus arrival times, including rides today.
   - Later rides this week are shown as upcoming.
   - Payments marked sent wait for the driver's "Got it".
+  - Each sent payment can be confirmed even while other rides remain unpaid. Only confirmed
+    payments count toward the driver's "covered this month" total.
 - **Settle up** (riders) opens a sheet with the amount and one row per app the driver accepts.
   - **Venmo** opens `venmo.com/<user>?txn=pay&amount=…&note=…`, a universal link that opens the app.
   - **PayPal** opens `paypal.me/<name>/<amount>USD`.

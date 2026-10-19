@@ -348,6 +348,13 @@ test(
         { code: 'functions/invalid-argument' },
       );
       await action(driver, 'saveVehicleDetails', vehicleFixture(driver.uid));
+      // Pending discounts remain locked even if later settings would price this ride higher.
+      await action(driver, 'setPriceAdjustment', { riderId: rider.uid, adjustment: -50 });
+      const lockedPrice = (await db.doc(`rideRequests/${pending.id}`).get()).data().price;
+      assert.equal(lockedPrice.adjustment, -50);
+      await action(driver, 'setPriceAdjustment', { riderId: rider.uid, adjustment: 25 });
+      await action(driver, 'saveFuelEfficiency', { fuelType: 'gas', efficiency: 10 });
+      assert.deepEqual((await db.doc(`rideRequests/${pending.id}`).get()).data().price, lockedPrice);
       assert.equal(
         (
           await getDoc(
@@ -376,6 +383,7 @@ test(
         ).status,
         'ACCEPTED',
       );
+      assert.deepEqual((await db.doc(`rideRequests/${pending.id}`).get()).data().price, lockedPrice);
       for (const account of [rider, driver]) {
         assert.deepEqual(
           (await getDoc(doc(account.db, 'ridePickups', pending.id))).data()

@@ -5,7 +5,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, doc, getDoc } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
-import { localDateAt } from '../src/mvp/settings.ts';
+import { localDateAt, localMinuteToEpoch } from '../src/mvp/settings.ts';
 import { shiftDate } from '../src/calendar/commuteCalendar.ts';
 
 if (
@@ -55,6 +55,7 @@ async function acceptedRide(id, { driver, rider, localDate, cents }) {
     direction: 'TO_CAMPUS',
     status: 'ACCEPTED',
     price: price(cents),
+    plan: { vehicleCampusArrival: localMinuteToEpoch(localDate, 540), riderDestinationArrival: localMinuteToEpoch(localDate, 540) },
     createdAt: 1,
     updatedAt: 1,
   });
@@ -150,6 +151,27 @@ test('riders settle gas shares with drivers they rode with, once, and only drive
     assert.equal(vehicle.color, 'Gray');
     await driver.call('saveFuelEfficiency', { fuelType: 'hybrid', efficiency: null });
     assert.equal((await db.doc(`users/${driver.uid}/vehicles/primary`).get()).data().efficiency, undefined);
+
+    // A ride today is still upcoming until the later of the two agreed arrivals.
+    await acceptedRide('pay-today', { driver: driver.uid, rider: rider.uid, localDate: today, cents: 300 });
+    const todayRef = db.doc('rideRequests/pay-today');
+    const timestamp = Math.floor(Date.now() / 1000);
+    for (const plan of [
+      { vehicleCampusArrival: timestamp + 3600, riderDestinationArrival: timestamp + 4200 },
+      { vehicleCampusArrival: timestamp - 600, riderDestinationArrival: timestamp + 3600 },
+      {},
+    ]) {
+      await todayRef.update({ plan });
+      await assert.rejects(
+        rider.call('recordSettlement', { payeeId: driver.uid, requestIds: ['pay-today'], method: 'other' }),
+        { code: 'functions/failed-precondition' },
+      );
+      assert.equal((await db.doc('_settledRequests/pay-today').get()).exists, false);
+    }
+    await todayRef.update({ plan: { vehicleCampusArrival: timestamp - 600, riderDestinationArrival: timestamp - 1 } });
+    assert.equal((await rider.call('recordSettlement', {
+      payeeId: driver.uid, requestIds: ['pay-today'], method: 'other',
+    })).cents, 300);
   } finally {
     await Promise.all(apps.map((app) => deleteApp(app)));
     await deleteAdmin(admin);
