@@ -37,7 +37,7 @@ export interface Balance {
   // Rides that already happened and haven't been settled.
   due: OwedRide[];
   dueCents: number;
-  // Accepted rides still ahead this week, shown so the total isn't a surprise.
+  // All accepted rides still ahead, shown so the total isn't a surprise.
   upcomingCents: number;
   // Payments marked as sent but not yet confirmed by the driver.
   awaitingConfirmation: Settlement[];
@@ -55,7 +55,6 @@ export function computeBalances(
   requests: RideRequest[],
   settlements: Settlement[],
   now: number,
-  weekEnd: string,
 ): Balance[] {
   const settled = new Set(settlements.flatMap((settlement) => settlement.requestIds));
   const byPerson = new Map<string, Balance>();
@@ -90,7 +89,7 @@ export function computeBalances(
     } else if (rideHasFinished(request, now)) {
       balance.due.push({ requestId: request.id, localDate: request.localDate, cents: price.cents });
       balance.dueCents += price.cents;
-    } else if (request.localDate <= weekEnd) {
+    } else {
       balance.upcomingCents += price.cents;
     }
     byPerson.set(key, balance);

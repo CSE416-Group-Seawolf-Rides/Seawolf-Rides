@@ -25,7 +25,6 @@ export function GasShares({
   const [settling, setSettling] = useState<Balance | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  if (!balances.length && coveredCents === 0) return null;
 
   const confirm = async (settlementId: string) => {
     setConfirming(settlementId);
@@ -50,13 +49,16 @@ export function GasShares({
           <Text style={styles.covered}>{formatCents(coveredCents)} covered this month</Text>
         )}
       </View>
+      {!balances.length && <Text style={styles.detail}>
+        Gas shares appear here when a priced ride is accepted. Settle up becomes available after the ride finishes.
+      </Text>}
       {balances.length > 0 && (
         <View style={styles.group}>
           {balances.map((balance, index) => {
             const owe = balance.direction === 'owe';
             const name = balance.counterpartName;
             const later =
-              balance.upcomingCents > 0 ? `${formatCents(balance.upcomingCents)} more later this week` : '';
+              balance.upcomingCents > 0 ? `${formatCents(balance.upcomingCents)} for upcoming rides` : '';
             let title: string;
             let detail: string;
             if (balance.dueCents > 0) {
@@ -65,7 +67,7 @@ export function GasShares({
                 .filter(Boolean)
                 .join(' · ');
             } else {
-              title = `${name} this week`;
+              title = `Upcoming with ${name}`;
               detail = later || 'All settled';
             }
             return (
@@ -81,6 +83,9 @@ export function GasShares({
                       <Text numberOfLines={2} style={styles.detail}>
                         {detail}
                       </Text>
+                      {owe && balance.upcomingCents > 0 && <Text style={styles.detail}>
+                        Payment becomes due after each ride finishes.
+                      </Text>}
                       {!owe && (
                         <AdjustPriceButton
                           driverId={uid}
@@ -95,12 +100,15 @@ export function GasShares({
                         {formatCents(balance.dueCents)}
                       </Text>
                     )}
-                    {owe && balance.dueCents > 0 && (
+                    {owe && (balance.dueCents > 0 || balance.upcomingCents > 0) && (
                       <Pressable
-                        accessibilityLabel={`Settle up ${formatCents(balance.dueCents)} with ${name}`}
+                        accessibilityLabel={balance.dueCents > 0
+                          ? `Settle up ${formatCents(balance.dueCents)} with ${name}`
+                          : `Settle up with ${name} after the ride finishes`}
                         accessibilityRole="button"
-                        onPress={() => setSettling(balance)}
-                        style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                        disabled={balance.dueCents === 0}
+                        onPress={() => { if (balance.dueCents > 0) setSettling(balance); }}
+                        style={({ pressed }) => [styles.action, balance.dueCents === 0 && styles.disabled, pressed && styles.pressed]}
                       >
                         <Text style={styles.actionText}>Settle up</Text>
                       </Pressable>
@@ -186,6 +194,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   pressed: { opacity: 0.8 },
+  disabled: { opacity: 0.45 },
   actionText: { color: colors.surface, fontSize: 14, fontWeight: '800' },
   error: { color: colors.error, fontSize: 14 },
 });

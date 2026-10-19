@@ -122,7 +122,7 @@ function ride(id, localDate, cents, { status = 'ACCEPTED', rider = 'me', driver 
   };
 }
 
-test('balances count past rides as due, later rides this week as upcoming, and skip settled ones', () => {
+test('balances count completed rides as due, all future rides as upcoming, and skip settled ones', () => {
   const requests = [
     ride('mon', '2026-10-12', 100),
     ride('wed', '2026-10-14', 125),
@@ -136,12 +136,12 @@ test('balances count past rides as due, later rides this week as upcoming, and s
   const settlements = [
     { id: 's1', payerId: 'me', payeeId: 'alex', requestIds: ['mon'], cents: 100, method: 'venmo', status: 'MARKED_PAID', createdAt: 1_790_000_000 },
   ];
-  const balances = computeBalances('me', requests, settlements, Date.parse('2026-10-15T15:00:00-04:00') / 1000, '2026-10-18');
+  const balances = computeBalances('me', requests, settlements, Date.parse('2026-10-15T15:00:00-04:00') / 1000);
   const alex = balances.find((b) => b.counterpartId === 'alex');
   assert.equal(alex.direction, 'owe');
   assert.deepEqual(alex.due.map((r) => r.requestId), ['wed']);
   assert.equal(alex.dueCents, 125);
-  assert.equal(alex.upcomingCents, 100);
+  assert.equal(alex.upcomingCents, 200);
   assert.equal(alex.awaitingConfirmation.length, 1);
   const maya = balances.find((b) => b.counterpartId === 'maya');
   assert.equal(maya.direction, 'owed');
@@ -205,7 +205,7 @@ test('taking turns driving keeps payable rides and pending confirmations in thei
   const received = { id: 'received', payerId: 'alex', payeeId: 'me', requestIds: [], cents: 200, status: 'MARKED_PAID' };
   const now = Date.parse('2026-10-15T15:00:00-04:00') / 1000;
   for (const order of [requests, [...requests].reverse()]) {
-    const balances = computeBalances('me', order, [sent, received], now, '2026-10-18');
+    const balances = computeBalances('me', order, [sent, received], now);
     assert.equal(balances.length, 2);
     const owe = balances.find((b) => b.direction === 'owe');
     const owed = balances.find((b) => b.direction === 'owed');
@@ -223,11 +223,11 @@ test('today’s ride becomes due only after both agreed arrivals, including the 
   const vehicleArrival = request.plan.vehicleCampusArrival;
   request.plan.riderDestinationArrival = vehicleArrival + 600;
   for (const now of [vehicleArrival - 3600, vehicleArrival, vehicleArrival + 599]) {
-    const [balance] = computeBalances('me', [request], [], now, '2026-10-18');
+    const [balance] = computeBalances('me', [request], [], now);
     assert.equal(balance.dueCents, 0);
     assert.equal(balance.upcomingCents, 300);
   }
-  const [finished] = computeBalances('me', [request], [], vehicleArrival + 600, '2026-10-18');
+  const [finished] = computeBalances('me', [request], [], vehicleArrival + 600);
   assert.equal(finished.dueCents, 300);
   assert.equal(finished.upcomingCents, 0);
 });
@@ -250,10 +250,10 @@ test('pending payments survive outstanding debt and absent ride snapshots', () =
   }));
   const now = Date.parse('2026-10-15T15:00:00-04:00') / 1000;
   const requests = [ride('unpaid', '2026-10-12', 300, { driver: 'me', rider: 'alex' })];
-  const [balance] = computeBalances('me', requests, settlements, now, '2026-10-18');
+  const [balance] = computeBalances('me', requests, settlements, now);
   assert.equal(balance.dueCents, 300);
   assert.deepEqual(balance.awaitingConfirmation.map((s) => s.id), ['one', 'two']);
-  const [paymentsOnly] = computeBalances('me', [], settlements, now, '2026-10-18');
+  const [paymentsOnly] = computeBalances('me', [], settlements, now);
   assert.equal(paymentsOnly.counterpartName, 'Alex');
   assert.equal(paymentsOnly.awaitingConfirmation.length, 2);
 });

@@ -48,7 +48,7 @@ carpool screen.
     stays a cost share. The cap still applies after a raise, and adjusted prices round down.
   - **Lowering is generous**, so it gets more room. Below half, "Free" is the honest option.
 - **Fixed steps**, so prices stay comparable and never land on odd amounts.
-- **Only the driver adjusts.** Riders never change prices, which avoids haggling.
+- **Only the driver adjusts.** Riders never change prices, which avoids haggling. The saved preference is labeled for new requests; saving confirms the preference and how many unpaid rides were lowered.
 - **Changes only go in the rider's favor:** a lower price also applies to that rider's unpaid
   accepted and pending rides; a higher one only applies to new requests.
 - **Riders see the change:** "Alex lowered it from $1.00", "Alex covers the gas", or
@@ -75,7 +75,7 @@ emulator, so the demo uses the defaults unless `pricing/fuel` is written.
   - If two people take turns driving, each payment direction has its own balance so a
     settlement only includes rides with the same rider and driver.
   - Rides become "due" after both agreed campus arrival times, including rides today.
-  - Later rides this week are shown as upcoming.
+  - All future accepted rides are shown as upcoming, including rides beyond this week. Riders see a disabled Settle up button until a ride finishes.
   - Payments marked sent wait for the driver's "Got it".
   - Each sent payment can be confirmed even while other rides remain unpaid. Only confirmed
     payments count toward the driver's "covered this month" total.

@@ -66,3 +66,23 @@ test('riders see sent payments independently of their remaining settle-up balanc
   assert.equal((html.match(/Waiting for Alex to confirm/g) ?? []).length, 2);
   assert.doesNotMatch(html, /Got it/);
 });
+
+test('future rider balances expose Settle up but keep it disabled until the ride finishes', () => {
+  const html = renderToStaticMarkup(React.createElement(GasShares, {
+    uid: 'me', coveredCents: 0,
+    balances: [{ ...balance, direction: 'owe', due: [], dueCents: 0, upcomingCents: 375, awaitingConfirmation: [] }],
+  }));
+  assert.match(html, /Upcoming with Alex/);
+  assert.match(html, /\$3\.75 for upcoming rides/);
+  assert.match(html, /Payment becomes due after each ride finishes/);
+  assert.match(html, /<button[^>]*aria-label="Settle up with Alex after the ride finishes"[^>]*disabled=""/);
+});
+
+test('Rides explains payments even when there are no priced accepted rides', () => {
+  const html = renderToStaticMarkup(React.createElement(GasShares, {
+    uid: 'me', balances: [], coveredCents: 0,
+  }));
+  assert.match(html, /Gas shares/);
+  assert.match(html, /when a priced ride is accepted/);
+  assert.match(html, /Settle up becomes available after the ride finishes/);
+});

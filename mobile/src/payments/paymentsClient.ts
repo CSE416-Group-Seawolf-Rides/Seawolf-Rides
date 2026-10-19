@@ -65,7 +65,9 @@ function readAdjustment(value: unknown): PriceAdjustment {
 }
 
 export async function setPriceAdjustment(riderId: string, adjustment: PriceAdjustment) {
-  await call('setPriceAdjustment')({ riderId, adjustment });
+  return (await call<{ riderId: string; adjustment: PriceAdjustment }, { adjustment: PriceAdjustment; lowered: number }>(
+    'setPriceAdjustment',
+  )({ riderId, adjustment })).data;
 }
 
 export function useSettlements(uid?: string) {
