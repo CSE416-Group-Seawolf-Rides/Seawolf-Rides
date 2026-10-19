@@ -16,6 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MapView, { Circle, Marker } from 'react-native-maps';
 import { AppButton } from '../components/AppButton';
+import { PriceBreakdown, PriceTag } from '../payments/components/PriceTag';
 import { Card } from '../components/Card';
 import {
   dayModeLabels,
@@ -374,6 +375,10 @@ export function CommuteMatchesSheet({
                               : 'Looking for a ride'}
                         </Text>
                       </View>
+                      <PriceTag
+                        price={active?.status === 'PENDING' || active?.status === 'ACCEPTED' ? (active.price ?? best.price) : best.price}
+                        youDrive={best.driverId === uid}
+                      />
                     </View>
                     <Text style={styles.muted}>{item.area.label}</Text>
                     {best.eta?.model === 'TRAFFIC_FORECAST' && (
@@ -556,6 +561,9 @@ export function CommuteMatchesSheet({
                       {Math.ceil(match.addedDrivingSeconds / 60)} min added driving, including
                       boarding
                     </Text>
+                    <PriceBreakdown
+                      price={request?.status === 'PENDING' || request?.status === 'ACCEPTED' ? (request.price ?? match.price) : match.price}
+                    />
                     <Text style={styles.muted}>
                       New York time ·{' '}
                       {match.eta?.model === 'TRAFFIC_FORECAST'

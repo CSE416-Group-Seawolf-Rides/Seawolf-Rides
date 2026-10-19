@@ -10,6 +10,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.1.0",
     "expo": "~57.0.30",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.22",
     "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
@@ -49,6 +50,7 @@
     "test:firestore-rules": "npx --yes firebase-tools@15.33.0 emulators:exec --config ../firebase.json --only firestore --project demo-seawolf-rides \"node --import ./scripts/node-test/register-ts-resolver.mjs --test integration/firestore-rules.integration.mjs\"",
     "build": "expo export --platform android --output-dir dist",
     "test:matching": "node scripts/run-matching-emulators.mjs",
+    "seed:demo": "node --import ./scripts/node-test/register-ts-resolver.mjs scripts/seed-demo-data.mjs",
     "test:ride-presentation": "npx --yes firebase-tools@15.33.0 emulators:exec --config ../firebase.json --only auth,firestore --project demo-seawolf-rides \"node --import ./scripts/node-test/register-ts-resolver.mjs --test integration/ride-presentation.integration.mjs\""
   },
   "private": true

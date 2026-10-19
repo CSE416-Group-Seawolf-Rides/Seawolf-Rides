@@ -19,7 +19,10 @@ import {
   savePrimaryCommute,
   saveUserData,
 } from '../persistence/userDataRepository';
-import { AuthUser, authUserFromFirebase, signOut as signOutFromFirebase } from './authService';
+import { Alert } from 'react-native';
+
+import { AuthUser, authUserFromFirebase, signInWithEmail, signOut as signOutFromFirebase } from './authService';
+import { canUseSeededDemo, DEMO_ACCOUNT } from './demoAccount';
 
 type SessionStatus = 'error' | 'loading' | 'ready';
 
@@ -37,9 +40,19 @@ interface Session {
   saveCommute: (commute: CommuteSchedule) => Promise<void>;
   signOut: () => Promise<void>;
   retry: () => Promise<void>;
+  // TEMPORARY demo shortcut: a local-only session that skips sign-up and onboarding.
+  isGuest: boolean;
+  signInAsGuest: () => Promise<void>;
 }
 
 const SessionContext = createContext<Session | null>(null);
+
+const guestUser: AuthUser = {
+  id: 'guest-demo',
+  email: 'guest@demo.seawolfrides',
+  provider: 'email',
+};
+const guestProfile: OnboardingProfile = { role: 'both', firstName: 'Guest' };
 
 export function SessionProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -47,10 +60,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const [commute, setCommute] = useState<CommuteSchedule | null>(null);
   const [status, setStatus] = useState<SessionStatus>('loading');
   const [error, setError] = useState<string | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
+  const guestActive = useRef(false);
   const loadVersion = useRef(0);
   const saves = useRef(new SaveCoordinator());
 
   const loadFirebaseUser = useCallback(async () => {
+    // A guest session is local-only; Firebase auth events must not replace it.
+    if (guestActive.current) {
+      return;
+    }
     const version = ++loadVersion.current;
     saves.current = new SaveCoordinator();
     const firebaseUser = getFirebaseAuth().currentUser;
@@ -117,6 +136,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
       if (!user) {
         throw new Error('Sign in before saving an account.');
       }
+      if (isGuest) {
+        setProfile(nextProfile);
+        setCommute(nextCommute);
+        return;
+      }
       const version = loadVersion.current;
       await saves.current.run(
         JSON.stringify(['account', user.id, nextProfile, nextCommute]),
@@ -129,13 +153,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
         },
       );
     },
-    [commute, user],
+    [commute, isGuest, user],
   );
 
   const saveCommute = useCallback(
     async (nextCommute: CommuteSchedule) => {
       if (!user) {
         throw new Error('Sign in before saving a commute.');
+      }
+      if (isGuest) {
+        setCommute(nextCommute);
+        return;
       }
       // During first-time onboarding, hold the commute until the profile is
       // finalized so both documents can be committed together.
@@ -151,11 +179,40 @@ export function SessionProvider({ children }: PropsWithChildren) {
       }
       setCommute(nextCommute);
     },
-    [profile, user],
+    [isGuest, profile, user],
   );
 
+  const signInAsGuest = useCallback(async () => {
+    // Against the local emulator, the guest is the seeded demo account, so every screen reads
+    // real (rules-checked) data. A local-only guest would be denied by the Firestore rules.
+    if (canUseSeededDemo()) {
+      try {
+        await signInWithEmail(DEMO_ACCOUNT);
+      } catch {
+        Alert.alert(
+          'Demo data isn’t loaded',
+          'With the demo backend running, run this in mobile/:\n\nnpm run seed:demo',
+        );
+      }
+      return;
+    }
+    guestActive.current = true;
+    loadVersion.current += 1;
+    setIsGuest(true);
+    setUser(guestUser);
+    setProfile(guestProfile);
+    setCommute(null);
+    setError(null);
+    setStatus('ready');
+  }, []);
+
   const signOut = useCallback(async () => {
-    await signOutFromFirebase();
+    if (guestActive.current) {
+      guestActive.current = false;
+      setIsGuest(false);
+    } else {
+      await signOutFromFirebase();
+    }
     setUser(null);
     setProfile(null);
     setCommute(null);
@@ -173,8 +230,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
       saveCommute,
       signOut,
       retry: loadFirebaseUser,
+      isGuest,
+      signInAsGuest,
     }),
     [
+      isGuest,
+      signInAsGuest,
       user,
       profile,
       commute,

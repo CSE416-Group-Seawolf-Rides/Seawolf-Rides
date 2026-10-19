@@ -9,6 +9,8 @@ import type { RideRequest } from '../mvp/rideRequestModel';
 import type { RoadRoute, RoutingResult } from '../routing/types';
 import { CAMPUS_POINTS } from '../mvp/settings';
 import { useAcceptedPickup } from './acceptedPickups';
+import { tripDirectionsUrl } from './tripDirections';
+import { useSession } from '../auth/SessionProvider';
 import { colors, radii, spacing } from '../theme';
 
 /** Exact points are read only from participant-protected, accepted-trip snapshots. */
@@ -17,6 +19,8 @@ export function AcceptedTripMap({ ride, routePreview = false }: {
   routePreview?: boolean;
 }) {
   const { pickup, error } = useAcceptedPickup(ride);
+  const { user } = useSession();
+  const driving = user?.id === ride.driverId;
   const [route, setRoute] = useState<RoadRoute | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -47,12 +51,11 @@ export function AcceptedTripMap({ ride, routePreview = false }: {
       setMessage(failure instanceof Error ? failure.message : 'Route unavailable. Retry when connected.');
     } finally { inFlight.current = false; setBusy(false); }
   };
-  const openPickup = async () => {
-    const destination = `${pickup.riderPickup.latitude},${pickup.riderPickup.longitude}`;
-    const url = Platform.OS === 'ios'
-      ? `https://maps.apple.com/?daddr=${destination}&dirflg=d`
-      : `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
-    try { await Linking.openURL(url); }
+  // The whole trip in one handoff: current location → pickup(s) in order → campus lot.
+  const openDirections = async () => {
+    const destination = campus ?? pickup.riderPickup;
+    const stops = campus ? [pickup.riderPickup] : [];
+    try { await Linking.openURL(tripDirectionsUrl(Platform.OS, stops, destination)); }
     catch { setMessage('Could not open Maps. The confirmed pickup pin is shown above.'); }
   };
   return (
@@ -79,7 +82,11 @@ export function AcceptedTripMap({ ride, routePreview = false }: {
           ? `${route.provider.name} · ${(route.distanceMeters / 1000).toFixed(1)} km · ${Math.ceil(route.durationSeconds / 60)} min driving. ${route.estimate?.model === 'TRAFFIC_FORECAST' ? 'Traffic forecast.' : 'Excludes traffic.'}`
           : 'Load the road route when needed. The pins show confirmed locations.'} Route previews do not change agreed times or include pickup waiting.</Text>
       </>}
-      <AppButton label="Directions to pickup in Maps" variant="secondary" onPress={() => void openPickup()} />
+      <AppButton
+        label={driving ? `Directions: pick up ${ride.riderName}, then ${ride.campusLabel}` : `Directions to ${ride.campusLabel} via your pickup`}
+        variant="secondary"
+        onPress={() => void openDirections()}
+      />
       {message ? <Text accessibilityRole="alert">{message}</Text> : null}
     </View>
   );

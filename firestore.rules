@@ -187,6 +187,33 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Settle-up records are created and confirmed by trusted callables; participants read them.
+    match /settlements/{settlementId} {
+      allow read: if isVerifiedStonyBrookUser()
+        && request.auth.uid in resource.data.participantIds;
+      allow write: if false;
+    }
+
+    // Payment usernames: the owner reads their own; riders get them through a callable that
+    // checks they actually rode with this driver.
+    match /paymentHandles/{userId} {
+      allow read: if owns(userId);
+      allow write: if false;
+    }
+
+    // A driver's price adjustment for one rider: both can read it; only the callable writes.
+    match /priceAdjustments/{pairId} {
+      allow read: if isVerifiedStonyBrookUser()
+        && request.auth.uid in resource.data.participantIds;
+      allow write: if false;
+    }
+
+    // This week's fuel prices are public reference data, written only by the weekly refresh.
+    match /pricing/{docId} {
+      allow read: if isVerifiedStonyBrookUser();
+      allow write: if false;
+    }
+
     // Temporary M2 heartbeat. It remains read-only and exposes no user document.
     match /commutes/{commuteId} {
       allow read: if commuteId == 'sample-commute-001';

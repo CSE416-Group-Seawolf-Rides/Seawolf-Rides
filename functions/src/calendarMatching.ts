@@ -32,6 +32,8 @@ const commitmentId = (uid: string, date: string) =>
     .update(JSON.stringify([uid, date, 'TO_CAMPUS']))
     .digest('hex');
 const timestamp = () => Math.floor(Date.now() / 1000);
+import { loadFuelPrices, pricer } from './payments';
+
 export function requireLocalDemo() {
   if (
     process.env.FUNCTIONS_EMULATOR !== 'true' ||
@@ -332,6 +334,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
       incompatibleCount: 0,
     };
     // Two static pairs or one traffic pair (arrival seed plus three timed routes), within the four-request budget.
+    const priceFor = pricer(await loadFuelPrices());
     if (page.length)
       await withMatchingRouting(async (routing) => {
         for (const { driver, rider, other } of page) {
@@ -374,6 +377,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
                 (localMinuteToEpoch(date, own.participant.day.arriveBy!) - ARRIVAL_BUFFER_SECONDS),
             ),
             metrics: evaluation.metrics,
+            price: await priceFor(driver.uid, rider.uid, evaluation.metrics),
           });
         }
       }, true);
@@ -473,6 +477,8 @@ export async function prepareCalendarPair(
       )!.label,
       plan: evaluated.plan,
       metrics: evaluated.metrics,
+      // Locked here: later gas updates never change a price someone already agreed to.
+      price: await pricer(await loadFuelPrices())(driverId, riderId, evaluated.metrics),
     };
   return {
     value,

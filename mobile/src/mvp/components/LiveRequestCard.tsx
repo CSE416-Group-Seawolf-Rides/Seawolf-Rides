@@ -5,6 +5,7 @@ import { colors, spacing } from '../../theme';
 import { AppButton } from '../../components/AppButton';
 import { requestCanCancel, requestRecipient, type RideRequest } from '../rideRequestModel';
 import { historyLabel, partnerName, rideDate, rideEnd, rideTime } from '../ridePresentation';
+import { adjustmentNote, formatCents } from '../../payments/pricing';
 
 export function LiveRequestCard({
   ride,
@@ -42,6 +43,16 @@ export function LiveRequestCard({
       <Text style={styles.route}>
         {ride.pickupLabel} → {ride.campusLabel}
       </Text>
+      {ride.price && (
+        <Text style={styles.price}>
+          {ride.driverId === uid
+            ? `Chips in ${formatCents(ride.price.cents)} for gas`
+            : `Gas share ${formatCents(ride.price.cents)}`}
+          {adjustmentNote(ride.price, ride.driverId === uid ? null : ride.driverName)
+            ? ` · ${adjustmentNote(ride.price, ride.driverId === uid ? null : ride.driverName)}`
+            : ''}
+        </Text>
+      )}
       {ride.driverId === uid && (
         <Text style={styles.detail}>
           Leave your starting point · {rideTime(ride.plan.departure)}
@@ -81,6 +92,7 @@ export function LiveRequestCard({
   );
 }
 const styles = StyleSheet.create({
+  price: { color: colors.success, fontSize: 14, fontWeight: '700' },
   card: { gap: spacing.md, padding: spacing.xl },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   copy: { flex: 1, gap: spacing.xs },
