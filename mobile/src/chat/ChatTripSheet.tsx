@@ -15,6 +15,7 @@ import { trafficForecastIsStale } from '../routing/types';
 import { useHomeClock } from '../rides/useHomeClock';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { colors, radii, spacing } from '../theme';
+import { PriceBreakdown, PriceTag } from '../payments/components/PriceTag';
 import { getChatMatch, useChatRequest } from './chatClient';
 import { chatPartner, type ChatMatchDetails, type ChatThread } from './chatModel';
 import { chatRequestActions, chatRequestInput } from './chatTripActions';
@@ -67,6 +68,9 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
   const date = request?.localDate ?? details?.localDate ?? thread.localDate;
   const driving = (request?.driverId ?? details?.match.driverId ?? thread.trip?.driverId) === uid;
   const canPropose = !requestId || request?.status === 'CANCELLED';
+  // Existing requests keep their stored amount. A refreshed, cancelled request is a
+  // new proposal; never substitute today's suggestion for a pending/accepted price.
+  const price = request && request.status !== 'CANCELLED' ? request.price : details?.match.price;
   const finish = () => {
     if (finished.current) return;
     finished.current = true;
@@ -126,6 +130,7 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
               <Text style={styles.name}>{name}</Text>
               <Text style={styles.muted}>{rideDate(date)} · {driving ? 'Driving' : 'Riding'}</Text>
             </View>
+            <PriceTag price={price} youDrive={driving} />
           </View>
           {context.loading && <Text>Loading request…</Text>}
           {context.error && <Text accessibilityRole="alert">{context.error}</Text>}
@@ -141,6 +146,16 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
             <Text>Arrival · {rideTime(plan.vehicleCampusArrival)} · {details?.match.dropoffLabel ?? request?.campusLabel ?? thread.campusLabel}</Text>
             <Text style={styles.muted}>New York time · {Math.ceil((plan.pickup - plan.departure) / 60)} min to pickup</Text>
             {details && <Text style={styles.muted}>{Math.ceil(details.match.addedDrivingSeconds / 60)} min added driving · {details.match.eta?.model === 'TRAFFIC_FORECAST' ? 'Traffic-aware forecast · TomTom' : 'Road estimate · no live traffic'}</Text>}
+            <Text style={styles.name}>Gas share</Text>
+            {price ? <>
+              <PriceBreakdown price={price} />
+              <Text style={styles.muted}>
+                {request?.status === 'ACCEPTED' ? 'Agreed amount.' : request && !canPropose ? 'Amount on this request.' : 'Suggested amount before requesting.'}
+                {' '}{price.cents === 0 ? 'No payment needed. The driver covers the gas.' : 'Paid directly to the driver after the ride.'}
+              </Text>
+            </> : <Text style={styles.muted}>
+              {request && !canPropose ? 'No gas share was recorded for this request.' : 'Refresh the match to check its gas share.'}
+            </Text>}
           </Card>}
           {canPropose && details && <>
             <View style={styles.map} accessibilityLabel={`Your starting point and ${name}'s approximate area`}>
