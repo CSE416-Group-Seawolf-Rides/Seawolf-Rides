@@ -293,3 +293,49 @@ test('rider Any preference is owner-only, validated and persisted independently 
   await assertFails(setDoc(ref, { ...commute, riderDropoffPreference: 'surprise' }));
   await assertFails(getDoc(doc(authenticatedUser('other'), 'users', 'wolfie', 'commutes', 'primary')));
 });
+
+test('settlements are readable only by the two people involved and never written by clients', async () => {
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'settlements/s1'), {
+      schemaVersion: 1, participantIds: ['rider', 'driver'], payerId: 'rider', payeeId: 'driver',
+      requestIds: ['r1'], cents: 125, method: 'venmo', status: 'MARKED_PAID',
+    });
+  });
+  await assertSucceeds(getDoc(doc(authenticatedUser('rider'), 'settlements/s1')));
+  await assertSucceeds(getDoc(doc(authenticatedUser('driver'), 'settlements/s1')));
+  await assertFails(getDoc(doc(authenticatedUser('outsider'), 'settlements/s1')));
+  await assertFails(setDoc(doc(authenticatedUser('driver'), 'settlements/s1'), { status: 'CONFIRMED' }));
+  await assertFails(setDoc(doc(authenticatedUser('rider'), 'settlements/s2'), {
+    participantIds: ['rider', 'driver'], cents: 0,
+  }));
+});
+
+test('payment usernames are private to their owner; riders get them only through the callable', async () => {
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'paymentHandles/driver'), { venmo: 'alex-chen' });
+  });
+  await assertSucceeds(getDoc(doc(authenticatedUser('driver'), 'paymentHandles/driver')));
+  await assertFails(getDoc(doc(authenticatedUser('rider'), 'paymentHandles/driver')));
+  await assertFails(setDoc(doc(authenticatedUser('driver'), 'paymentHandles/driver'), { venmo: 'x' }));
+});
+
+test('weekly fuel prices are readable by verified students and written only by the refresh', async () => {
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'pricing/fuel'), { gasUsdPerGallon: 4.35 });
+  });
+  await assertSucceeds(getDoc(doc(authenticatedUser('rider'), 'pricing/fuel')));
+  await assertFails(getDoc(doc(environment.unauthenticatedContext().firestore(), 'pricing/fuel')));
+  await assertFails(setDoc(doc(authenticatedUser('rider'), 'pricing/fuel'), { gasUsdPerGallon: 0.01 }));
+});
+
+test('a price adjustment is readable by its driver and rider only, and never written by clients', async () => {
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'priceAdjustments/driver_rider'), {
+      participantIds: ['driver', 'rider'], driverId: 'driver', riderId: 'rider', adjustment: -50,
+    });
+  });
+  await assertSucceeds(getDoc(doc(authenticatedUser('driver'), 'priceAdjustments/driver_rider')));
+  await assertSucceeds(getDoc(doc(authenticatedUser('rider'), 'priceAdjustments/driver_rider')));
+  await assertFails(getDoc(doc(authenticatedUser('outsider'), 'priceAdjustments/driver_rider')));
+  await assertFails(setDoc(doc(authenticatedUser('rider'), 'priceAdjustments/driver_rider'), { adjustment: -100 }));
+});

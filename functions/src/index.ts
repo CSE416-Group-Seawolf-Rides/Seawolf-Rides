@@ -97,3 +97,12 @@ export { saveVehicleDetails } from './vehicle';
 export { estimateCommuteStart } from './commuteEstimate';
 
 export { startMatchChat, sendChatMessage, getChatMatch } from './chat';
+export {
+  saveFuelEfficiency,
+  savePaymentHandles,
+  getPayeeHandles,
+  recordSettlement,
+  confirmSettlement,
+  refreshFuelPrices,
+  setPriceAdjustment,
+} from './payments';

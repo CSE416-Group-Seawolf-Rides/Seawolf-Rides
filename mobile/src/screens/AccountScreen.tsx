@@ -13,6 +13,10 @@ import { CommuteRole, roleLabels, roleOptions } from '../onboarding/onboardingMo
 import { colors, radii, spacing } from '../theme';
 import { router } from 'expo-router';
 import { useVehicle } from '../vehicle/vehicleClient';
+import { formatWeekOf } from '../payments/fuelPrices';
+import { methodLabels, PAYMENT_METHODS } from '../payments/paymentHandles';
+import { useFuelPrices, useOwnPaymentHandles, useOwnVehicleEfficiency } from '../payments/paymentsClient';
+import { effectiveEfficiency, EFFICIENCY_LIMITS } from '../payments/pricing';
 
 interface AccountScreenProps {
   user: AuthUser;
@@ -46,6 +50,10 @@ export function AccountScreen({
   const displayName = firstName ?? user.email;
   const drives = role !== 'rider';
   const vehicle = useVehicle(user.id);
+  const fuelPrices = useFuelPrices(true);
+  const handles = useOwnPaymentHandles(user.id);
+  const efficiency = effectiveEfficiency(useOwnVehicleEfficiency(user.id).value);
+  const payWith = PAYMENT_METHODS.filter((method) => handles.value[method]).map((method) => methodLabels[method]);
 
   return (
     <Screen title="Account">
@@ -79,6 +87,31 @@ export function AccountScreen({
           value={roleLabels[role]}
         />
         {drives && <SettingsRow icon="car-outline" label="Your vehicle" last value={vehicle.vehicle ? 'Details added' : 'Finish setup'} onPress={() => router.push('/vehicle-setup')} />}
+      </SettingsGroup>
+
+      <SettingsGroup title="Gas shares">
+        {drives && (
+          <SettingsRow
+            icon="wallet-outline"
+            label="How riders pay you"
+            onPress={() => router.push('/account/payments')}
+            value={payWith.length ? payWith.join(', ') : 'Add Venmo or PayPal'}
+          />
+        )}
+        {drives && (
+          <SettingsRow
+            icon="speedometer-outline"
+            label="Fuel efficiency"
+            onPress={() => router.push('/account/fuel')}
+            value={`${efficiency.efficiency} ${EFFICIENCY_LIMITS[efficiency.fuelType].unit}${efficiency.custom ? '' : ' · typical'}`}
+          />
+        )}
+        <SettingsRow
+          icon="pricetag-outline"
+          label="NY gas this week"
+          last
+          value={`$${fuelPrices.gasUsdPerGallon.toFixed(2)}/gal · ${formatWeekOf(fuelPrices.gasWeekOf)}`}
+        />
       </SettingsGroup>
 
       <SettingsGroup title="Notifications">

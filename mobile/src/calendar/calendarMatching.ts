@@ -7,6 +7,7 @@ import {
   localMinuteToEpoch,
   PICKUP_SERVICE_SECONDS,
 } from '../mvp/settings';
+import type { RidePrice } from '../payments/pricing';
 import { ARRIVAL_BUFFER_SECONDS, ARRIVAL_FLEX_MINUTES, preferredArrivalWindow } from '../commute/arrivalPolicy';
 
 export interface CalendarParticipant {
@@ -40,6 +41,8 @@ export interface CalendarMatch {
   dropoffPreferenceMatch?: boolean;
   savedDriverDeparture?: number;
   metrics: Extract<PairEvaluation, { status: 'FEASIBLE' }>['metrics'];
+  /** The rider's gas share for this trip, from the driver's car and this week's fuel price. */
+  price?: RidePrice;
 }
 export interface CalendarSearchResult {
   policyVersion: 3;

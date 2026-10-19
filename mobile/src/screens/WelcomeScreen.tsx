@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AuthProviderButton } from '../components/AuthProviderButton';
 import { RouteIllustration } from '../components/RouteIllustration';
@@ -7,6 +7,8 @@ import { colors, spacing } from '../theme';
 
 interface WelcomeScreenProps {
   onContinueWithEmail: () => void;
+  // TEMPORARY demo shortcut; remove with SessionProvider.signInAsGuest.
+  onContinueAsGuest: () => void;
 }
 
 const roles = [
@@ -14,7 +16,7 @@ const roles = [
   { title: 'Ride', description: 'Catch a lift with a Seawolf headed your way.' },
 ] as const;
 
-export function WelcomeScreen({ onContinueWithEmail }: WelcomeScreenProps) {
+export function WelcomeScreen({ onContinueWithEmail, onContinueAsGuest }: WelcomeScreenProps) {
   return (
     <ScrollView
       contentContainerStyle={styles.content}
@@ -48,6 +50,16 @@ export function WelcomeScreen({ onContinueWithEmail }: WelcomeScreenProps) {
           label="Continue with email"
           onPress={onContinueWithEmail}
         />
+        <Pressable
+          accessibilityHint="Opens the app with a temporary demo account. Nothing is saved."
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onContinueAsGuest}
+          style={({ pressed }) => [styles.guest, pressed && styles.guestPressed]}
+        >
+          <Ionicons color={colors.textMuted} name="eye-outline" size={16} />
+          <Text style={styles.guestLabel}>Explore as a guest (demo)</Text>
+        </Pressable>
         <Text style={styles.legal}>
           By continuing, you agree to the Terms and Privacy Policy.{`\n`}
           A verified @stonybrook.edu email is required.
@@ -114,6 +126,23 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.md,
+  },
+  guest: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+  },
+  guestPressed: {
+    opacity: 0.6,
+  },
+  guestLabel: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   legal: {
     color: colors.textMuted,

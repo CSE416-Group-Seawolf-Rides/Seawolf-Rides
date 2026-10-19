@@ -1,9 +1,13 @@
 import { useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 import { decideRideRequest, cancelRideRequest } from './rideRequestClient';
 import type { RideRequest } from './rideRequestModel';
+import { friendlyRideError } from './rideErrors';
+
+const partnerOf = (item: RideRequest, uid?: string) => (item.driverId === uid ? item.riderName : item.driverName);
 
 export function useRideDecision() {
   const { user } = useSession();
@@ -33,7 +37,11 @@ export function useRideDecision() {
         item.driverId === user?.id
       )
         setVehicleRequired(true);
-      setError(caught instanceof Error ? caught.message : 'Could not save your decision. Retry.');
+      else {
+        // A dialog says what happened and what to do next, instead of a raw server message.
+        const copy = friendlyRideError(caught, decision === 'ACCEPTED' ? 'accept' : 'decline', partnerOf(item, user?.id));
+        Alert.alert(copy.title, copy.message);
+      }
     } finally {
       submitting.current = false;
       setBusy(null);
@@ -47,7 +55,8 @@ export function useRideDecision() {
     try {
       await cancelRideRequest(item);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not cancel this request. Retry.');
+      const copy = friendlyRideError(caught, 'cancel', partnerOf(item, user?.id));
+      Alert.alert(copy.title, copy.message);
     } finally {
       submitting.current = false;
       setBusy(null);

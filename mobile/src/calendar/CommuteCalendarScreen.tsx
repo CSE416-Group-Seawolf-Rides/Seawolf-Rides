@@ -1,6 +1,8 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { friendlyRideError } from '../mvp/rideErrors';
+import { RideDayDirections } from './RideDayDirections';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '../auth/SessionProvider';
 import { Screen } from '../components/Screen';
@@ -159,7 +161,8 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
       });
       return request;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not send this request.');
+      const copy = friendlyRideError(error, 'request', match.name);
+      Alert.alert(copy.title, copy.message);
     } finally {
       setBusy(false);
       setRequesting(false);
@@ -276,6 +279,9 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
               <Text style={styles.nextDetail}>
                 Campus arrival {time(nextTrip.plan.riderDestinationArrival)} · New York time
               </Text>
+              {nextTrip.localDate === today && user && (
+                <RideDayDirections ride={nextTrip} uid={user.id} />
+              )}
               <AppButton
                 label="View ride"
                 variant="secondary"

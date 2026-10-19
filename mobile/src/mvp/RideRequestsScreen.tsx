@@ -24,6 +24,9 @@ import {
 import { LiveCarpoolCard } from './components/LiveCarpoolCard';
 import { useRideDecision } from './useRideDecision';
 import { LiveAgenda } from './components/LiveAgenda';
+import { GasShares } from '../payments/components/GasShares';
+import { useSettlements } from '../payments/paymentsClient';
+import { computeBalances, coveredThisMonth } from '../payments/tally';
 
 export function RideRequestsScreen() {
   const { user, profile, commute } = useSession();
@@ -36,6 +39,7 @@ export function RideRequestsScreen() {
   const epoch = now.getTime() / 1000;
   const uid = user?.id ?? '';
   const [showNextWeek, setShowNextWeek] = useState(false);
+  const settlements = useSettlements(user?.id);
   const carpools = currentCarpools(requests.items, uid, epoch);
   const waiting = requests.items.filter((r) => requestNeedsAnswer(r, uid, epoch));
   const waitingPeople = new Set(waiting.map((r) => partnerId(r, uid))).size;
@@ -58,6 +62,9 @@ export function RideRequestsScreen() {
     profile?.role ?? 'rider',
     overrides.days,
   );
+  const today = localToday(epoch);
+  const balances = computeBalances(uid, requests.items, settlements.items, today, shiftDate(monday, 6));
+  const covered = coveredThisMonth(uid, settlements.items, today.slice(0, 7));
   const history = rideHistory(requests.items, uid, epoch);
   const past = history.filter((r) => r.status === 'ACCEPTED');
   const people = new Set(past.map((r) => partnerId(r, uid))).size;
@@ -92,6 +99,7 @@ export function RideRequestsScreen() {
           <Text style={styles.action}>Review</Text>
         </Pressable>
       )}
+      <GasShares balances={balances} coveredCents={covered} uid={uid} />
       <View style={styles.section}>
         <Text accessibilityRole="header" style={styles.heading}>
           Your carpools

@@ -35,6 +35,8 @@ export const saveVehicleDetails = onCall(
               'photoBase64',
               'plate',
               'plateRegion',
+              'fuelType',
+              'efficiency',
             ].includes(key),
         )
       )
@@ -47,9 +49,14 @@ export const saveVehicleDetails = onCall(
       );
     }
     // No verified flag: this is owner-entered information, never an identity check.
-    await getFirestore()
-      .doc(`users/${call.auth.uid}/vehicles/primary`)
-      .set({ ...details, updatedAt: new Date() });
+    const ref = getFirestore().doc(`users/${call.auth.uid}/vehicles/primary`);
+    // Fuel settings are edited separately; keep them unless this save changes them.
+    const existing = (await ref.get()).data() ?? {};
+    const fuel = {
+      ...(existing.fuelType ? { fuelType: existing.fuelType } : {}),
+      ...(typeof existing.efficiency === 'number' ? { efficiency: existing.efficiency } : {}),
+    };
+    await ref.set({ ...fuel, ...details, updatedAt: new Date() });
     return { saved: true };
   },
 );

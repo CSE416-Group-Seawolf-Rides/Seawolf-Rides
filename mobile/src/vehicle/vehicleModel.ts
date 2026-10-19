@@ -1,3 +1,5 @@
+import { EFFICIENCY_LIMITS, type FuelType } from '../payments/pricing';
+
 export interface VehicleDetails {
   schemaVersion: 1;
   ownerId: string;
@@ -6,6 +8,10 @@ export interface VehicleDetails {
   photoBase64: string;
   plate: string;
   plateRegion: string;
+  /** Optional: missing on older records, which price as a typical gas car. */
+  fuelType?: FuelType;
+  /** Optional custom mpg (mi/kWh for electric); absent means the typical value. */
+  efficiency?: number;
 }
 // A bounded thumbnail keeps the emulator demo self-contained, including export/import.
 export const MAX_VEHICLE_PHOTO_LENGTH = 350_000;
@@ -26,7 +32,19 @@ export function parseVehicle(value: unknown, ownerId: string): VehicleDetails {
   const plate = text('plate', 16).toUpperCase();
   if (!/^[A-Z0-9 -]{1,16}$/.test(plate))
     throw new Error('Check your license plate.');
+  const fuelType = v.fuelType === undefined ? undefined : String(v.fuelType);
+  if (fuelType !== undefined && !['gas', 'hybrid', 'electric'].includes(fuelType))
+    throw new Error('Choose gas, hybrid, or electric.');
+  let efficiency: number | undefined;
+  if (v.efficiency !== undefined) {
+    const limits = EFFICIENCY_LIMITS[(fuelType ?? 'gas') as FuelType];
+    if (typeof v.efficiency !== 'number' || !Number.isFinite(v.efficiency) || v.efficiency < limits.min || v.efficiency > limits.max)
+      throw new Error(`Fuel efficiency must be ${limits.min}–${limits.max} ${limits.unit}.`);
+    efficiency = Math.round(v.efficiency * 10) / 10;
+  }
   return {
+    ...(fuelType ? { fuelType: fuelType as FuelType } : {}),
+    ...(efficiency !== undefined ? { efficiency } : {}),
     schemaVersion: 1,
     ownerId,
     type: text('type', 80),
