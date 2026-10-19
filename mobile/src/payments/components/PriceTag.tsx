@@ -37,6 +37,7 @@ export function PriceBreakdown({ price }: { price?: RidePrice }) {
   return (
     <Text style={styles.breakdown}>
       Cost share {formatCents(price.cents)}
+      {price.negotiated ? ' (agreed by both)' : ''}
       {price.adjustment ? ` (${adjustmentLabel(price.adjustment)} of suggested ${formatCents(price.suggestedCents ?? price.cents)})` : ''}
       {' · '}
       {price.baseCents ? `${formatCents(price.baseCents)} pickup + ` : ''}half of ${price.costPerMile.toFixed(2)}/mi

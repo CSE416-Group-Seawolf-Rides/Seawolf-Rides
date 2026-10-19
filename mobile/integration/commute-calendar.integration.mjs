@@ -348,6 +348,13 @@ test(
         { code: 'functions/invalid-argument' },
       );
       await action(driver, 'saveVehicleDetails', vehicleFixture(driver.uid));
+      // Future preferences never rewrite an existing request, even before acceptance.
+      const lockedPrice = (await db.doc(`rideRequests/${pending.id}`).get()).data().price;
+      await action(driver, 'setPriceAdjustment', { riderId: rider.uid, adjustment: -50 });
+      assert.deepEqual((await db.doc(`rideRequests/${pending.id}`).get()).data().price, lockedPrice);
+      await action(driver, 'setPriceAdjustment', { riderId: rider.uid, adjustment: 25 });
+      await action(driver, 'saveFuelEfficiency', { fuelType: 'gas', efficiency: 10 });
+      assert.deepEqual((await db.doc(`rideRequests/${pending.id}`).get()).data().price, lockedPrice);
       assert.equal(
         (
           await getDoc(
@@ -376,6 +383,7 @@ test(
         ).status,
         'ACCEPTED',
       );
+      assert.deepEqual((await db.doc(`rideRequests/${pending.id}`).get()).data().price, lockedPrice);
       for (const account of [rider, driver]) {
         assert.deepEqual(
           (await getDoc(doc(account.db, 'ridePickups', pending.id))).data()

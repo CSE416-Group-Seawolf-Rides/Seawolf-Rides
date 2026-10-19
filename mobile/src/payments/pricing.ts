@@ -85,6 +85,8 @@ export interface PriceMetrics {
 
 // Stored on each request so a later gas update never changes an agreed price.
 export interface RidePrice {
+  /** The current amount was explicitly accepted by both participants. */
+  negotiated?: boolean;
   // The pickup fee included in cents. Absent on older, fuel-only records.
   baseCents?: number;
   // What the rider pays: the suggestion with the driver's adjustment applied.
@@ -168,6 +170,7 @@ export function applyAdjustment(price: RidePrice, adjustment: PriceAdjustment | 
 // Plain-language note when a driver changed the suggestion, so riders always know why.
 // `driverName` is null when the viewer is the driver.
 export function adjustmentNote(price: RidePrice, driverName: string | null): string | undefined {
+  if (price.negotiated) return 'Price agreed by both of you';
   const suggested = price.suggestedCents ?? price.cents;
   if (!price.adjustment || suggested === price.cents) return undefined;
   const who = driverName ?? 'You';
@@ -194,6 +197,7 @@ export function parseRidePrice(value: unknown): RidePrice | undefined {
     !finite('costPerMile') ||
     !['gas', 'hybrid', 'electric'].includes(String(v.fuelType)) ||
     typeof v.gasWeekOf !== 'string' ||
+    (v.negotiated !== undefined && typeof v.negotiated !== 'boolean') ||
     (v.suggestedCents !== undefined && (!Number.isInteger(v.suggestedCents) || (v.suggestedCents as number) < 0)) ||
     (v.adjustment !== undefined && !isPriceAdjustment(v.adjustment)) ||
     (v.baseCents !== undefined && (!Number.isInteger(v.baseCents) || (v.baseCents as number) < 0))

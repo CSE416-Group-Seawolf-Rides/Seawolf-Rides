@@ -21,6 +21,7 @@ export function AdjustPriceButton({
 }) {
   const adjustment = usePriceAdjustment(driverId, riderId);
   const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState('');
   return (
     <>
       <Pressable
@@ -28,16 +29,22 @@ export function AdjustPriceButton({
         accessibilityRole="button"
         disabled={!adjustment.loaded}
         hitSlop={8}
-        onPress={() => setOpen(true)}
+        onPress={() => { setSaved(''); setOpen(true); }}
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
-        <Text style={styles.label}>Price · {adjustmentLabel(adjustment.value)}</Text>
+        <Text style={styles.label}>New requests · {adjustmentLabel(adjustment.value)}</Text>
         <Ionicons color={colors.accent} name="chevron-forward" size={14} />
       </Pressable>
+      {!!saved && <Text accessibilityLiveRegion="polite" style={styles.saved}>{saved}</Text>}
       {open && (
         <PriceAdjustSheet
           current={adjustment.value}
           onClose={() => setOpen(false)}
+          onSaved={(value, lowered) => setSaved(
+            `Saved for new requests: ${adjustmentLabel(value)}. ${lowered > 0
+              ? `${lowered} unpaid ride${lowered === 1 ? '' : 's'} lowered.`
+              : 'Existing agreed prices stay the same.'}`,
+          )}
           reference={reference}
           riderId={riderId}
           riderName={riderName}
@@ -51,4 +58,5 @@ const styles = StyleSheet.create({
   button: { alignItems: 'center', alignSelf: 'flex-start', flexDirection: 'row', gap: 2, paddingVertical: spacing.xs },
   pressed: { opacity: 0.6 },
   label: { color: colors.accent, fontSize: 13, fontWeight: '800' },
+  saved: { color: colors.success, fontSize: 12 },
 });

@@ -1,5 +1,6 @@
 import type { MatchCard } from './service';
 import type { RidePrice } from '../payments/pricing';
+import type { PriceChangeRequest } from '../payments/priceChanges';
 
 export type RideRequestStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED';
 /** Server-owned dated request. ACCEPTED is the persisted ride/reservation record. */
@@ -28,6 +29,10 @@ export interface RideRequest {
   metrics: MatchCard['metrics'];
   /** Gas share locked when the request was sent. Absent on older records. */
   price?: RidePrice;
+  /** Last price-change proposal; only its recipient can accept or decline. */
+  priceChange?: PriceChangeRequest;
+  /** Marking a payment locks this ride's price permanently. */
+  settledAt?: number;
   createdAt: number;
   updatedAt: number;
 }

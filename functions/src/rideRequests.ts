@@ -358,7 +358,11 @@ export async function commitAcceptance(
       }),
     );
     if (prepared.privatePickup) tx.set(db.doc(`ridePickups/${id}`), prepared.privatePickup);
-    tx.update(ref, { ...prepared.value, status: 'ACCEPTED', updatedAt: now() });
+    // Revalidate routing and schedules, but keep the price from the transaction's request
+    // snapshot (including any discount applied while it was pending). Legacy unpriced
+    // requests must not acquire a charge during acceptance either.
+    const { price: _recalculatedPrice, ...acceptedValue } = prepared.value;
+    tx.update(ref, { ...acceptedValue, status: 'ACCEPTED', updatedAt: now() });
     return { id, status: 'ACCEPTED' };
   });
 }

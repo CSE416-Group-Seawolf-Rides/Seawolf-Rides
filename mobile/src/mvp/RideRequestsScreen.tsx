@@ -24,6 +24,7 @@ import {
 import { LiveCarpoolCard } from './components/LiveCarpoolCard';
 import { useRideDecision } from './useRideDecision';
 import { LiveAgenda } from './components/LiveAgenda';
+import { PriceChangeInbox } from '../payments/components/RidePriceChange';
 import { GasShares } from '../payments/components/GasShares';
 import { useSettlements } from '../payments/paymentsClient';
 import { computeBalances, coveredThisMonth } from '../payments/tally';
@@ -63,7 +64,7 @@ export function RideRequestsScreen() {
     overrides.days,
   );
   const today = localToday(epoch);
-  const balances = computeBalances(uid, requests.items, settlements.items, today, shiftDate(monday, 6));
+  const balances = computeBalances(uid, requests.items, settlements.items, epoch);
   const covered = coveredThisMonth(uid, settlements.items, today.slice(0, 7));
   const history = rideHistory(requests.items, uid, epoch);
   const past = history.filter((r) => r.status === 'ACCEPTED');
@@ -99,7 +100,8 @@ export function RideRequestsScreen() {
           <Text style={styles.action}>Review</Text>
         </Pressable>
       )}
-      <GasShares balances={balances} coveredCents={covered} uid={uid} />
+      <PriceChangeInbox rides={requests.items} uid={uid} />
+      <GasShares balances={balances} coveredCents={covered} uid={uid} rides={requests.items} />
       <View style={styles.section}>
         <Text accessibilityRole="header" style={styles.heading}>
           Your carpools

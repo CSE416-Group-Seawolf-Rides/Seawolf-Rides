@@ -105,4 +105,6 @@ export {
   confirmSettlement,
   refreshFuelPrices,
   setPriceAdjustment,
+  proposeRidePriceChange,
+  respondToRidePriceChange,
 } from './payments';

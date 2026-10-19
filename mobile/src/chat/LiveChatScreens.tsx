@@ -49,7 +49,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
   const context = useChatRequest(thread?.requestId, user?.id);
   const other = thread ? chatPartner(thread, user?.id ?? '') : '';
   return <><ConversationScreen
-    key={`${user?.id}:${chatId}`}
+    key={`conversation:${screenKey}`}
     conversation={{
       participantId: other,
       preview: { id: chatId, participantName: thread?.names[other] ?? 'Conversation',
@@ -74,7 +74,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
       if (pending.current === operation) pending.current = null;
     }}
   />
-    {thread && !chat.error && tripKey === screenKey && <ChatTripSheet key={screenKey} thread={thread} uid={user?.id ?? ''} onClose={() => setTripKey('')} />}
+    {thread && !chat.error && tripKey === screenKey && <ChatTripSheet key={`trip:${screenKey}`} thread={thread} uid={user?.id ?? ''} onClose={() => setTripKey('')} />}
     <Modal visible={!!thread && !chat.error && profileKey === screenKey} animationType="slide" presentationStyle="pageSheet"
       onRequestClose={() => setProfileKey('')}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.lg }}>

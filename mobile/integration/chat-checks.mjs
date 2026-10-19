@@ -42,6 +42,8 @@ export async function verifyChat(t, { driver, rider, outsider, match, date, acti
       assert.deepEqual(result.match.area, peer.startArea);
       assert.equal(result.match.name, other.uid);
       assert.equal(result.match.plan.departure, match.plan.departure);
+      assert.ok(result.match.price, 'chat match details must include a gas-share quote');
+      assert.deepEqual(result.match.price, match.price, 'chat and calendar show the same calculated price');
       assert.equal(result.match.riderPickup, undefined);
       assert.equal(result.match.driverStart, undefined);
     }
