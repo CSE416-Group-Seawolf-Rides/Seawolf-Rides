@@ -45,6 +45,7 @@ function harness() {
   const react = { ...React, useState, useRef: (value) => useState(() => ({ current: value }))[0],
     useEffect: (effect) => effects.push(effect), useCallback: (fn) => fn };
   const mocks = { react, 'react-native': native,
+    '@expo/vector-icons/Ionicons': { __esModule: true, default: () => null },
     'expo-router': { router: {} },
     'react-native-safe-area-context': { SafeAreaView: View, useSafeAreaInsets: () => ({ bottom: 0 }) },
     'react-native-maps': { __esModule: true, default: View, Circle: () => null, Marker: () => null },
@@ -57,6 +58,7 @@ function harness() {
     '../profiles/PublicProfileLink': { PublicProfileLink: View, openPublicProfile: () => {} },
     './chatModel': { chatContext, chatPartner },
     './chatTimeline': timeline, './ChatTimelineCard': { ChatTimelineCard: View },
+    './chatPresentation': { formatBubbleTime: () => '', formatThreadTimestamp: () => '', getThreadBadge: () => null },
     '../rides/useHomeClock': { useHomeClock: () => ({ now: new Date(1_000_000_000_000) }) },
   };
   mocks['./ChatContextCard'] = loadComponent('../src/chat/ChatContextCard.tsx', { ...mocks, '../mvp/ridePresentation': { rideTime } });

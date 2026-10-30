@@ -29,13 +29,18 @@ export function usePublicProfile(participantId: string | undefined) {
     if (!participantId) return;
     let active = true;
     const update = (profile: PublicProfile | null) => { if (active) setState({ participantId, profile }); };
-    const stop = subscribeToPublicProfile(
-      getFirebaseFirestore(),
-      participantId,
-      update,
-      () => update(null),
-    );
-    return () => { active = false; stop(); };
+    try {
+      const stop = subscribeToPublicProfile(
+        getFirebaseFirestore(),
+        participantId,
+        update,
+        () => update(null),
+      );
+      return () => { active = false; stop(); };
+    } catch {
+      update(null);
+      return () => { active = false; };
+    }
   }, [participantId]);
   return state.participantId === participantId ? state.profile : null;
 }
