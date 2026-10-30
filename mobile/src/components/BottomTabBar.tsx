@@ -29,6 +29,9 @@ export function BottomTabBar(props: BottomTabBarProps) {
     >
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
+        if ((options as any).href === null) {
+          return null;
+        }
         const focused = state.index === index;
         const color = focused ? colors.accent : colors.textMuted;
         const label = options.title ?? route.name;

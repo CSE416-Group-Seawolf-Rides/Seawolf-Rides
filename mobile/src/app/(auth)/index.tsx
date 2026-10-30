@@ -8,7 +8,10 @@ export default function WelcomeRoute() {
 
   return (
     <WelcomeScreen
-      onContinueAsGuest={signInAsGuest}
+      onContinueAsGuest={async () => {
+        await signInAsGuest();
+        router.replace('/home');
+      }}
       onContinueWithEmail={() => router.push('/email')}
     />
   );

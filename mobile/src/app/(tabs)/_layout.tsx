@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { ComponentProps } from 'react';
 
-
 import { BottomTabBar } from '../../components/BottomTabBar';
 import { RidesProvider } from '../../rides/RidesProvider';
 import { colors } from '../../theme';
@@ -37,6 +36,12 @@ function TabsNavigator() {
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.background } }}
       tabBar={(props) => <BottomTabBar {...props} />}
     >
+      <Tabs.Screen
+        name="index"
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen
         name="home"
         options={{
