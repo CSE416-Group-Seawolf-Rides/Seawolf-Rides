@@ -34,7 +34,7 @@ const run = (only, command, dataArgs) =>
 try {
   process.exitCode = await run(
     'auth,firestore,functions',
-    'node --import ./scripts/node-test/register-ts-resolver.mjs --test --test-concurrency=1 integration/matching-service.integration.mjs integration/ride-requests.integration.mjs integration/commute-calendar.integration.mjs integration/payments.integration.mjs',
+    'node --import ./scripts/node-test/register-ts-resolver.mjs --test --test-concurrency=1 integration/matching-service.integration.mjs integration/ride-requests.integration.mjs integration/commute-calendar.integration.mjs integration/payments.integration.mjs integration/ride-cancellation.integration.mjs integration/chat-timeline.integration.mjs',
     [`--export-on-exit=${exported}`],
   );
   if (process.exitCode === 0)

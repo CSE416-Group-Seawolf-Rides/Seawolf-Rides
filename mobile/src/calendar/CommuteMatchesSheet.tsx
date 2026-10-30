@@ -42,6 +42,7 @@ import {
   type MatchPageSize,
 } from './matchPresentation';
 import { colors, radii, spacing } from '../theme';
+import { CancelRideButton, RideCancellationNotice } from '../mvp/components/CancelRideButton';
 
 export function CommuteMatchesSheet({
   date,
@@ -608,6 +609,10 @@ export function CommuteMatchesSheet({
                     disabled={requesting || chatBusy}
                     onPress={closeDetails}
                   />
+                  {request && <>
+                    <RideCancellationNotice ride={request} uid={uid} />
+                    <CancelRideButton ride={request} uid={uid} now={nowEpochSeconds} disabled={busy} />
+                  </>}
                 </ScrollView>
               </Animated.View>
             </View>

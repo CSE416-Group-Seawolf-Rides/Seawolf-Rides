@@ -7,7 +7,7 @@ interface AppButtonProps {
   onPress: () => void;
   accessibilityLabel?: string;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'destructive';
 }
 
 export function AppButton({
@@ -29,6 +29,7 @@ export function AppButton({
       style={({ pressed }) => [
         styles.button,
         secondary ? styles.secondary : styles.primary,
+        variant === 'destructive' && styles.destructive,
         pressed && !disabled && (secondary ? styles.secondaryPressed : styles.primaryPressed),
         disabled && styles.disabled,
       ]}
@@ -52,6 +53,9 @@ const styles = StyleSheet.create({
   },
   primaryPressed: {
     backgroundColor: colors.accentDark,
+  },
+  destructive: {
+    backgroundColor: colors.error,
   },
   secondary: {
     backgroundColor: colors.surface,

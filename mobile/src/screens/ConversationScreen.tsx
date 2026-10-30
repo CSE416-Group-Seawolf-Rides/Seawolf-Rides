@@ -19,6 +19,7 @@ import { colors, radii, spacing } from '../theme';
 interface ConversationScreenProps {
   conversation: PrototypeConversation;
   contextCard?: ReactNode;
+  renderMessage?: (message: PrototypeChatMessage) => ReactNode;
   onBack: () => void;
   onOpenProfile: (participantId: string, displayName: string) => void;
   onSendMessage?: (text: string) => Promise<void>;
@@ -28,7 +29,7 @@ interface ConversationScreenProps {
   onLoadEarlier?: () => void;
 }
 
-export function ConversationScreen({ conversation, onBack, onOpenProfile, onSendMessage, loading, error, hasEarlier, onLoadEarlier, contextCard }: ConversationScreenProps) {
+export function ConversationScreen({ conversation, onBack, onOpenProfile, onSendMessage, loading, error, hasEarlier, onLoadEarlier, contextCard, renderMessage }: ConversationScreenProps) {
   const scroll = useRef<ScrollView>(null);
   const followLatest = useRef(true);
   const [draft, setDraft] = useState('');
@@ -118,6 +119,8 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile, onSend
           </Text>
         </View>}
         {messages.map((message) => {
+          const card = renderMessage?.(message);
+          if (card) return <View key={message.id} style={styles.timelineEntry}>{card}</View>;
           const mine = message.sender === 'me';
           return (
             <View
@@ -167,6 +170,7 @@ export function ConversationScreen({ conversation, onBack, onOpenProfile, onSend
 }
 
 const styles = StyleSheet.create({
+  timelineEntry: { marginVertical: spacing.sm },
   container: {
     backgroundColor: colors.background,
     flex: 1,

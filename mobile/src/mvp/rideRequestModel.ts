@@ -33,6 +33,12 @@ export interface RideRequest {
   priceChange?: PriceChangeRequest;
   /** Marking a payment locks this ride's price permanently. */
   settledAt?: number;
+  /** Present only when a confirmed ride was cancelled, rather than a pending ask. */
+  cancellation?: {
+    cancelledBy: string;
+    reason: string;
+    cancelledAt: number;
+  };
   createdAt: number;
   updatedAt: number;
 }

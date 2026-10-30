@@ -21,7 +21,9 @@ import type {
 import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
 
-import { chatIdFor, linkRequestChat } from './chatThreads';
+import { appendChatEntries, chatIdFor, chatTrip, linkRequestChat, readRideChatEntries, updateRideChatEntries } from './chatThreads';
+import { acceptedRideCanCancel, cancellationReason } from '../../mobile/src/mvp/rideCancellation';
+import { rideDate } from '../../mobile/src/mvp/ridePresentation';
 import { prepareCalendarPair } from './calendarMatching';
 import { requestInitiator, requestRecipient } from '../../mobile/src/mvp/rideRequestModel';
 import { isValidRouteCoordinate } from '../../mobile/src/routing/types';
@@ -290,7 +292,7 @@ async function commitCreation(
         initiatorId,
         createdAt: timestamp,
       });
-    tx.set(ref, {
+    const newRequest: RideRequest = {
       ...prepared.value,
       id,
       initiatorId,
@@ -298,8 +300,9 @@ async function commitCreation(
       status: 'PENDING',
       createdAt: timestamp,
       updatedAt: timestamp,
-    });
-    const chatId = linkRequestChat(tx, state.thread, prepared.value, id, true);
+    };
+    tx.set(ref, newRequest);
+    const chatId = linkRequestChat(tx, state.thread, prepared.value, id, newRequest);
     return { id, status: 'PENDING', chatId, ...(attemptId ? { attemptId } : {}) };
   });
 }
@@ -348,6 +351,7 @@ export async function commitAcceptance(
       );
     await assertCurrent(tx, prepared);
     const refs = await assertUncommitted(tx, prepared.value);
+    const chatEntries = await readRideChatEntries(tx, request);
     refs.forEach((commitment, i) =>
       tx.create(commitment, {
         requestId: id,
@@ -362,7 +366,9 @@ export async function commitAcceptance(
     // snapshot (including any discount applied while it was pending). Legacy unpriced
     // requests must not acquire a charge during acceptance either.
     const { price: _recalculatedPrice, ...acceptedValue } = prepared.value;
-    tx.update(ref, { ...acceptedValue, status: 'ACCEPTED', updatedAt: now() });
+    const accepted: RideRequest = { ...request, ...acceptedValue, status: 'ACCEPTED', updatedAt: now() };
+    tx.update(ref, { ...acceptedValue, status: 'ACCEPTED', updatedAt: accepted.updatedAt });
+    updateRideChatEntries(tx, chatEntries, accepted);
     return { id, status: 'ACCEPTED' };
   });
 }
@@ -478,7 +484,10 @@ export const respondToRideRequest = onCall(options, async (call) => {
         if (value.status === 'DECLINED') return result(fresh);
         if (value.status !== 'PENDING')
           throw new HttpsError('failed-precondition', 'This request already has a final decision.');
-        tx.update(ref, { status: 'DECLINED', updatedAt: now() });
+        const entries = await readRideChatEntries(tx, value);
+        const declined: RideRequest = { ...value, status: 'DECLINED', updatedAt: now() };
+        tx.update(ref, { status: 'DECLINED', updatedAt: declined.updatedAt });
+        updateRideChatEntries(tx, entries, declined);
         return { id: ref.id, status: 'DECLINED' };
       });
     const vehicle = await getFirestore().doc(`users/${saved.driverId}/vehicles/primary`).get();
@@ -550,7 +559,19 @@ export const cancelRideRequest = onCall(options, async (call) => {
             ? 'This request was already accepted. The confirmed ride has not been cancelled.'
             : 'This request is no longer pending.',
         );
-      tx.update(ref, { status: 'CANCELLED', updatedAt: now() });
+      const [thread, entries] = await Promise.all([
+        tx.get(getFirestore().doc(`chats/${chatIdFor(saved.driverId, saved.riderId)}`)),
+        readRideChatEntries(tx, saved),
+      ]);
+      const cancelled: RideRequest = { ...saved, status: 'CANCELLED', updatedAt: now() };
+      tx.update(ref, { status: 'CANCELLED', updatedAt: cancelled.updatedAt });
+      updateRideChatEntries(tx, entries, cancelled);
+      const name = uid === saved.driverId ? saved.driverName : saved.riderName;
+      appendChatEntries(tx, thread, cancelled, [{
+        id: `request-cancel-${digest([ref.id, saved.attemptId ?? 'legacy'])}`,
+        senderId: uid, type: 'RIDE_CANCELLED', requestId: ref.id, sentAt: Date.now(),
+        text: `${name} cancelled the request on ${rideDate(saved.localDate)} (${saved.localDate}): ${saved.pickupLabel} → ${saved.campusLabel}.`,
+      }]);
       return {
         id: ref.id,
         status: 'CANCELLED',
@@ -560,6 +581,92 @@ export const cancelRideRequest = onCall(options, async (call) => {
   } catch (error) {
     mapped(error);
   }
+});
+
+/** Release this ride's reservations and deliver its reason together, with no routing dependency. */
+export async function commitRideCancellation(id: string, uid: string, reason: string, attemptId?: string): Promise<RideRequestResult> {
+  const db = getFirestore();
+  const ref = db.doc(`rideRequests/${id}`);
+  return db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const ride = snapshot.data() as RideRequest | undefined;
+    if (!ride || (uid !== ride.driverId && uid !== ride.riderId))
+      throw new HttpsError('permission-denied', 'Only a participant can cancel this ride.');
+    assertAttempt(ride, attemptId);
+    if (ride.status === 'CANCELLED' && ride.cancellation) return result(snapshot);
+    if (!acceptedRideCanCancel(ride, uid, now()))
+      throw new HttpsError('failed-precondition', 'Only a confirmed ride that has not finished or been paid can be cancelled.');
+
+    const threadRef = db.doc(`chats/${chatIdFor(ride.driverId, ride.riderId)}`);
+    const commitmentRefs = [ride.driverId, ride.riderId].map((participantId) =>
+      db.doc(`_rideCommitments/${commitmentIdFor(participantId, ride.localDate)}`));
+    const [thread, settlement, ...commitments] = await tx.getAll(
+      threadRef, db.doc(`_settledRequests/${id}`), ...commitmentRefs,
+    );
+    if (settlement.exists)
+      throw new HttpsError('failed-precondition', 'A paid ride cannot be cancelled.');
+    // Never remove a different ride's reservation, including during retries/resends.
+    if (commitments.some((item) => item.exists && item.get('requestId') !== id))
+      throw new HttpsError('failed-precondition', 'This ride’s reservation changed. Reload your rides.');
+    const participants = [ride.driverId, ride.riderId].sort();
+    if (thread.exists && JSON.stringify(thread.get('participantIds')) !== JSON.stringify(participants))
+      throw new HttpsError('failed-precondition', 'This ride’s conversation is unavailable.');
+    const sequence = (thread.exists ? thread.get('messageCount') : 0) + 1;
+    if (!Number.isSafeInteger(sequence) || sequence < 1)
+      throw new HttpsError('failed-precondition', 'This conversation needs recovery.');
+    const timestamp = now();
+    const sentAt = Date.now();
+    const chatEntries = await readRideChatEntries(tx, ride);
+    if (!acceptedRideCanCancel(ride, uid, timestamp))
+      throw new HttpsError('failed-precondition', 'This ride has finished and can no longer be cancelled.');
+    const name = uid === ride.driverId ? ride.driverName : ride.riderName;
+    const text = `${name} cancelled the ride on ${rideDate(ride.localDate)} (${ride.localDate}): ${ride.pickupLabel} → ${ride.campusLabel}.\nReason: ${reason}`;
+    const messageId = `ride-cancel-${digest([id, attemptId ?? 'legacy'])}`;
+    const cancelled: RideRequest = {
+      ...ride,
+      status: 'CANCELLED',
+      cancellation: { cancelledBy: uid, reason, cancelledAt: timestamp },
+      updatedAt: timestamp,
+      ...(ride.priceChange?.status === 'PENDING'
+        ? { priceChange: { ...ride.priceChange, status: 'EXPIRED', updatedAt: timestamp } } : {}),
+    };
+    tx.update(ref, {
+      status: cancelled.status, cancellation: cancelled.cancellation!, updatedAt: timestamp,
+      ...(cancelled.priceChange ? { priceChange: cancelled.priceChange } : {}),
+    });
+    updateRideChatEntries(tx, chatEntries, cancelled);
+    if (ride.priceChange?.status === 'PENDING')
+      tx.set(db.doc(`_priceChangeAttempts/${digest([id, ride.priceChange.id])}`), {
+        ...ride.priceChange, status: 'EXPIRED', updatedAt: timestamp,
+      });
+    commitments.forEach((item) => { if (item.exists) tx.delete(item.ref); });
+    tx.delete(db.doc(`ridePickups/${id}`));
+    tx.create(threadRef.collection('messages').doc(messageId), {
+      senderId: uid, text, sentAt, sequence, type: 'RIDE_CANCELLED', requestId: id,
+    });
+    const messageUpdate = { updatedAt: sentAt, lastMessage: text, messageCount: sequence };
+    if (thread.exists) tx.update(threadRef, messageUpdate);
+    else tx.create(threadRef, {
+      schemaVersion: 1, participantIds: participants,
+      names: { [ride.driverId]: ride.driverName, [ride.riderId]: ride.riderName },
+      requestId: id, trip: chatTrip(ride), localDate: ride.localDate, campusLabel: ride.campusLabel,
+      createdAt: sentAt, ...messageUpdate,
+    });
+    return { id, status: 'CANCELLED', ...(ride.attemptId ? { attemptId: ride.attemptId } : {}) };
+  });
+}
+
+export const cancelAcceptedRide = onCall(options, async (call) => {
+  try {
+    const uid = await authenticated(call.auth?.uid);
+    const data = call.data;
+    if (!record(data) || Object.keys(data).filter((key) => key !== 'attemptId').sort().join(',') !== 'reason,requestId'
+        || typeof data.requestId !== 'string' || !/^[a-f0-9]{64}$/.test(data.requestId)
+        || (data.attemptId !== undefined && !validAttempt(data.attemptId))
+        || !cancellationReason(data.reason))
+      throw new HttpsError('invalid-argument', 'Explain why you are cancelling in 1–500 characters.');
+    return await commitRideCancellation(data.requestId, uid, cancellationReason(data.reason)!, data.attemptId);
+  } catch (error) { mapped(error); }
 });
 
 /** Read-only preview: participants and points come from the accepted server record. */

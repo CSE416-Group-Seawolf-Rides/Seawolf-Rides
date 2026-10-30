@@ -106,7 +106,6 @@ export async function verifyRequestChat({ driver, rider, outsider, value, count 
   for (const account of [driver, rider]) {
     const thread = (await getDoc(doc(account.db, 'chats', value.chatId))).data();
     assert.equal(thread.requestId, value.id);
-    assert.equal(thread.messageCount, count, 'linking a request must preserve actual messages');
     assert.deepEqual(thread.participantIds, [driver.uid, rider.uid].sort());
     const request = (await getDoc(doc(account.db, 'rideRequests', thread.requestId))).data();
     assert.equal(request.status, status, 'context reads the current shared request status');
@@ -117,7 +116,12 @@ export async function verifyRequestChat({ driver, rider, outsider, value, count 
     const inbox = await getDocs(query(collection(account.db, 'chats'), where('participantIds', 'array-contains', account.uid)));
     assert.ok(inbox.docs.some((d) => d.id === value.chatId));
     const messages = await getDocs(collection(account.db, 'chats', value.chatId, 'messages'));
-    assert.equal(messages.size, count, 'never insert automatic request/placeholder text');
+    assert.equal(thread.messageCount, messages.size, 'every timeline entry participates in the same counter');
+    const entries = messages.docs.map((d) => d.data());
+    assert.equal(entries.filter((entry) => !entry.type || entry.type === 'TEXT').length, count, 'request cards preserve every ordinary text');
+    const card = entries.find((entry) => entry.type === 'RIDE_REQUEST' && entry.requestId === value.id && entry.ride.attemptId === request.attemptId);
+    assert.ok(card, 'the request has its own persistent timeline card');
+    assert.equal(card.ride.status, status);
   }
   if (outsider) await assert.rejects(getDoc(doc(outsider.db, 'chats', value.chatId)), { code: 'permission-denied' });
 }

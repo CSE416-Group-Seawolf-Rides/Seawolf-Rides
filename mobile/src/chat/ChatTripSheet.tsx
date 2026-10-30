@@ -20,14 +20,18 @@ import { PriceBreakdown, PriceTag } from '../payments/components/PriceTag';
 import { getChatMatch, useChatRequest } from './chatClient';
 import { chatPartner, type ChatMatchDetails, type ChatThread } from './chatModel';
 import { chatRequestActions, chatRequestInput } from './chatTripActions';
+import { CancelRideButton, RideCancellationNotice } from '../mvp/components/CancelRideButton';
+import type { RideRequest } from '../mvp/rideRequestModel';
+import { sameRideAttempt } from './chatTimeline';
 
-export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; uid: string; onClose: () => void }) {
+export function ChatTripSheet({ thread, uid, selectedRide, onClose }: { thread: ChatThread; uid: string; selectedRide?: RideRequest; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(true);
   const [createdId, setCreatedId] = useState<string>();
-  const requestId = thread.requestId ?? createdId;
+  const requestId = selectedRide?.id ?? thread.requestId ?? createdId;
   const context = useChatRequest(requestId, uid);
-  const request = context.request;
+  const archived = !!selectedRide && !sameRideAttempt(context.request, selectedRide);
+  const request = archived ? selectedRide : context.request;
   const key = `${uid}:${thread.id}:${requestId}:${request?.attemptId}:${request?.status}:${thread.trip?.localDate}:${thread.trip?.driverId}`;
   const [estimate, setEstimate] = useState<{ key: string; details?: ChatMatchDetails; loading?: boolean; error?: string } | undefined>(() => ({ key, loading: !requestId }));
   const details = estimate?.key === key ? estimate.details : undefined;
@@ -58,20 +62,21 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
   const refresh = () => { setEstimate({ key, loading: true }); void loadMatch(); };
   const { now } = useHomeClock([
     request?.plan.departure ?? details?.match.plan.departure ?? 0,
+    Math.max(request?.plan.vehicleCampusArrival ?? 0, request?.plan.riderDestinationArrival ?? 0),
     (details?.match.eta?.computedAtEpochSeconds ?? 0) + 120,
   ]);
   const epoch = now.getTime() / 1000;
   const stale = !!details && (trafficForecastIsStale(details.match.eta, epoch) || details.match.plan.departure <= epoch);
-  const actions = request ? chatRequestActions(request, uid, epoch) : 'NONE';
+  const actions = request && !archived ? chatRequestActions(request, uid, epoch) : 'NONE';
   const other = chatPartner(thread, uid);
   const name = thread.names[other] ?? 'Carpool partner';
   const plan = request && request.status !== 'CANCELLED' ? request.plan : details?.match.plan ?? request?.plan;
   const date = request?.localDate ?? details?.localDate ?? thread.localDate;
   const driving = (request?.driverId ?? details?.match.driverId ?? thread.trip?.driverId) === uid;
-  const canPropose = !requestId || request?.status === 'CANCELLED';
+  const canPropose = !selectedRide && !archived && (!requestId || request?.status === 'CANCELLED');
   // Existing requests keep their stored amount. A refreshed, cancelled request is a
   // new proposal; never substitute today's suggestion for a pending/accepted price.
-  const price = request && request.status !== 'CANCELLED' ? request.price : details?.match.price;
+  const price = request && (!canPropose || request.status !== 'CANCELLED') ? request.price : details?.match.price;
   const finish = () => {
     if (finished.current) return;
     finished.current = true;
@@ -85,7 +90,7 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
     if (Platform.OS !== 'ios') finish();
   };
   const mutate = async (action: 'SEND' | 'ACCEPTED' | 'DECLINED' | 'CANCEL') => {
-    if (lock.current) return;
+    if (lock.current || archived) return;
     const driverAction = action === 'SEND' ? details?.match.driverId === uid : request?.driverId === uid;
     if ((action === 'SEND' || action === 'ACCEPTED') && driverAction && !vehicle.vehicle) {
       if (vehicle.loaded) setVehicleRequired(true);
@@ -134,12 +139,14 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
             <PriceTag price={price} youDrive={driving} />
           </View>
           {context.loading && <Text>Loading request…</Text>}
-          {context.error && <Text accessibilityRole="alert">{context.error}</Text>}
+          {context.error && !archived && <Text accessibilityRole="alert">{context.error}</Text>}
+          {archived && !context.loading && <Text style={styles.muted}>Archived request · original trip details. This card belongs to an earlier proposal.</Text>}
           {estimateLoading && <Text>Checking the current match…</Text>}
           {estimateError && <Text accessibilityRole="alert">{estimateError}</Text>}
-          {request && <Text style={styles.status}>{request.status === 'ACCEPTED' ? 'Confirmed ride' : request.status === 'PENDING' ? (request.plan.departure > epoch ? 'Request pending' : 'Departure has passed') : request.status === 'CANCELLED' ? 'Request cancelled' : 'Request declined'}</Text>}
+          {request && <Text style={styles.status}>{request.status === 'ACCEPTED' ? 'Confirmed ride' : request.status === 'PENDING' ? (request.plan.departure > epoch ? 'Request pending' : 'Departure has passed') : request.status === 'CANCELLED' ? (request.cancellation ? 'Ride cancelled' : 'Request cancelled') : 'Request declined'}</Text>}
+          {request && <RideCancellationNotice ride={request} uid={uid} />}
           {plan && <Card style={{ gap: spacing.md }}>
-            <Text style={styles.name}>{request?.status === 'ACCEPTED' ? 'Agreed trip' : request?.status === 'PENDING' ? 'Requested trip' : 'Estimated trip'}</Text>
+            <Text style={styles.name}>{archived ? 'Original trip' : request?.status === 'ACCEPTED' ? 'Agreed trip' : request?.status === 'PENDING' ? 'Requested trip' : selectedRide ? 'Original trip' : 'Estimated trip'}</Text>
             <Text>Departure · {rideTime(plan.departure)}</Text>
             {canPropose && details?.match.savedDriverDeparture !== undefined && details.match.savedDriverDeparture !== plan.departure &&
               <Text style={styles.muted}>Usual driver departure · {rideTime(details.match.savedDriverDeparture)}</Text>}
@@ -169,8 +176,8 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
             </View>
             <Text style={styles.muted}>Your pin · {name}’s approximate area</Text>
           </>}
-          {request?.status === 'ACCEPTED' && <RidePriceChange ride={request} uid={uid} />}
-          {request?.status === 'ACCEPTED' && <AcceptedTripMap key={request.id} ride={request} routePreview />}
+          {request?.status === 'ACCEPTED' && !archived && <RidePriceChange ride={request} uid={uid} />}
+          {request?.status === 'ACCEPTED' && !archived && <AcceptedTripMap key={request.id} ride={request} routePreview />}
           {vehicleRequired && <Card style={{ gap: spacing.md }}>
             <Text style={styles.name}>Finish setting up your vehicle</Text>
             <AppButton label="Set up my vehicle" disabled={busy} onPress={() => close(() => router.push('/vehicle-setup'))} />
@@ -189,6 +196,7 @@ export function ChatTripSheet({ thread, uid, onClose }: { thread: ChatThread; ui
           </>}
           {!context.loading && !context.error && actions === 'CANCEL' && <AppButton label={busy ? 'Cancelling…' : 'Cancel request'}
             variant="secondary" disabled={busy} onPress={() => void mutate('CANCEL')} />}
+          {!context.loading && !context.error && request && !archived && <CancelRideButton ride={request} uid={uid} now={epoch} disabled={busy} />}
         </ScrollView>
       </View>
     </View>

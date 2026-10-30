@@ -7,6 +7,7 @@ import { requireLocalDemo } from './calendarMatching';
 import { rideHasFinished } from '../../mobile/src/payments/rideCompletion';
 import { agreedPrice, validProposedPrice, type PriceChangeRequest } from '../../mobile/src/payments/priceChanges';
 import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
+import { appendChatEntries, chatIdFor, priceEntry, readRideChatEntries, updateRideChatEntries } from './chatThreads';
 import {
   applyAdjustment,
   DEFAULT_FUEL_PRICES,
@@ -235,8 +236,15 @@ export const proposeRidePriceChange = onCall(options, async (call) => {
       fromCents: price.cents, toCents: data.cents, status: 'PENDING',
       createdAt: timestamp, updatedAt: timestamp,
     };
+    const [thread, entries] = await Promise.all([
+      tx.get(db.doc(`chats/${chatIdFor(ride.driverId, ride.riderId)}`)),
+      readRideChatEntries(tx, { ...ride, id: snapshot.id }),
+    ]);
+    const proposed = { ...ride, id: snapshot.id, priceChange: change, updatedAt: timestamp };
     tx.create(operation, change);
     tx.update(ref, { priceChange: change, updatedAt: timestamp });
+    updateRideChatEntries(tx, entries, proposed);
+    appendChatEntries(tx, thread, proposed, [priceEntry(proposed, change)]);
     return { id: change.id, status: change.status };
   });
 });
@@ -268,12 +276,20 @@ export const respondToRidePriceChange = onCall(options, async (call) => {
     if (price.cents !== change.fromCents || !validProposedPrice(change.toCents, price))
       throw new HttpsError('aborted', 'The agreed price changed. Review a new proposal.');
     const timestamp = now();
+    const entries = await readRideChatEntries(tx, { ...ride, id: snapshot.id });
+    const answered: RideRequest = {
+      ...ride, id: snapshot.id,
+      priceChange: { ...change, status: data.decision as PriceChangeRequest['status'], updatedAt: timestamp },
+      ...(data.decision === 'ACCEPTED' ? { price: agreedPrice(price, change.toCents) } : {}),
+      updatedAt: timestamp,
+    };
     tx.set(db.doc(priceAttemptPath(snapshot.id, change.id)), { ...change, status: data.decision, updatedAt: timestamp });
     tx.update(ref, {
       priceChange: { ...change, status: data.decision, updatedAt: timestamp },
       ...(data.decision === 'ACCEPTED' ? { price: agreedPrice(price, change.toCents) } : {}),
       updatedAt: timestamp,
     });
+    updateRideChatEntries(tx, entries, answered);
     return { status: data.decision };
   });
 });
@@ -349,6 +365,8 @@ export const recordSettlement = onCall(options, async (call) => {
       throw new HttpsError('aborted', 'The agreed amount changed. Reopen Settle up and review the new total.');
     if (settled.some((marker) => marker.exists))
       throw new HttpsError('already-exists', 'Some of these rides are already marked paid.');
+    const chatEntries = await Promise.all(requests.map((snapshot) =>
+      readRideChatEntries(tx, { ...snapshot.data(), id: snapshot.id } as RideRequest)));
     const ref = db.collection('settlements').doc();
     const timestamp = now();
     tx.create(ref, {
@@ -366,15 +384,18 @@ export const recordSettlement = onCall(options, async (call) => {
       updatedAt: timestamp,
     });
     markers.forEach((marker) => tx.create(marker, { settlementId: ref.id, createdAt: timestamp }));
-    requests.forEach((snapshot) => {
-      const change = (snapshot.data() as RideRequest).priceChange;
+    requests.forEach((snapshot, index) => {
+      const ride = { ...snapshot.data(), id: snapshot.id } as RideRequest;
+      const change = ride.priceChange;
       if (change?.status === 'PENDING')
         tx.set(db.doc(priceAttemptPath(snapshot.id, change.id)), { ...change, status: 'EXPIRED', updatedAt: timestamp });
-      tx.update(snapshot.ref, {
+      const update = {
         settledAt: timestamp,
-        ...(change?.status === 'PENDING' ? { priceChange: { ...change, status: 'EXPIRED', updatedAt: timestamp } } : {}),
+        ...(change?.status === 'PENDING' ? { priceChange: { ...change, status: 'EXPIRED' as const, updatedAt: timestamp } } : {}),
         updatedAt: timestamp,
-      });
+      };
+      tx.update(snapshot.ref, update);
+      updateRideChatEntries(tx, chatEntries[index], { ...ride, ...update });
     });
     return { id: ref.id, cents };
   });

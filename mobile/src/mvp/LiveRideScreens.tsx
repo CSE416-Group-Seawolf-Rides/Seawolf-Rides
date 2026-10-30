@@ -22,6 +22,7 @@ import { AcceptedTripMap } from '../calendar/AcceptedTripMap';
 import { Card } from '../components/Card';
 import { useRideDecision } from './useRideDecision';
 import { RidePriceChange } from '../payments/components/RidePriceChange';
+import { CancelRideButton } from './components/CancelRideButton';
 
 function useLiveRides() {
   const { user } = useSession();
@@ -94,6 +95,7 @@ export function LiveCarpoolScreen({ participantId }: { participantId: string }) 
                     onCancel={(item) => void decision.cancel(item)} busyId={decision.busy} />}
               <AppButton label="View trip details" variant="secondary"
                 onPress={() => router.push(`/rides/${ride.id}`)} />
+              <CancelRideButton ride={ride} uid={uid} now={now} />
             </Card>
           ))}
       </>}
@@ -149,6 +151,7 @@ export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
               />
             </>
           )}
+          <CancelRideButton ride={ride} uid={uid} now={now} />
         </>
       )}
     </Screen>
