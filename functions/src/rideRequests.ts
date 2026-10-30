@@ -26,7 +26,7 @@ import { DemoBusyError } from './demoRouting';
 import { appendChatEntries, chatIdFor, chatTrip, linkRequestChat, readRideChatEntries, updateRideChatEntries } from './chatThreads';
 import { acceptedRideCanCancel, cancellationReason } from '../../mobile/src/mvp/rideCancellation';
 import { rideDate } from '../../mobile/src/mvp/ridePresentation';
-import { prepareCalendarPair } from './calendarMatching';
+import { areUsersMutuallyBlocked, prepareCalendarPair } from './calendarMatching';
 import { requestInitiator, requestRecipient } from '../../mobile/src/mvp/rideRequestModel';
 import { isValidRouteCoordinate } from '../../mobile/src/routing/types';
 import { vehicleIsComplete } from '../../mobile/src/vehicle/vehicleModel';
@@ -121,6 +121,8 @@ export async function preparePair(
   const [rider, driver] = await Promise.all([participant(riderId), participant(data.driverId)]);
   if (!rider.saved.eligible || !driver.saved.eligible)
     throw new HttpsError('permission-denied', 'Both accounts must remain eligible.');
+  if (await areUsersMutuallyBlocked(riderId, data.driverId))
+    throw new HttpsError('permission-denied', 'Cannot request a ride with this commuter.');
   const result = await findMatches(
     riderId,
     {

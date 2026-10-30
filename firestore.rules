@@ -67,6 +67,40 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
     }
 
+    function validBlock(userId, targetId) {
+      return request.resource.data.keys().hasOnly(['targetId', 'targetName', 'createdAt'])
+        && request.resource.data.targetId == targetId
+        && targetId is string
+        && targetId != userId
+        && request.resource.data.targetName is string
+        && request.resource.data.targetName.size() > 0
+        && request.resource.data.targetName.size() <= 80
+        && request.resource.data.createdAt is timestamp;
+    }
+
+    function validReport() {
+      return request.resource.data.keys().hasAll(['reporterId', 'targetId', 'targetName', 'reason', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['reporterId', 'targetId', 'targetName', 'reason', 'details', 'createdAt'])
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId != request.auth.uid
+        && request.resource.data.targetName is string
+        && request.resource.data.targetName.size() > 0
+        && request.resource.data.targetName.size() <= 80
+        && request.resource.data.reason in [
+          'harassment',
+          'unsafe_driving',
+          'no_show',
+          'inappropriate_behavior',
+          'scam_or_fraud',
+          'other'
+        ]
+        && (!request.resource.data.keys().hasAny(['details']) || (
+          request.resource.data.details is string
+          && request.resource.data.details.size() <= 500))
+        && request.resource.data.createdAt is timestamp;
+    }
+
     function validPrivacyArea() {
       return request.resource.data.startArea is map
         && request.resource.data.startArea.keys().hasOnly(['center', 'radiusMiles', 'label'])
@@ -267,12 +301,23 @@ service cloud.firestore {
         allow read, delete: if owns(userId);
         allow create, update: if owns(userId) && validCommute(userId);
       }
+
+      match /blockedUsers/{targetId} {
+        allow read, delete: if owns(userId);
+        allow create, update: if owns(userId) && validBlock(userId, targetId);
+      }
     }
 
     match /publicProfiles/{userId} {
       allow read: if isVerifiedStonyBrookUser();
       allow create, update: if owns(userId) && validPublicProfile(userId);
       allow delete: if owns(userId);
+    }
+
+    // Reports submitted by verified users for moderation review; clients cannot read or modify submitted reports.
+    match /reports/{reportId} {
+      allow create: if isVerifiedStonyBrookUser() && validReport();
+      allow read, update, delete: if false;
     }
   }
 }

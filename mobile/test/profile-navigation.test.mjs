@@ -46,6 +46,9 @@ function harness() {
     '../components/AppButton': { AppButton: 'button' }, '../components/Avatar': { Avatar: 'avatar' },
     '../components/Card': { Card: 'card' }, '../components/Screen': { Screen: 'screen' },
     '../theme': { colors: {}, spacing: {}, radii: {} },
+    '../safety/safetyClient': { useIsBlocked: () => false, blockUser: async () => {}, unblockUser: async () => {} },
+    '../safety/BlockUserSheet': { BlockUserSheet: () => null },
+    '../safety/ReportUserModal': { ReportUserModal: () => null },
   };
   return { mocks, routes, render: (component, props) => { cursor = 0; return component(props); },
     flush: () => effects.splice(0).forEach((effect) => effect()) };
