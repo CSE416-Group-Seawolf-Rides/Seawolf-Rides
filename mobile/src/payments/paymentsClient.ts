@@ -15,6 +15,7 @@ import {
   type VehicleEfficiency,
 } from './pricing';
 import { parseSettlement, type Settlement } from './tally';
+import type { PriceChangeDecision } from './priceChanges';
 
 // Live document → parsed value, with a fallback while loading or when reading fails.
 function useDocument<T>(path: string | null, parse: (value: unknown) => T, fallback: T) {
@@ -65,7 +66,9 @@ function readAdjustment(value: unknown): PriceAdjustment {
 }
 
 export async function setPriceAdjustment(riderId: string, adjustment: PriceAdjustment) {
-  await call('setPriceAdjustment')({ riderId, adjustment });
+  return (await call<{ riderId: string; adjustment: PriceAdjustment }, { adjustment: PriceAdjustment; lowered: number }>(
+    'setPriceAdjustment',
+  )({ riderId, adjustment })).data;
 }
 
 export function useSettlements(uid?: string) {
@@ -111,8 +114,19 @@ export async function recordSettlement(
   payeeId: string,
   requestIds: string[],
   method: PaymentMethod | 'other',
+  expectedCents: number,
 ) {
-  await call('recordSettlement')({ payeeId, requestIds, method });
+  await call('recordSettlement')({ payeeId, requestIds, method, expectedCents });
+}
+
+export const newPriceProposalId = () => doc(collection(getFirebaseFirestore(), 'rideRequests')).id;
+
+export async function proposeRidePriceChange(requestId: string, proposalId: string, cents: number, expectedCents: number) {
+  await call('proposeRidePriceChange')({ requestId, proposalId, cents, expectedCents });
+}
+
+export async function respondToRidePriceChange(requestId: string, proposalId: string, decision: PriceChangeDecision) {
+  await call('respondToRidePriceChange')({ requestId, proposalId, decision });
 }
 
 export async function confirmSettlement(settlementId: string) {

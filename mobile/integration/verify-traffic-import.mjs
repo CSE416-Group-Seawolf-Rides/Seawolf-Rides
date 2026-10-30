@@ -18,10 +18,10 @@ try {
   const original = chats.docs.find((d) => d.data().participantIds.includes('traffic-rider'));
   assert.ok(original);
   const chatId = original.id;
-  assert.equal(original.data().messageCount, 3);
+  assert.ok(original.data().messageCount >= 4);
   const requestOnly = chats.docs.find((d) => d.data().participantIds.includes('symmetric-rider'));
   assert.ok(requestOnly);
-  assert.equal(requestOnly.data().messageCount, 0);
+  assert.ok(requestOnly.data().messageCount > 0);
   assert.equal((await db.doc(`rideRequests/${requestOnly.data().requestId}`).get()).data().status, 'CANCELLED');
   assert.equal((await db.doc('users/dropoff-rider/commutes/primary').get()).data().riderDropoffPreference, 'any');
   const dropoffRide = await db.collection('rideRequests').where('riderId', '==', 'dropoff-rider').get();
@@ -62,10 +62,12 @@ try {
       await signInWithEmailAndPassword(auth, `${uid}@stonybrook.edu`, 'Emulator-test-only-123!');
       assert.equal((await getDoc(doc(client, 'rideRequests', ride.id))).data().status, 'ACCEPTED');
       assert.equal((await getDoc(doc(client, 'ridePickups', ride.id))).exists(), true);
-      assert.equal((await getDoc(doc(client, 'chats', chatId))).data().messageCount, 3);
+      assert.equal((await getDoc(doc(client, 'chats', chatId))).data().messageCount, original.data().messageCount);
       const messages = await getDocs(query(collection(client, 'chats', chatId, 'messages'), orderBy('sequence')));
-      assert.deepEqual(messages.docs.map((d) => d.data().sequence), [1, 2, 3]);
-      assert.equal(messages.docs.at(-1).data().text, 'Thanks!');
+      const texts = messages.docs.filter((d) => !d.data().type || d.data().type === 'TEXT');
+      assert.deepEqual(texts.map((d) => d.data().sequence), [1, 2, 3]);
+      assert.equal(texts.at(-1).data().text, 'Thanks!');
+      assert.ok(messages.docs.some((d) => d.data().type === 'RIDE_REQUEST' && d.data().ride.status === 'ACCEPTED'));
 
     } finally {
       await deleteApp(app);
@@ -90,8 +92,13 @@ try {
       assert.equal((await getDoc(doc(client, 'ridePickups', byDate[0].id))).exists(), true);
       const restoredThread = (await getDoc(doc(client, 'chats', requestOnly.id))).data();
       assert.equal(restoredThread.requestId, byDate[3].id);
-      assert.equal(restoredThread.messageCount, 0);
-      assert.equal((await getDocs(collection(client, 'chats', requestOnly.id, 'messages'))).size, 0);
+      const entries = await getDocs(collection(client, 'chats', requestOnly.id, 'messages'));
+      assert.equal(restoredThread.messageCount, entries.size);
+      assert.ok(entries.size > 0);
+      const restoredEntries = entries.docs.map((d) => d.data());
+      assert.ok(restoredEntries.every((entry) => ['RIDE_REQUEST', 'RIDE_CANCELLED'].includes(entry.type)));
+      assert.ok(restoredEntries.some((entry) => entry.type === 'RIDE_REQUEST'));
+      assert.ok(restoredEntries.some((entry) => entry.type === 'RIDE_CANCELLED'));
     } finally {
       await deleteApp(app);
     }

@@ -6,6 +6,7 @@ import { AppButton } from '../../components/AppButton';
 import { requestCanCancel, requestRecipient, type RideRequest } from '../rideRequestModel';
 import { historyLabel, partnerName, rideDate, rideEnd, rideTime } from '../ridePresentation';
 import { adjustmentNote, formatCents } from '../../payments/pricing';
+import { RideCancellationNotice } from './CancelRideButton';
 
 export function LiveRequestCard({
   ride,
@@ -80,6 +81,7 @@ export function LiveRequestCard({
           No seat is reserved until acceptance.
         </Text>
       )}
+      <RideCancellationNotice ride={ride} uid={uid} />
       {onCancel && requestCanCancel(ride, uid) && (
         <AppButton
           label={busyId === ride.id ? 'Cancelling…' : 'Cancel request'}

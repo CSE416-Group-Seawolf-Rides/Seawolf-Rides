@@ -1,10 +1,13 @@
+import { createHash } from 'node:crypto';
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { eligible } from './matchingRuntime';
 import { requireLocalDemo } from './calendarMatching';
-import { localDateAt } from '../../mobile/src/mvp/settings';
+import { rideHasFinished } from '../../mobile/src/payments/rideCompletion';
+import { agreedPrice, validProposedPrice, type PriceChangeRequest } from '../../mobile/src/payments/priceChanges';
 import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
+import { appendChatEntries, chatIdFor, priceEntry, readRideChatEntries, updateRideChatEntries } from './chatThreads';
 import {
   applyAdjustment,
   DEFAULT_FUEL_PRICES,
@@ -162,49 +165,132 @@ export const savePaymentHandles = onCall(options, async (call) => {
 
 // ---- Driver adjusts or waives a rider's price --------------------------------------
 
-// Changes only ever go in the rider's favor for rides already agreed: a lower price also
-// applies to that rider's unpaid and pending rides; a higher one only to new requests.
+// Future-request preference only. Existing quotes require the other participant's
+// explicit approval through proposeRidePriceChange/respondToRidePriceChange.
 export const setPriceAdjustment = onCall(options, async (call) => {
   const uid = await requireUser(call);
   const data = onlyKeys(call.data, ['riderId', 'adjustment']);
   if (typeof data.riderId !== 'string' || data.riderId === uid || !isPriceAdjustment(data.adjustment))
     throw new HttpsError('invalid-argument', 'Choose a rider and one of the price options.');
   const riderId = data.riderId;
-  const adjustment = data.adjustment;
   const db = getFirestore();
   return db.runTransaction(async (tx) => {
-    const rides = (
-      await tx.get(
-        db.collection('rideRequests').where('participantIds', 'array-contains', uid),
-      )
-    ).docs.filter((doc) => {
-      const r = doc.data() as RideRequest;
-      return r.driverId === uid && r.riderId === riderId;
-    });
-    if (!rides.length)
-      throw new HttpsError('permission-denied', 'You can only set prices for riders who asked to ride with you.');
-    const open = rides.filter((doc) => ['ACCEPTED', 'PENDING'].includes((doc.data() as RideRequest).status));
-    const settled = open.length
-      ? await tx.getAll(...open.map((doc) => db.doc(`_settledRequests/${doc.id}`)))
-      : [];
-    let lowered = 0;
-    open.forEach((doc, index) => {
-      const price = parseRidePrice((doc.data() as RideRequest).price);
-      if (!price || settled[index].exists) return;
-      const next = applyAdjustment(price, adjustment === 0 ? undefined : adjustment);
-      if (next.cents < price.cents) {
-        tx.update(doc.ref, { price: next, updatedAt: now() });
-        lowered++;
-      }
-    });
+    const rides = await tx.get(db.collection('rideRequests').where('participantIds', 'array-contains', uid));
+    if (!rides.docs.some((doc) => doc.get('driverId') === uid && doc.get('riderId') === riderId))
+      throw new HttpsError('permission-denied', 'Choose a rider you have a request with.');
     tx.set(db.doc(adjustmentPath(uid, riderId)), {
-      participantIds: [uid, riderId],
-      driverId: uid,
-      riderId,
-      adjustment,
-      updatedAt: now(),
+      participantIds: [uid, riderId], driverId: uid, riderId,
+      adjustment: data.adjustment, updatedAt: now(),
     });
-    return { adjustment, lowered };
+    return { adjustment: data.adjustment, lowered: 0 };
+  });
+});
+
+// Price proposals live on the participant-protected ride document. They reuse the
+// existing live ride subscription and server-only write rules, without a public inbox.
+const safeId = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= 128 && !value.includes('/');
+const proposalId = (value: unknown): value is string =>
+  typeof value === 'string' && /^[A-Za-z0-9_-]{16,80}$/.test(value);
+const priceAttemptPath = (requestId: string, id: string) =>
+  `_priceChangeAttempts/${createHash('sha256').update(JSON.stringify([requestId, id])).digest('hex')}`;
+
+export const proposeRidePriceChange = onCall(options, async (call) => {
+  const uid = await requireUser(call);
+  const data = onlyKeys(call.data, ['requestId', 'proposalId', 'cents', 'expectedCents']);
+  if (!safeId(data.requestId) || !proposalId(data.proposalId) || !Number.isSafeInteger(data.expectedCents))
+    throw new HttpsError('invalid-argument', 'Choose a ride and the amount you reviewed.');
+  const db = getFirestore();
+  const ref = db.doc(`rideRequests/${data.requestId}`);
+  const operation = db.doc(priceAttemptPath(data.requestId, data.proposalId));
+  return db.runTransaction(async (tx) => {
+    const [snapshot, marker, attempt] = await tx.getAll(ref, db.doc(`_settledRequests/${data.requestId}`), operation);
+    const ride = snapshot.data() as RideRequest | undefined;
+    if (!ride || (ride.driverId !== uid && ride.riderId !== uid))
+      throw new HttpsError('permission-denied', 'Only this ride’s driver or rider can propose a price.');
+    const existing = ride.priceChange;
+    if (attempt.exists) {
+      const previous = attempt.data()!;
+      if (previous.proposerId !== uid || previous.toCents !== data.cents || previous.fromCents !== data.expectedCents)
+        throw new HttpsError('aborted', 'This proposal identifier was already used.');
+      return { id: data.proposalId, status: previous.status };
+    }
+    if (existing && existing.id === data.proposalId) {
+      if (existing.proposerId !== uid || existing.toCents !== data.cents || existing.fromCents !== data.expectedCents)
+        throw new HttpsError('aborted', 'This proposal identifier was already used.');
+      return { id: existing.id, status: existing.status };
+    }
+    const price = parseRidePrice(ride.price);
+    if (ride.status !== 'ACCEPTED' || !price || marker.exists || ride.settledAt !== undefined)
+      throw new HttpsError('failed-precondition', 'Only confirmed rides that haven’t been paid can change price.');
+    if (existing?.status === 'PENDING')
+      throw new HttpsError('failed-precondition', 'Reply to or cancel the pending price change first.');
+    if (price.cents !== data.expectedCents)
+      throw new HttpsError('aborted', 'The agreed price changed. Reopen the ride and review it.');
+    if (!validProposedPrice(data.cents, price) || data.cents === price.cents)
+      throw new HttpsError('invalid-argument', 'Choose a different price in $0.25 steps within this ride’s limit.');
+    const timestamp = now();
+    const change: PriceChangeRequest = {
+      id: data.proposalId as string, proposerId: uid,
+      recipientId: uid === ride.driverId ? ride.riderId : ride.driverId,
+      fromCents: price.cents, toCents: data.cents, status: 'PENDING',
+      createdAt: timestamp, updatedAt: timestamp,
+    };
+    const [thread, entries] = await Promise.all([
+      tx.get(db.doc(`chats/${chatIdFor(ride.driverId, ride.riderId)}`)),
+      readRideChatEntries(tx, { ...ride, id: snapshot.id }),
+    ]);
+    const proposed = { ...ride, id: snapshot.id, priceChange: change, updatedAt: timestamp };
+    tx.create(operation, change);
+    tx.update(ref, { priceChange: change, updatedAt: timestamp });
+    updateRideChatEntries(tx, entries, proposed);
+    appendChatEntries(tx, thread, proposed, [priceEntry(proposed, change)]);
+    return { id: change.id, status: change.status };
+  });
+});
+
+export const respondToRidePriceChange = onCall(options, async (call) => {
+  const uid = await requireUser(call);
+  const data = onlyKeys(call.data, ['requestId', 'proposalId', 'decision']);
+  if (!safeId(data.requestId) || !proposalId(data.proposalId)
+      || !['ACCEPTED', 'DECLINED', 'CANCELLED'].includes(String(data.decision)))
+    throw new HttpsError('invalid-argument', 'Choose a price change and a response.');
+  const db = getFirestore();
+  const ref = db.doc(`rideRequests/${data.requestId}`);
+  return db.runTransaction(async (tx) => {
+    const [snapshot, marker] = await tx.getAll(ref, db.doc(`_settledRequests/${data.requestId}`));
+    const ride = snapshot.data() as RideRequest | undefined;
+    const change = ride?.priceChange;
+    if (!ride || (ride.driverId !== uid && ride.riderId !== uid) || !change)
+      throw new HttpsError('permission-denied', 'This price change is unavailable to your account.');
+    if (change.id !== data.proposalId)
+      throw new HttpsError('aborted', 'This price change has been replaced. Review the current request.');
+    if (uid !== (data.decision === 'CANCELLED' ? change.proposerId : change.recipientId))
+      throw new HttpsError('permission-denied', 'Only the recipient can accept or reject; only the sender can cancel.');
+    if (change.status === data.decision) return { status: change.status };
+    if (change.status !== 'PENDING')
+      throw new HttpsError('failed-precondition', 'This price change was already answered or expired.');
+    const price = parseRidePrice(ride.price);
+    if (ride.status !== 'ACCEPTED' || !price || marker.exists || ride.settledAt !== undefined)
+      throw new HttpsError('failed-precondition', 'This ride is closed or already marked paid.');
+    if (price.cents !== change.fromCents || !validProposedPrice(change.toCents, price))
+      throw new HttpsError('aborted', 'The agreed price changed. Review a new proposal.');
+    const timestamp = now();
+    const entries = await readRideChatEntries(tx, { ...ride, id: snapshot.id });
+    const answered: RideRequest = {
+      ...ride, id: snapshot.id,
+      priceChange: { ...change, status: data.decision as PriceChangeRequest['status'], updatedAt: timestamp },
+      ...(data.decision === 'ACCEPTED' ? { price: agreedPrice(price, change.toCents) } : {}),
+      updatedAt: timestamp,
+    };
+    tx.set(db.doc(priceAttemptPath(snapshot.id, change.id)), { ...change, status: data.decision, updatedAt: timestamp });
+    tx.update(ref, {
+      priceChange: { ...change, status: data.decision, updatedAt: timestamp },
+      ...(data.decision === 'ACCEPTED' ? { price: agreedPrice(price, change.toCents) } : {}),
+      updatedAt: timestamp,
+    });
+    updateRideChatEntries(tx, entries, answered);
+    return { status: data.decision };
   });
 });
 
@@ -236,10 +322,11 @@ export const getPayeeHandles = onCall(options, async (call) => {
 
 export const recordSettlement = onCall(options, async (call) => {
   const uid = await requireUser(call);
-  const data = onlyKeys(call.data, ['payeeId', 'requestIds', 'method']);
+  const data = onlyKeys(call.data, ['payeeId', 'requestIds', 'method', 'expectedCents']);
   const method = data.method as PaymentMethod | 'other';
   if (
     typeof data.payeeId !== 'string' ||
+    (data.expectedCents !== undefined && (!Number.isSafeInteger(data.expectedCents) || (data.expectedCents as number) < 0)) ||
     !(method === 'other' || PAYMENT_METHODS.includes(method)) ||
     !Array.isArray(data.requestIds) ||
     data.requestIds.length === 0 ||
@@ -250,7 +337,6 @@ export const recordSettlement = onCall(options, async (call) => {
     throw new HttpsError('invalid-argument', 'Choose which rides you paid for.');
   const requestIds = data.requestIds as string[];
   const payeeId = data.payeeId;
-  const today = localDateAt(now());
   const db = getFirestore();
   return db.runTransaction(async (tx) => {
     const refs = requestIds.map((id) => db.doc(`rideRequests/${id}`));
@@ -268,15 +354,19 @@ export const recordSettlement = onCall(options, async (call) => {
         request.riderId !== uid ||
         request.driverId !== payeeId ||
         !price ||
-        request.localDate > today
+        !rideHasFinished(request, now())
       )
         throw new HttpsError('failed-precondition', 'Only rides you have taken with this driver can be settled.');
       cents += price.cents;
       payerName = request.riderName;
       payeeName = request.driverName;
     });
+    if (data.expectedCents !== undefined && cents !== data.expectedCents)
+      throw new HttpsError('aborted', 'The agreed amount changed. Reopen Settle up and review the new total.');
     if (settled.some((marker) => marker.exists))
       throw new HttpsError('already-exists', 'Some of these rides are already marked paid.');
+    const chatEntries = await Promise.all(requests.map((snapshot) =>
+      readRideChatEntries(tx, { ...snapshot.data(), id: snapshot.id } as RideRequest)));
     const ref = db.collection('settlements').doc();
     const timestamp = now();
     tx.create(ref, {
@@ -294,6 +384,19 @@ export const recordSettlement = onCall(options, async (call) => {
       updatedAt: timestamp,
     });
     markers.forEach((marker) => tx.create(marker, { settlementId: ref.id, createdAt: timestamp }));
+    requests.forEach((snapshot, index) => {
+      const ride = { ...snapshot.data(), id: snapshot.id } as RideRequest;
+      const change = ride.priceChange;
+      if (change?.status === 'PENDING')
+        tx.set(db.doc(priceAttemptPath(snapshot.id, change.id)), { ...change, status: 'EXPIRED', updatedAt: timestamp });
+      const update = {
+        settledAt: timestamp,
+        ...(change?.status === 'PENDING' ? { priceChange: { ...change, status: 'EXPIRED' as const, updatedAt: timestamp } } : {}),
+        updatedAt: timestamp,
+      };
+      tx.update(snapshot.ref, update);
+      updateRideChatEntries(tx, chatEntries[index], { ...ride, ...update });
+    });
     return { id: ref.id, cents };
   });
 });

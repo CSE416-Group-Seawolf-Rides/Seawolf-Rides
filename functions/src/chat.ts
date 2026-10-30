@@ -143,7 +143,7 @@ export const getChatMatch = onCall(options, async (call): Promise<ChatMatchDetai
     return { localDate: trip.localDate, ownPoint: own.commute.startPoint!, match: {
       driverId: d.uid, riderId: r.uid, driverRevision: d.revision, riderRevision: r.revision,
       name: other.name, role: uid === d.uid ? 'rider' : 'driver', area: other.commute.startArea,
-      plan: prepared.value.plan, metrics: prepared.value.metrics,
+      plan: prepared.value.plan, metrics: prepared.value.metrics, price: prepared.value.price,
       addedDrivingSeconds: prepared.value.metrics.driverExtraDurationSeconds,
       arrivalDifferenceSeconds: Math.abs((uid === d.uid ? prepared.value.plan.vehicleCampusArrival : prepared.value.plan.riderDestinationArrival) - (localMinuteToEpoch(trip.localDate, own.day.arriveBy!) - ARRIVAL_BUFFER_SECONDS)),
       savedDriverDeparture: localMinuteToEpoch(trip.localDate, d.day.startAt!),

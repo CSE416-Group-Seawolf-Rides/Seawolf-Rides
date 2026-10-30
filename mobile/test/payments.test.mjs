@@ -111,6 +111,7 @@ function ride(id, localDate, cents, { status = 'ACCEPTED', rider = 'me', driver 
   return {
     id,
     localDate,
+    plan: { vehicleCampusArrival: Date.parse(`${localDate}T12:00:00-04:00`) / 1000, riderDestinationArrival: Date.parse(`${localDate}T12:00:00-04:00`) / 1000 },
     status,
     riderId: rider,
     driverId: driver,
@@ -121,7 +122,7 @@ function ride(id, localDate, cents, { status = 'ACCEPTED', rider = 'me', driver 
   };
 }
 
-test('balances count past rides as due, later rides this week as upcoming, and skip settled ones', () => {
+test('balances count completed rides as due, all future rides as upcoming, and skip settled ones', () => {
   const requests = [
     ride('mon', '2026-10-12', 100),
     ride('wed', '2026-10-14', 125),
@@ -135,12 +136,12 @@ test('balances count past rides as due, later rides this week as upcoming, and s
   const settlements = [
     { id: 's1', payerId: 'me', payeeId: 'alex', requestIds: ['mon'], cents: 100, method: 'venmo', status: 'MARKED_PAID', createdAt: 1_790_000_000 },
   ];
-  const balances = computeBalances('me', requests, settlements, '2026-10-15', '2026-10-18');
+  const balances = computeBalances('me', requests, settlements, Date.parse('2026-10-15T15:00:00-04:00') / 1000);
   const alex = balances.find((b) => b.counterpartId === 'alex');
   assert.equal(alex.direction, 'owe');
   assert.deepEqual(alex.due.map((r) => r.requestId), ['wed']);
   assert.equal(alex.dueCents, 125);
-  assert.equal(alex.upcomingCents, 100);
+  assert.equal(alex.upcomingCents, 200);
   assert.equal(alex.awaitingConfirmation.length, 1);
   const maya = balances.find((b) => b.counterpartId === 'maya');
   assert.equal(maya.direction, 'owed');
@@ -149,9 +150,9 @@ test('balances count past rides as due, later rides this week as upcoming, and s
 
 test('drivers see what was covered this month', () => {
   const settlements = [
-    { payeeId: 'me', cents: 300, createdAt: Date.UTC(2026, 9, 3) / 1000 },
-    { payeeId: 'me', cents: 200, createdAt: Date.UTC(2026, 8, 30) / 1000 },
-    { payeeId: 'alex', cents: 999, createdAt: Date.UTC(2026, 9, 3) / 1000 },
+    { status: 'CONFIRMED', payeeId: 'me', cents: 300, createdAt: Date.UTC(2026, 9, 3) / 1000 },
+    { status: 'CONFIRMED', payeeId: 'me', cents: 200, createdAt: Date.UTC(2026, 8, 30) / 1000 },
+    { status: 'CONFIRMED', payeeId: 'alex', cents: 999, createdAt: Date.UTC(2026, 9, 3) / 1000 },
   ];
   assert.equal(coveredThisMonth('me', settlements, '2026-10'), 300);
 });
@@ -193,4 +194,87 @@ test('an adjusted price never exceeds its percentage because it rounds down', as
   assert.equal(applyAdjustment(price, 25).cents, 175); // $1.875 -> $1.75, not $2.00
   assert.equal(applyAdjustment(price, -25).cents, 100); // $1.125 -> $1.00
   assert.equal(applyAdjustment(price, undefined).cents, 150);
+});
+
+test('taking turns driving keeps payable rides and pending confirmations in their own direction', () => {
+  const requests = [
+    ride('i-rode', '2026-10-12', 300),
+    ride('i-drove', '2026-10-13', 500, { driver: 'me', rider: 'alex' }),
+  ];
+  const sent = { id: 'sent', payerId: 'me', payeeId: 'alex', requestIds: [], cents: 100, status: 'MARKED_PAID' };
+  const received = { id: 'received', payerId: 'alex', payeeId: 'me', requestIds: [], cents: 200, status: 'MARKED_PAID' };
+  const now = Date.parse('2026-10-15T15:00:00-04:00') / 1000;
+  for (const order of [requests, [...requests].reverse()]) {
+    const balances = computeBalances('me', order, [sent, received], now);
+    assert.equal(balances.length, 2);
+    const owe = balances.find((b) => b.direction === 'owe');
+    const owed = balances.find((b) => b.direction === 'owed');
+    assert.equal(owe.dueCents, 300);
+    assert.deepEqual(owe.due.map((r) => r.requestId), ['i-rode']);
+    assert.deepEqual(owe.awaitingConfirmation.map((s) => s.id), ['sent']);
+    assert.equal(owed.dueCents, 500);
+    assert.deepEqual(owed.due.map((r) => r.requestId), ['i-drove']);
+    assert.deepEqual(owed.awaitingConfirmation.map((s) => s.id), ['received']);
+  }
+});
+
+test('today’s ride becomes due only after both agreed arrivals, including the exact boundary', () => {
+  const request = ride('today', '2026-10-15', 300);
+  const vehicleArrival = request.plan.vehicleCampusArrival;
+  request.plan.riderDestinationArrival = vehicleArrival + 600;
+  for (const now of [vehicleArrival - 3600, vehicleArrival, vehicleArrival + 599]) {
+    const [balance] = computeBalances('me', [request], [], now);
+    assert.equal(balance.dueCents, 0);
+    assert.equal(balance.upcomingCents, 300);
+  }
+  const [finished] = computeBalances('me', [request], [], vehicleArrival + 600);
+  assert.equal(finished.dueCents, 300);
+  assert.equal(finished.upcomingCents, 0);
+});
+
+test('missing or invalid arrival times never make a ride payable', async () => {
+  const { rideHasFinished } = await import('../src/payments/rideCompletion.ts');
+  const now = Date.now() / 1000;
+  for (const request of [undefined, {}, { plan: {} },
+    { plan: { vehicleCampusArrival: NaN, riderDestinationArrival: 1 } },
+    { plan: { vehicleCampusArrival: 1, riderDestinationArrival: Infinity } },
+    { plan: { vehicleCampusArrival: 0, riderDestinationArrival: 1 } }]) {
+    assert.equal(rideHasFinished(request, now), false);
+  }
+});
+
+test('pending payments survive outstanding debt and absent ride snapshots', () => {
+  const settlements = ['one', 'two'].map((id) => ({
+    id, payerId: 'alex', payeeId: 'me', payerName: 'Alex', payeeName: 'Me',
+    requestIds: [id], cents: 300, status: 'MARKED_PAID',
+  }));
+  const now = Date.parse('2026-10-15T15:00:00-04:00') / 1000;
+  const requests = [ride('unpaid', '2026-10-12', 300, { driver: 'me', rider: 'alex' })];
+  const [balance] = computeBalances('me', requests, settlements, now);
+  assert.equal(balance.dueCents, 300);
+  assert.deepEqual(balance.awaitingConfirmation.map((s) => s.id), ['one', 'two']);
+  const [paymentsOnly] = computeBalances('me', [], settlements, now);
+  assert.equal(paymentsOnly.counterpartName, 'Alex');
+  assert.equal(paymentsOnly.awaitingConfirmation.length, 2);
+});
+
+test('monthly coverage counts confirmed receipts only', () => {
+  const base = { payeeId: 'me', cents: 300, createdAt: Date.parse('2026-10-15T12:00:00Z') / 1000 };
+  assert.equal(coveredThisMonth('me', [{ ...base, status: 'MARKED_PAID' }], '2026-10'), 0);
+  assert.equal(coveredThisMonth('me', [{ ...base, status: 'MARKED_PAID' }, { ...base, status: 'CONFIRMED' }], '2026-10'), 300);
+});
+
+test('mutually agreed prices keep the original suggestion and never compound the negotiation ceiling', async () => {
+  const { maximumAgreedPrice, validProposedPrice, agreedPrice } = await import('../src/payments/priceChanges.ts');
+  const base = { cents: 300, baseCents: 100, suggestedCents: 300, riderMiles: 6, extraMiles: 1, costPerMile: .4, fuelType: 'gas', gasWeekOf: '2026-10-12', adjustment: -25 };
+  assert.equal(maximumAgreedPrice(base), 375);
+  for (const value of [0, 25, 250, 350, 375]) assert.equal(validProposedPrice(value, base), true);
+  for (const value of [-25, 10, 400, NaN, Infinity, '350']) assert.equal(validProposedPrice(value, base), false);
+  const changed = agreedPrice(base, 350);
+  assert.equal(changed.negotiated, true);
+  assert.equal(changed.adjustment, undefined);
+  assert.equal(changed.suggestedCents, 300);
+  assert.equal(maximumAgreedPrice(changed), 375);
+  assert.equal(maximumAgreedPrice(agreedPrice(changed, 0)), 375);
+  assert.equal(parseRidePrice(changed).cents, 350);
 });
