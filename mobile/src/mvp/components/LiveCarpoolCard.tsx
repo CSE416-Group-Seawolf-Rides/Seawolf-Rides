@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../../components/AppButton';
 import type { RideRequest } from '../rideRequestModel';
+import { PublicProfileLink } from '../../profiles/PublicProfileLink';
 import { Avatar } from '../../components/Avatar';
 import { Card } from '../../components/Card';
 import { weekdays } from '../../commute/commuteModel';
@@ -67,6 +68,7 @@ export function LiveCarpoolCard({
           </Text>
         )}
       </Pressable>
+      <PublicProfileLink participantId={carpool.id} name={carpool.name} />
       {carpool.pending.map((request) => (
         <AppButton
           key={request.id}

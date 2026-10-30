@@ -4,6 +4,7 @@ import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from '
 import MapView, { Circle, Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppButton } from '../components/AppButton';
+import { PublicProfileLink, openPublicProfile } from '../profiles/PublicProfileLink';
 import { Avatar } from '../components/Avatar';
 import { Card } from '../components/Card';
 import { METERS_PER_MILE } from '../commute/commuteModel';
@@ -138,6 +139,8 @@ export function ChatTripSheet({ thread, uid, selectedRide, onClose }: { thread: 
             </View>
             <PriceTag price={price} youDrive={driving} />
           </View>
+          <PublicProfileLink participantId={other} name={name} disabled={busy}
+            onOpen={() => close(() => openPublicProfile(other, name))} />
           {context.loading && <Text>Loading request…</Text>}
           {context.error && !archived && <Text accessibilityRole="alert">{context.error}</Text>}
           {archived && !context.loading && <Text style={styles.muted}>Archived request · original trip details. This card belongs to an earlier proposal.</Text>}

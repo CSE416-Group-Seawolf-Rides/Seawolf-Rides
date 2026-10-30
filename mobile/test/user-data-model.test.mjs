@@ -5,6 +5,7 @@ import { toPrivacyArea } from '../src/commute/commuteModel.ts';
 import {
   parseCommuteDocument,
   parseUserProfileDocument,
+  profileWithPublicDetails,
   toCommuteDocument,
   toUserProfileDocument,
 } from '../src/persistence/userDataModel.ts';
@@ -25,6 +26,15 @@ test('serializes and parses the persisted user profile schema', () => {
 
   assert.deepEqual(document, { schemaVersion: 1, firstName: 'Wolfie', role: 'both', bio: 'CS student', photoBase64: '/9j/AA==' });
   assert.deepEqual(parseUserProfileDocument(document), profile);
+});
+
+test('public cosmetics replace old details while the private role stays authoritative', () => {
+  const published = { schemaVersion: 1, ownerId: 'wolfie', displayName: 'New name', role: 'rider' };
+  assert.deepEqual(profileWithPublicDetails(profile, published, 'wolfie'), { firstName: 'New name', role: 'both' });
+  for (const invalid of [undefined, { ...published, ownerId: 'other' }, { ...published, displayName: '' },
+    { ...published, photoBase64: 'file:///private.jpg' }]) {
+    assert.deepEqual(profileWithPublicDetails(profile, invalid, 'wolfie'), profile);
+  }
 });
 
 test('serializes and parses the primary commute without exact coordinates', () => {

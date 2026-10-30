@@ -138,6 +138,16 @@ export function parseUserProfileDocument(value: unknown): OnboardingProfile {
   };
 }
 
+/** Public cosmetics can change independently of the private role and matching inputs. */
+export function profileWithPublicDetails(profile: OnboardingProfile, value: unknown, userId: string): OnboardingProfile {
+  if (!isRecord(value) || value.schemaVersion !== USER_DATA_SCHEMA_VERSION || value.ownerId !== userId) return profile;
+  try {
+    return parseUserProfileDocument({ ...value, firstName: value.displayName, role: profile.role });
+  } catch {
+    return profile;
+  }
+}
+
 export function toCommuteDocument(ownerId: string, commute: CommuteSchedule): CommuteDocument {
   return {
     schemaVersion: USER_DATA_SCHEMA_VERSION,

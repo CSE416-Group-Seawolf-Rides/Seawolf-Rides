@@ -24,15 +24,18 @@ export function subscribeToPublicProfile(
 }
 
 export function usePublicProfile(participantId: string | undefined) {
-  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [state, setState] = useState<{ participantId?: string; profile: PublicProfile | null }>({ profile: null });
   useEffect(() => {
     if (!participantId) return;
-    return subscribeToPublicProfile(
+    let active = true;
+    const update = (profile: PublicProfile | null) => { if (active) setState({ participantId, profile }); };
+    const stop = subscribeToPublicProfile(
       getFirebaseFirestore(),
       participantId,
-      setProfile,
-      () => setProfile(null),
+      update,
+      () => update(null),
     );
+    return () => { active = false; stop(); };
   }, [participantId]);
-  return profile;
+  return state.participantId === participantId ? state.profile : null;
 }

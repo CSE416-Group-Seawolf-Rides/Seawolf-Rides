@@ -10,6 +10,8 @@ import {
 } from '../../mobile/src/mvp/settings';
 import {
   parseUserProfileDocument,
+  profileWithPublicDetails,
+  toUserProfileDocument,
   parseCommuteDocument,
 } from '../../mobile/src/persistence/userDataModel';
 import type { RoutingAdapter } from '../../mobile/src/routing/types';
@@ -85,12 +87,15 @@ async function participant(uid: string) {
     db.doc(`matchingSetups/${uid}`),
     db.doc(`users/${uid}`),
     db.doc(`users/${uid}/commutes/primary`),
+    db.doc(`publicProfiles/${uid}`),
   );
   const saved: SavedParticipant = {
     uid,
     eligible: await eligible(uid),
     setup: snapshots[0].data(),
-    profile: snapshots[1].data(),
+    profile: snapshots[1].exists
+      ? toUserProfileDocument(profileWithPublicDetails(parseUserProfileDocument(snapshots[1].data()), snapshots[3].data(), uid))
+      : snapshots[1].data(),
     commute: snapshots[2].data(),
   };
   return { saved, snapshots };
