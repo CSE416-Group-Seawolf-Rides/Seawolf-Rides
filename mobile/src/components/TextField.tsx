@@ -1,4 +1,4 @@
-import { ReactNode, Ref, useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
 import { colors, radii, spacing } from '../theme';
@@ -8,7 +8,7 @@ interface TextFieldProps extends TextInputProps {
   error?: string;
   helperText?: string;
   accessory?: ReactNode;
-  ref?: Ref<TextInput>;
+  ref?: any;
 }
 
 export function TextField({

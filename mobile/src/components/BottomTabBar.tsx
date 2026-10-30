@@ -15,7 +15,13 @@ function formatBadge(badge: string | number): string {
 
 // Follows the platform tab bar conventions: iOS tints the icon and label of the
 // selected tab; Android (Material 3) adds a pill indicator behind the selected icon.
-export function BottomTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
+export function BottomTabBar(props: BottomTabBarProps) {
+  const { state, descriptors, insets } = props;
+  const anyProps = props as any;
+  const navigation = anyProps.navigation;
+  const emitter = anyProps.emitter;
+  const navigateToTab = anyProps.navigateToTab;
+
   return (
     <View
       accessibilityRole="tablist"
@@ -29,15 +35,21 @@ export function BottomTabBar({ state, descriptors, navigation, insets }: BottomT
         const badge = options.tabBarBadge;
 
         function selectTab() {
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-          });
+          const event = emitter
+            ? emitter.emit({ type: 'tabPress', target: route.key, canPreventDefault: true })
+            : navigation?.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
 
           // Re-tapping the active tab is handled by its stack, which pops to the root.
-          if (!focused && !event.defaultPrevented) {
-            navigation.navigate(route.name, route.params);
+          if (!focused && !event?.defaultPrevented) {
+            if (navigateToTab) {
+              navigateToTab(route.key);
+            } else {
+              navigation?.navigate(route.name, route.params);
+            }
           }
         }
 
@@ -48,7 +60,13 @@ export function BottomTabBar({ state, descriptors, navigation, insets }: BottomT
             accessibilityState={{ selected: focused }}
             android_ripple={{ borderless: true, color: colors.accentSoft, radius: 36 }}
             key={route.key}
-            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+            onLongPress={() => {
+              if (emitter) {
+                emitter.emit({ type: 'tabLongPress', target: route.key });
+              } else {
+                navigation?.emit({ type: 'tabLongPress', target: route.key });
+              }
+            }}
             onPress={selectTab}
             style={styles.tab}
           >
