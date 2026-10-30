@@ -16,6 +16,7 @@ import {
 import {
   parseCommuteDocument,
   parseUserProfileDocument,
+  profileWithPublicDetails,
 } from '../../mobile/src/persistence/userDataModel';
 import {
   CAMPUS_POINTS,
@@ -53,10 +54,11 @@ export async function loadCalendarParticipant(uid: string, date: string) {
     db.doc(`users/${uid}`),
     db.doc(`users/${uid}/commutes/primary`),
     db.doc(`_rideCommitments/${commitmentId(uid, date)}`),
+    db.doc(`publicProfiles/${uid}`),
   );
   if (!(await eligible(uid)) || !snapshots[1].exists || !snapshots[2].exists)
     return null;
-  const profile = parseUserProfileDocument(snapshots[1].data());
+  const profile = profileWithPublicDetails(parseUserProfileDocument(snapshots[1].data()), snapshots[4].data(), uid);
   const commute = parseCommuteDocument(snapshots[2].data(), uid);
   const day = calendarDay(
     commute,
@@ -71,6 +73,7 @@ export async function loadCalendarParticipant(uid: string, date: string) {
     !commute.startPoint
   )
     return null;
+  // Public name/photo/bio changes do not invalidate existing request revisions.
   const revision = createHash('sha256')
     .update(
       JSON.stringify(

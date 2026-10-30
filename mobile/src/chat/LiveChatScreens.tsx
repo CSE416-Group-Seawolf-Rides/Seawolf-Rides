@@ -1,17 +1,16 @@
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppButton } from '../components/AppButton';
 import { ChatTripSheet } from './ChatTripSheet';
 import { ChatContextCard } from './ChatContextCard';
 import { Avatar } from '../components/Avatar';
 import { Card } from '../components/Card';
+import { openPublicProfile } from '../profiles/PublicProfileLink';
 import { Screen } from '../components/Screen';
 import { ConversationScreen } from '../screens/ConversationScreen';
 import { colors, spacing } from '../theme';
-import { newMessageId, sendChatMessage, useChat, useChats, useChatRequest } from './chatClient';
+import { newMessageId, sendChatMessage, useChat, useChats } from './chatClient';
 import { chatPartner } from './chatModel';
 import { ChatTimelineCard } from './ChatTimelineCard';
 import type { RideRequest } from '../mvp/rideRequestModel';
@@ -46,10 +45,8 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
   const chat = useChat(chatId, user?.id);
   const pending = useRef<{ uid?: string; chatId: string; text: string; id: string } | null>(null);
   const [tripSelection, setTripSelection] = useState<{ screenKey: string; ride?: RideRequest } | null>(null);
-  const [profileKey, setProfileKey] = useState('');
   const screenKey = `${user?.id}:${chatId}`;
   const thread = chat.thread;
-  const context = useChatRequest(thread?.requestId, user?.id);
   const other = thread ? chatPartner(thread, user?.id ?? '') : '';
   const { now } = useHomeClock(chat.messages.flatMap((entry) => entry.ride
     ? [entry.ride.plan.departure, entry.ride.plan.vehicleCampusArrival, entry.ride.plan.riderDestinationArrival] : []));
@@ -70,9 +67,9 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
     hasEarlier={chat.hasEarlier}
     onLoadEarlier={chat.loadEarlier}
     onBack={() => router.back()}
-    onOpenProfile={() => setProfileKey(screenKey)}
+    onOpenProfile={() => thread && openPublicProfile(other, thread.names[other] ?? 'Carpool partner')}
     contextCard={<>
-      {thread && !thread.requestId && <ChatContextCard thread={thread} uid={user?.id ?? ''} {...context}
+      {thread && !thread.requestId && <ChatContextCard thread={thread} uid={user?.id ?? ''}
         onViewTrip={() => setTripSelection({ screenKey })} />}
     </>}
     renderMessage={(message) => {
@@ -92,16 +89,5 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
     {thread && !chat.error && tripSelection?.screenKey === screenKey && <ChatTripSheet
       key={`trip:${screenKey}:${tripSelection.ride?.id ?? 'inquiry'}:${tripSelection.ride?.attemptId ?? ''}`}
       thread={thread} uid={user?.id ?? ''} selectedRide={tripSelection.ride} onClose={() => setTripSelection(null)} />}
-    <Modal visible={!!thread && !chat.error && profileKey === screenKey} animationType="slide" presentationStyle="pageSheet"
-      onRequestClose={() => setProfileKey('')}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.lg }}>
-        <AppButton label="Done" variant="secondary" onPress={() => setProfileKey('')} />
-        <View style={{ alignItems: 'center', gap: spacing.md }}>
-          <Avatar name={thread?.names[other] ?? 'Carpool partner'} participantId={other} size={80} />
-          <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>{thread?.names[other]}</Text>
-        </View>
-        {thread && <ChatContextCard thread={thread} uid={user?.id ?? ''} {...context} />}
-      </SafeAreaView>
-    </Modal>
   </>;
 }

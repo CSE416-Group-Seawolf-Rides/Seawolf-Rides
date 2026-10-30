@@ -17,6 +17,7 @@ import { SaveCoordinator } from '../persistence/saveCoordinator';
 import {
   loadUserData,
   savePrimaryCommute,
+  saveProfileDetails,
   saveUserData,
 } from '../persistence/userDataRepository';
 import { Alert } from 'react-native';
@@ -185,9 +186,15 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const saveProfile = useCallback(
     async (nextProfile: OnboardingProfile) => {
-      await completeOnboarding(nextProfile, commute);
+      if (!user) throw new Error('Sign in before saving a profile.');
+      if (isGuest) { setProfile(nextProfile); return; }
+      const version = loadVersion.current;
+      await saves.current.run(JSON.stringify(['profile', user.id, nextProfile]), async () => {
+        const saved = await saveProfileDetails(getFirebaseFirestore(), user.id, nextProfile);
+        if (version === loadVersion.current && getFirebaseAuth().currentUser?.uid === user.id) setProfile(saved);
+      });
     },
-    [commute, completeOnboarding],
+    [isGuest, user],
   );
 
   const signInAsGuest = useCallback(async () => {

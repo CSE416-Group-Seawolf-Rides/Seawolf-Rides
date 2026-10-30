@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import { AppButton } from '../components/AppButton';
+import { PublicProfileLink } from '../profiles/PublicProfileLink';
 import { Screen } from '../components/Screen';
 import { useHomeClock } from '../rides/useHomeClock';
 import { colors, spacing } from '../theme';
@@ -10,6 +11,7 @@ import { useRideRequests } from './rideRequestClient';
 import type { RideRequest } from './rideRequestModel';
 import {
   currentCarpools,
+  partnerId,
   partnerName,
   requestNeedsAnswer,
   rideEnd,
@@ -109,6 +111,7 @@ function TripItinerary({ ride, uid }: { ride: RideRequest; uid: string }) {
     <Text style={{ color: ride.status === 'ACCEPTED' ? colors.success : colors.accent }}>
       {ride.status === 'ACCEPTED' ? 'Confirmed' : ride.status === 'PENDING' ? 'Pending' : ride.status === 'CANCELLED' ? 'Cancelled' : 'Declined'} · {uid === ride.driverId ? `Driving ${ride.riderName}` : `Riding with ${ride.driverName}`}
     </Text>
+    <PublicProfileLink participantId={partnerId(ride, uid)} name={partnerName(ride, uid)} />
     <Text>Departure · {rideTime(ride.plan.departure)}</Text>
     <Text>Pickup · {rideTime(ride.plan.pickup)} · {ride.pickupLabel}</Text>
     <Text>Arrival · {rideTime(ride.plan.riderDestinationArrival)} · {ride.campusLabel}</Text>

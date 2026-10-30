@@ -2,6 +2,7 @@ import {
   Firestore,
   doc,
   getDoc,
+  runTransaction,
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
@@ -12,6 +13,7 @@ import {
   PRIMARY_COMMUTE_ID,
   parseCommuteDocument,
   parseUserProfileDocument,
+  profileWithPublicDetails,
   toCommuteDocument,
   toUserProfileDocument,
 } from './userDataModel';
@@ -37,19 +39,39 @@ export async function loadUserData(
   database: Firestore,
   userId: string,
 ): Promise<PersistedUserData> {
-  const [profileSnapshot, commuteSnapshot] = await Promise.all([
+  const [profileSnapshot, commuteSnapshot, publicSnapshot] = await Promise.all([
     getDoc(userDocument(database, userId)),
     getDoc(primaryCommuteDocument(database, userId)),
+    getDoc(publicProfileDocument(database, userId)),
   ]);
 
   return {
     profile: profileSnapshot.exists()
-      ? parseUserProfileDocument(profileSnapshot.data())
+      ? profileWithPublicDetails(parseUserProfileDocument(profileSnapshot.data()), publicSnapshot.data(), userId)
       : null,
     commute: commuteSnapshot.exists()
       ? parseCommuteDocument(commuteSnapshot.data(), userId)
       : null,
   };
+}
+
+/** Preserve the private profile/commute versions referenced by pending ride requests. */
+export async function saveProfileDetails(
+  database: Firestore, userId: string, profile: OnboardingProfile,
+): Promise<OnboardingProfile> {
+  return runTransaction(database, async (transaction) => {
+    const current = await transaction.get(userDocument(database, userId));
+    const privateProfile = parseUserProfileDocument(current.data());
+    const stored = toUserProfileDocument({ ...profile, role: privateProfile.role });
+    transaction.set(publicProfileDocument(database, userId), {
+      schemaVersion: stored.schemaVersion, ownerId: userId, displayName: stored.firstName,
+      role: stored.role,
+      ...(stored.bio ? { bio: stored.bio } : {}),
+      ...(stored.photoBase64 ? { photoBase64: stored.photoBase64 } : {}),
+      updatedAt: serverTimestamp(),
+    });
+    return parseUserProfileDocument(stored);
+  });
 }
 
 export async function saveUserData(

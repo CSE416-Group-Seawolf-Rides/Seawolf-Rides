@@ -53,6 +53,7 @@ function harness() {
     '../theme': { colors: {}, spacing: {}, radii: {} },
     '../payments/components/RidePriceChange': { RidePriceChange: () => null },
     '../mvp/components/CancelRideButton': { CancelRideButton: () => null, RideCancellationNotice: () => null },
+    '../profiles/PublicProfileLink': { PublicProfileLink: View, openPublicProfile: () => {} },
     './chatModel': { chatContext, chatPartner },
     './chatTimeline': timeline, './ChatTimelineCard': { ChatTimelineCard: View },
     '../rides/useHomeClock': { useHomeClock: () => ({ now: new Date(1_000_000_000_000) }) },

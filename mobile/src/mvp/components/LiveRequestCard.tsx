@@ -1,10 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { PublicProfileLink } from '../../profiles/PublicProfileLink';
 import { Avatar } from '../../components/Avatar';
 import { Card } from '../../components/Card';
 import { colors, spacing } from '../../theme';
 import { AppButton } from '../../components/AppButton';
 import { requestCanCancel, requestRecipient, type RideRequest } from '../rideRequestModel';
-import { historyLabel, partnerName, rideDate, rideEnd, rideTime } from '../ridePresentation';
+import { historyLabel, partnerId, partnerName, rideDate, rideEnd, rideTime } from '../ridePresentation';
 import { adjustmentNote, formatCents } from '../../payments/pricing';
 import { RideCancellationNotice } from './CancelRideButton';
 
@@ -30,13 +31,16 @@ export function LiveRequestCard({
   return (
     <Card style={styles.card}>
       <View style={styles.row}>
-        <Avatar name={partnerName(ride, uid)} />
-        <View style={styles.copy}>
-          <Text style={styles.name}>{partnerName(ride, uid)}</Text>
-          <Text style={styles.detail}>
-            {ride.driverId === uid ? 'Rides with you' : 'Drives you'} · {rideDate(ride.localDate)}
-          </Text>
-        </View>
+        <PublicProfileLink participantId={partnerId(ride, uid)} name={partnerName(ride, uid)}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <Avatar name={partnerName(ride, uid)} participantId={partnerId(ride, uid)} />
+          <View style={styles.copy}>
+            <Text style={styles.name}>{partnerName(ride, uid)}</Text>
+            <Text style={styles.detail}>
+              {ride.driverId === uid ? 'Rides with you' : 'Drives you'} · {rideDate(ride.localDate)}
+            </Text>
+          </View>
+        </PublicProfileLink>
         <Text style={[styles.status, status === 'Confirmed' && { color: colors.success }]}>
           {status}
         </Text>

@@ -9,6 +9,7 @@ import type { RoutingAdapter } from '../../mobile/src/routing/types';
 import { withDemoRouting, ROUTE_TIMEOUT_MS } from './demoRouting';
 import { firestoreDemoRouting } from './firestoreDemoRouting';
 import { createOsrmRoutingAdapter } from '../../mobile/src/routing/osrmAdapter';
+import { parseUserProfileDocument, profileWithPublicDetails, toUserProfileDocument } from '../../mobile/src/persistence/userDataModel';
 const routeUrl = defineString('OSRM_BASE_URL', {
   description: 'Authorized OSRM endpoint, without credentials.',
 });
@@ -24,17 +25,20 @@ export const eligible = async (uid: string) => {
 };
 export const load = async (uid: string): Promise<SavedParticipant | null> => {
   const db = getFirestore();
-  const [setup, profile, commute, verified] = await Promise.all([
+  const [setup, profile, commute, verified, publicProfile] = await Promise.all([
     db.doc(`matchingSetups/${uid}`).get(),
     db.doc(`users/${uid}`).get(),
     db.doc(`users/${uid}/commutes/primary`).get(),
     eligible(uid),
+    db.doc(`publicProfiles/${uid}`).get(),
   ]);
   return {
     uid,
     eligible: verified,
     setup: setup.data(),
-    profile: profile.data(),
+    profile: profile.exists
+      ? toUserProfileDocument(profileWithPublicDetails(parseUserProfileDocument(profile.data()), publicProfile.data(), uid))
+      : profile.data(),
     commute: commute.data(),
   };
 };

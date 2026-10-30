@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
+import { PublicProfileLink, openPublicProfile } from '../profiles/PublicProfileLink';
 import { startMatchChat } from '../chat/chatClient';
 import {
   ActivityIndicator,
@@ -381,6 +382,8 @@ export function CommuteMatchesSheet({
                         youDrive={best.driverId === uid}
                       />
                     </View>
+                    <PublicProfileLink participantId={item.id} name={item.name} disabled={busy}
+                      onOpen={() => dismiss(() => { onClose(); openPublicProfile(item.id, item.name); })} />
                     <Text style={styles.muted}>{item.area.label}</Text>
                     {best.eta?.model === 'TRAFFIC_FORECAST' && (
                       <Text style={styles.muted}>Traffic-aware forecast · TomTom</Text>
@@ -494,6 +497,8 @@ export function CommuteMatchesSheet({
                   </Pressable>
                 </View>
                 <ScrollView contentContainerStyle={styles.content}>
+                  <PublicProfileLink participantId={person.id} name={person.name} disabled={busy}
+                    onOpen={() => dismiss(() => { onClose(); openPublicProfile(person.id, person.name); })} />
                   {person.options.length > 1 && (
                     <View style={styles.roleOptions}>
                       {person.options.map((option) => (
