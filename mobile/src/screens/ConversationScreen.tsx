@@ -30,7 +30,7 @@ interface ConversationScreenProps {
 }
 
 export function ConversationScreen({ conversation, onBack, onOpenProfile, onSendMessage, loading, error, hasEarlier, onLoadEarlier, contextCard, renderMessage }: ConversationScreenProps) {
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<any>(null);
   const followLatest = useRef(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);

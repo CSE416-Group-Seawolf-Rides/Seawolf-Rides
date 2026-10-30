@@ -114,14 +114,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setProfile(persisted.profile);
       setCommute(persisted.commute);
       setStatus('ready');
-    } catch {
+    } catch (err: any) {
+      console.error('[SessionProvider] loadUserData failed:', err);
       if (version !== loadVersion.current) {
         return;
       }
       setUser(null);
       setProfile(null);
       setCommute(null);
-      setError('We couldn’t load your account data. Check your connection and try again.');
+      const detail = err?.message || String(err);
+      setError(`We couldn’t load your account data (${detail}). Check your connection and try again.`);
       setStatus('error');
     }
   }, []);

@@ -30,7 +30,7 @@ export function PaymentMethodsScreen() {
   const saved = useOwnPaymentHandles(user?.id);
   // Remounts once loaded so the fields start from what's saved.
   return saved.loaded ? <PaymentMethodsForm initial={saved.value} /> : (
-    <Screen onBack={() => router.back()} title="How riders pay you">
+    <Screen onBack={() => (router.canGoBack() ? router.back() : router.replace('/account'))} title="How riders pay you">
       <Text style={styles.muted}>Loading…</Text>
     </Screen>
   );
@@ -61,7 +61,8 @@ function PaymentMethodsForm({ initial }: { initial: PaymentHandles }) {
         ),
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace('/account');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Couldn’t save. Try again.');
     } finally {
@@ -71,7 +72,7 @@ function PaymentMethodsForm({ initial }: { initial: PaymentHandles }) {
 
   return (
     <Screen
-      onBack={() => router.back()}
+      onBack={() => (router.canGoBack() ? router.back() : router.replace('/account'))}
       subtitle="Riders tap Pay and their app opens with the amount filled in. They only see these after riding with you."
       title="How riders pay you"
     >

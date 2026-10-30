@@ -31,7 +31,7 @@ export function FuelEfficiencyScreen() {
   const { user } = useSession();
   const saved = useOwnVehicleEfficiency(user?.id);
   return saved.loaded ? <FuelForm initial={saved.value} /> : (
-    <Screen onBack={() => router.back()} title="Fuel efficiency">
+    <Screen onBack={() => (router.canGoBack() ? router.back() : router.replace('/account'))} title="Fuel efficiency">
       <Text style={styles.muted}>Loading…</Text>
     </Screen>
   );
@@ -63,7 +63,8 @@ function FuelForm({ initial }: { initial: VehicleEfficiency | null }) {
     try {
       await saveFuelEfficiency(fuelType, custom);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace('/account');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Couldn’t save. Try again.');
     } finally {
@@ -73,7 +74,7 @@ function FuelForm({ initial }: { initial: VehicleEfficiency | null }) {
 
   return (
     <Screen
-      onBack={() => router.back()}
+      onBack={() => (router.canGoBack() ? router.back() : router.replace('/account'))}
       subtitle="Used to work out riders’ gas share. Changes apply to new requests, never to rides already agreed."
       title="Fuel efficiency"
     >

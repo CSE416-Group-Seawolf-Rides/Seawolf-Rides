@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { ComponentProps } from 'react';
-import { ColorValue } from 'react-native';
+
 
 import { BottomTabBar } from '../../components/BottomTabBar';
 import { RidesProvider } from '../../rides/RidesProvider';
@@ -17,7 +17,7 @@ function tabIcon(selected: IconName, unselected: IconName) {
     size,
   }: {
     focused: boolean;
-    color: ColorValue;
+    color: any;
     size: number;
   }) {
     return <Ionicons color={color} name={focused ? selected : unselected} size={size} />;

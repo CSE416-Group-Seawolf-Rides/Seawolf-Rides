@@ -120,7 +120,7 @@ export function CommuteMatchesSheet({
   const [page, setPage] = useState(0);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [driverOption, setDriverOption] = useState<string | null>(null);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<any>(null);
   const [detailSlide] = useState(() => new Animated.Value(1));
   const afterDismiss = useRef(onClose);
   const dismissed = useRef(false);

@@ -38,7 +38,7 @@ export function LiveRideHistoryScreen() {
   const { requests, uid, now } = useLiveRides();
   const history = rideHistory(requests.items, uid, now);
   return (
-    <Screen title="History" onBack={() => router.back()}>
+    <Screen title="History" onBack={() => router.canGoBack() ? router.back() : router.replace('/rides')}>
       {requests.error && <Text accessibilityRole="alert">{requests.error}</Text>}
       {!requests.loaded && <Text>Loading history…</Text>}
       {requests.loaded && !requests.error && !history.length && (
@@ -66,7 +66,7 @@ export function LiveCarpoolScreen({ participantId }: { participantId: string }) 
   return (
     <Screen
       title={pool?.name ?? 'Carpool'}
-      onBack={() => router.back()}
+      onBack={() => router.canGoBack() ? router.back() : router.replace('/rides')}
       afterContent={decision.sheet}
     >
       {decision.error && <Text accessibilityRole="alert">{decision.error}</Text>}
@@ -124,7 +124,7 @@ export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
   const decision = useRideDecision();
   const ride = requests.items.find((r) => r.id === rideId);
   return (
-    <Screen title="Trip details" onBack={() => router.back()} afterContent={decision.sheet}>
+    <Screen title="Trip details" onBack={() => router.canGoBack() ? router.back() : router.replace('/rides')} afterContent={decision.sheet}>
       {(requests.error || decision.error) && (
         <Text accessibilityRole="alert">{requests.error || decision.error}</Text>
       )}
@@ -175,7 +175,7 @@ export function LiveRequestReviewScreen() {
   return (
     <Screen
       title="Ride requests"
-      onBack={() => router.back()}
+      onBack={() => router.canGoBack() ? router.back() : router.replace('/rides')}
       eyebrow={current ? `${queue.length} WAITING FOR YOUR ANSWER` : undefined}
       afterContent={decision.sheet}
     >

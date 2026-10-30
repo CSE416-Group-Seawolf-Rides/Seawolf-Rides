@@ -35,6 +35,29 @@ function publicProfileDocument(database: Firestore, userId: string) {
   return doc(database, 'publicProfiles', userId);
 }
 
+function safeParseProfile(
+  privateData: unknown,
+  publicData: unknown,
+  userId: string,
+): OnboardingProfile | null {
+  try {
+    const privateProfile = parseUserProfileDocument(privateData);
+    return profileWithPublicDetails(privateProfile, publicData, userId);
+  } catch (err) {
+    console.warn('[loadUserData] Failed to parse private profile, needs onboarding:', err);
+    return null;
+  }
+}
+
+function safeParseCommute(data: unknown, userId: string): CommuteSchedule | null {
+  try {
+    return parseCommuteDocument(data, userId);
+  } catch (err) {
+    console.warn('[loadUserData] Failed to parse commute schedule:', err);
+    return null;
+  }
+}
+
 export async function loadUserData(
   database: Firestore,
   userId: string,
@@ -42,15 +65,18 @@ export async function loadUserData(
   const [profileSnapshot, commuteSnapshot, publicSnapshot] = await Promise.all([
     getDoc(userDocument(database, userId)),
     getDoc(primaryCommuteDocument(database, userId)),
-    getDoc(publicProfileDocument(database, userId)),
+    getDoc(publicProfileDocument(database, userId)).catch((err) => {
+      console.warn('[loadUserData] Public profile load non-fatal failure:', err);
+      return null;
+    }),
   ]);
 
   return {
     profile: profileSnapshot.exists()
-      ? profileWithPublicDetails(parseUserProfileDocument(profileSnapshot.data()), publicSnapshot.data(), userId)
+      ? safeParseProfile(profileSnapshot.data(), publicSnapshot?.data(), userId)
       : null,
     commute: commuteSnapshot.exists()
-      ? parseCommuteDocument(commuteSnapshot.data(), userId)
+      ? safeParseCommute(commuteSnapshot.data(), userId)
       : null,
   };
 }

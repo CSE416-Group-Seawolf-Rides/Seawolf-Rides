@@ -29,7 +29,8 @@ export function useCommuteEdit() {
       try {
         await saveCommute(buildCommuteSchedule(draft, role));
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.back();
+        if (router.canGoBack()) router.back();
+        else router.replace('/account');
       } catch (error) {
         Alert.alert(
           error instanceof SavePendingError ? 'Save still pending' : 'Couldn’t save your commute',

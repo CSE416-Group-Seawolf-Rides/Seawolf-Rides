@@ -5,7 +5,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
+
   View,
 } from 'react-native';
 
@@ -62,7 +62,7 @@ export function EmailAuthScreen({ onBack }: EmailAuthScreenProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const passwordRef = useRef<TextInput>(null);
+  const passwordRef = useRef<any>(null);
 
   const copy = modeCopy[mode];
 
