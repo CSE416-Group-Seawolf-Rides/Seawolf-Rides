@@ -16,7 +16,14 @@ function PublicProfileRoute() {
   const profile = syntheticKnown
     ? resolvePublicProfile(id!, fallbackName ?? 'Rider')
     : live ?? resolvePublicProfile(id ?? 'missing-participant', fallbackName ?? 'Rider');
-  return <PublicProfileScreen currentUid={user?.id} onClose={() => router.back()} profile={profile} profileKnown={syntheticKnown || Boolean(live)} />;
+  return (
+    <PublicProfileScreen
+      currentUid={user?.id}
+      onClose={() => (router.canGoBack() ? router.back() : router.replace('/inbox'))}
+      profile={profile}
+      profileKnown={syntheticKnown || Boolean(live)}
+    />
+  );
 }
 
 export default PublicProfileRoute;

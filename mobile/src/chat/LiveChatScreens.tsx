@@ -162,7 +162,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
         error={chat.error}
         hasEarlier={chat.hasEarlier}
         onLoadEarlier={chat.loadEarlier}
-        onBack={() => router.back()}
+        onBack={() => (router.canGoBack() ? router.back() : router.replace('/inbox'))}
         onOpenProfile={() => thread && openPublicProfile(other, thread.names[other] ?? 'Carpool partner')}
         contextCard={
           <>
