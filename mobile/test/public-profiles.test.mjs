@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { chooseAvatarPresentation } from '../src/profiles/avatarModel.ts';
 import {
+  parsePublicProfile,
   participantIdForOffer,
   participantIdForRequest,
   resolvePublicProfile,
@@ -49,6 +50,27 @@ test('missing and broken photos use stable sample or default avatar presentation
   assert.equal(chooseAvatarPresentation({ hasImage: true, imageFailed: true, sampleAvatar: 'ocean' }), 'SAMPLE');
   assert.equal(chooseAvatarPresentation({ hasImage: true, imageFailed: true }), 'DEFAULT');
   assert.equal(chooseAvatarPresentation({ hasImage: false, imageFailed: false }), 'DEFAULT');
+});
+
+test('parses only the explicitly public profile fields used by profile screens', () => {
+  assert.deepEqual(parsePublicProfile({
+    schemaVersion: 1,
+    ownerId: 'wolfie',
+    displayName: 'Wolfie',
+    role: 'both',
+    bio: 'CS student',
+    photoBase64: '/9j/AA==',
+  }, 'wolfie'), {
+    participantId: 'wolfie',
+    displayName: 'Wolfie',
+    role: 'both',
+    synthetic: false,
+    publicInfo: ['CS student'],
+    photoUri: 'data:image/jpeg;base64,/9j/AA==',
+  });
+  assert.throws(() => parsePublicProfile({
+    schemaVersion: 1, ownerId: 'other', displayName: 'Wolfie', role: 'rider',
+  }, 'wolfie'), /invalid values/);
 });
 
 test('Friday test reset and reload retain Ava, Ben, and Chloe participant identities', async () => {

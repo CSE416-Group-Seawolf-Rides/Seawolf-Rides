@@ -24,6 +24,8 @@ service cloud.firestore {
           'schemaVersion',
           'firstName',
           'role',
+          'bio',
+          'photoBase64',
           'updatedAt'
         ])
         && request.resource.data.schemaVersion == 1
@@ -31,6 +33,37 @@ service cloud.firestore {
         && request.resource.data.firstName.size() > 0
         && request.resource.data.firstName.size() <= 80
         && request.resource.data.role in ['driver', 'rider', 'both']
+        && (!request.resource.data.keys().hasAny(['bio']) || (
+          request.resource.data.bio is string
+          && request.resource.data.bio.size() > 0
+          && request.resource.data.bio.size() <= 160))
+        && (!request.resource.data.keys().hasAny(['photoBase64']) || (
+          request.resource.data.photoBase64 is string
+          && request.resource.data.photoBase64.size() > 0
+          && request.resource.data.photoBase64.size() <= 250000
+          && request.resource.data.photoBase64.matches('^/9j/.*$')))
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validPublicProfile(userId) {
+      return request.resource.data.keys().hasOnly([
+          'schemaVersion', 'ownerId', 'displayName', 'role', 'bio', 'photoBase64', 'updatedAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.ownerId == userId
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.role in ['driver', 'rider', 'both']
+        && (!request.resource.data.keys().hasAny(['bio']) || (
+          request.resource.data.bio is string
+          && request.resource.data.bio.size() > 0
+          && request.resource.data.bio.size() <= 160))
+        && (!request.resource.data.keys().hasAny(['photoBase64']) || (
+          request.resource.data.photoBase64 is string
+          && request.resource.data.photoBase64.size() > 0
+          && request.resource.data.photoBase64.size() <= 250000
+          && request.resource.data.photoBase64.matches('^/9j/.*$')))
         && request.resource.data.updatedAt is timestamp;
     }
 
@@ -234,6 +267,12 @@ service cloud.firestore {
         allow read, delete: if owns(userId);
         allow create, update: if owns(userId) && validCommute(userId);
       }
+    }
+
+    match /publicProfiles/{userId} {
+      allow read: if isVerifiedStonyBrookUser();
+      allow create, update: if owns(userId) && validPublicProfile(userId);
+      allow delete: if owns(userId);
     }
   }
 }

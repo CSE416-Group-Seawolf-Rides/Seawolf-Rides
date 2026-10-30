@@ -16,6 +16,8 @@ export interface OnboardingDraft {
 export interface OnboardingProfile {
   role: CommuteRole;
   firstName: string;
+  bio?: string;
+  photoBase64?: string;
 }
 
 export const emptyOnboardingDraft: OnboardingDraft = {

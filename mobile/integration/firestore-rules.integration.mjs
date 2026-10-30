@@ -79,6 +79,27 @@ test('only the authenticated owner can read or write a profile', async () => {
   await assertFails(setDoc(doc(otherUser, 'users/wolfie'), profile));
 });
 
+test('verified students can read sanitized public profiles but only owners can write them', async () => {
+  const owner = authenticatedUser('wolfie');
+  const other = authenticatedUser('seawolf', { email: 'seawolf@stonybrook.edu', email_verified: true });
+  const guest = environment.unauthenticatedContext().firestore();
+  const publicProfile = {
+    schemaVersion: 1,
+    ownerId: 'wolfie',
+    displayName: 'Wolfie',
+    role: 'both',
+    bio: 'CS student',
+    photoBase64: '/9j/AA==',
+    updatedAt: Timestamp.now(),
+  };
+  await assertSucceeds(setDoc(doc(owner, 'publicProfiles/wolfie'), publicProfile));
+  await assertSucceeds(getDoc(doc(other, 'publicProfiles/wolfie')));
+  await assertFails(getDoc(doc(guest, 'publicProfiles/wolfie')));
+  await assertFails(setDoc(doc(other, 'publicProfiles/wolfie'), publicProfile));
+  await assertFails(setDoc(doc(owner, 'publicProfiles/wolfie'), { ...publicProfile, exactAddress: 'private' }));
+  await assertFails(setDoc(doc(owner, 'publicProfiles/wolfie'), { ...publicProfile, ownerId: 'seawolf' }));
+});
+
 test('unverified and non-Stony Brook accounts cannot access user data', async () => {
   const verifiedOwner = authenticatedUser('wolfie');
   const unverifiedOwner = authenticatedUser('wolfie', {

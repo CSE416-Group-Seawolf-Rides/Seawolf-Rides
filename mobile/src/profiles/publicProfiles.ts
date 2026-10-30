@@ -1,4 +1,5 @@
 import type { DriverOffer, RiderRequest } from '../rides/rideModel';
+import { MAX_PROFILE_BIO_LENGTH, MAX_PROFILE_PHOTO_LENGTH } from '../persistence/userDataModel';
 
 export type PublicProfileRole = 'rider' | 'driver' | 'both';
 export type SampleAvatar = 'coral' | 'ocean' | 'forest' | 'violet' | 'gold' | 'sky';
@@ -101,6 +102,34 @@ export function resolvePublicProfile(
 
 export function isKnownPublicProfile(participantId: string): boolean {
   return profileById.has(participantId);
+}
+
+export function parsePublicProfile(value: unknown, participantId: string): PublicProfile {
+  if (!value || typeof value !== 'object') throw new Error('The public profile is malformed.');
+  const data = value as Record<string, unknown>;
+  const displayName = typeof data.displayName === 'string' ? data.displayName.trim() : '';
+  const bio = typeof data.bio === 'string' ? data.bio.trim() : '';
+  const photoBase64 = typeof data.photoBase64 === 'string' ? data.photoBase64 : '';
+  const role = data.role;
+  if (
+    data.schemaVersion !== 1 ||
+    data.ownerId !== participantId ||
+    !displayName ||
+    displayName.length > 80 ||
+    (role !== 'driver' && role !== 'rider' && role !== 'both') ||
+    bio.length > MAX_PROFILE_BIO_LENGTH ||
+    photoBase64.length > MAX_PROFILE_PHOTO_LENGTH ||
+    (photoBase64 !== '' &&
+      (photoBase64.length % 4 !== 0 || !/^\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(photoBase64)))
+  ) throw new Error('The public profile contains invalid values.');
+  return {
+    participantId,
+    displayName,
+    role: role as PublicProfileRole,
+    synthetic: false,
+    publicInfo: bio ? [bio] : [],
+    ...(photoBase64 ? { photoUri: `data:image/jpeg;base64,${photoBase64}` } : {}),
+  };
 }
 
 function profile(

@@ -21,6 +21,7 @@ export default function AccountRoute() {
     <AccountScreen
       commute={commute}
       firstName={profile?.firstName ?? null}
+      photoBase64={profile?.photoBase64}
       onChangeRole={async (nextRole) => {
         const nextCommute = commute
           ? buildCommuteSchedule(commuteToDraft(commute), nextRole)
@@ -29,7 +30,7 @@ export default function AccountRoute() {
           // Save the role and re-derived commute together so Firestore never
           // contains a role that disagrees with the commute's day modes.
           await completeOnboarding(
-            { firstName: profile?.firstName ?? '', role: nextRole },
+            { ...profile, firstName: profile?.firstName ?? '', role: nextRole },
             nextCommute,
           );
         } catch (error) {
@@ -40,6 +41,7 @@ export default function AccountRoute() {
         }
       }}
       onEditCommute={() => router.push('/commute-setup')}
+      onEditProfile={() => router.push('/account/profile')}
       onSignOut={async () => {
         try {
           await signOut();
