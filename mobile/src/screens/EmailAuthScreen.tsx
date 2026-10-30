@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRef, useState } from 'react';
 import {
@@ -94,6 +95,8 @@ export function EmailAuthScreen({ onBack }: EmailAuthScreenProps) {
         setNotice(
           `We sent a verification link to ${normalizeEmail(email)}. Verify it, then sign in.`,
         );
+      } else {
+        router.replace('/home');
       }
     } catch (error) {
       setFormError(toAuthServiceError(error).message);
