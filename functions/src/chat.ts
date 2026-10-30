@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { loadCalendarParticipant, prepareCalendarPair, requireLocalDemo } from './calendarMatching';
+import { areUsersMutuallyBlocked, loadCalendarParticipant, prepareCalendarPair, requireLocalDemo } from './calendarMatching';
 import { checkDemoDate } from '../../mobile/src/calendar/commuteCalendar';
 import { eligible, withMatchingRouting } from './matchingRuntime';
 import { DemoBusyError } from './demoRouting';
@@ -38,6 +38,7 @@ export const startMatchChat = onCall(options, async (call) => {
     const { driverId, riderId, localDate, riderRevision, driverRevision } = data;
     const otherId = uid === driverId ? riderId : driverId;
     if (!(await eligible(otherId))) throw new HttpsError('permission-denied', 'This account is unavailable.');
+    if (await areUsersMutuallyBlocked(uid, otherId)) throw new HttpsError('permission-denied', 'You cannot message a blocked commuter.');
     const participants = [data.driverId, data.riderId].sort();
     const id = chatIdFor(driverId, riderId);
     const db = getFirestore();
@@ -84,6 +85,9 @@ export const sendChatMessage = onCall(options, async (call) => {
       throw new HttpsError('permission-denied', 'This conversation is not available to your account.');
     if ((await Promise.all(before.participantIds.map((id: string) => eligible(id)))).some((ok) => !ok))
       throw new HttpsError('permission-denied', 'Both accounts must remain eligible to chat.');
+    const otherParticipant = before.participantIds.find((id: string) => id !== uid);
+    if (otherParticipant && (await areUsersMutuallyBlocked(uid, otherParticipant)))
+      throw new HttpsError('permission-denied', 'You cannot message a blocked commuter.');
     return await db.runTransaction(async (tx) => {
       const message = ref.collection('messages').doc(messageId);
       const [thread, existing] = await tx.getAll(ref, message);

@@ -157,7 +157,12 @@ export function AccountScreen({
           onPress={() => setSheet('privacy')}
         />
         <SettingsRow icon="call-outline" label="Emergency contact" soon />
-        <SettingsRow icon="ban-outline" label="Blocked people" last soon />
+        <SettingsRow
+          icon="ban-outline"
+          label="Blocked people"
+          last
+          onPress={() => router.push('/account/blocked')}
+        />
       </SettingsGroup>
 
       <SettingsGroup title="Help">

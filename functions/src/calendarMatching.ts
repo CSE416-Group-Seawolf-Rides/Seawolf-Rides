@@ -47,16 +47,32 @@ export function requireLocalDemo() {
       'Calendar matching is available only in the demo-seawolf-rides emulators.',
     );
 }
-export async function loadCalendarParticipant(uid: string, date: string) {
+export async function areUsersMutuallyBlocked(uidA: string, uidB: string): Promise<boolean> {
+  if (!uidA || !uidB || uidA === uidB) return false;
   const db = getFirestore();
-  const snapshots = await db.getAll(
+  const [aBlocksB, bBlocksA] = await db.getAll(
+    db.doc(`users/${uidA}/blockedUsers/${uidB}`),
+    db.doc(`users/${uidB}/blockedUsers/${uidA}`),
+  );
+  return Boolean(aBlocksB?.exists || bBlocksA?.exists);
+}
+
+export async function loadCalendarParticipant(uid: string, date: string, requestingUid?: string) {
+  const db = getFirestore();
+  const refs = [
     db.doc(`users/${uid}/commuteDays/${date}`),
     db.doc(`users/${uid}`),
     db.doc(`users/${uid}/commutes/primary`),
     db.doc(`_rideCommitments/${commitmentId(uid, date)}`),
     db.doc(`publicProfiles/${uid}`),
-  );
+  ];
+  if (requestingUid && requestingUid !== uid) {
+    refs.push(db.doc(`users/${uid}/blockedUsers/${requestingUid}`));
+  }
+  const snapshots = await db.getAll(...refs);
   if (!(await eligible(uid)) || !snapshots[1].exists || !snapshots[2].exists)
+    return null;
+  if (requestingUid && requestingUid !== uid && snapshots[5]?.exists)
     return null;
   const profile = profileWithPublicDetails(parseUserProfileDocument(snapshots[1].data()), snapshots[4].data(), uid);
   const commute = parseCommuteDocument(snapshots[2].data(), uid);
@@ -214,10 +230,14 @@ export const findCommuteMatches = onCall(options, async (call) => {
       .where('discoveryEnabled', '==', true)
       .orderBy(FieldPath.documentId())
       .get();
+    const blockedByCallerSnap = await getFirestore()
+      .collection(`users/${uid}/blockedUsers`)
+      .get();
+    const blockedByCaller = new Set(blockedByCallerSnap.docs.map((d) => d.id));
     const ids = [
       ...new Set(
         snapshot.docs
-          .filter((s) => s.id === 'primary' && s.ref.parent.parent?.id !== uid)
+          .filter((s) => s.id === 'primary' && s.ref.parent.parent?.id !== uid && !blockedByCaller.has(s.ref.parent.parent?.id ?? ''))
           .map((s) => s.ref.parent.parent!.id),
       ),
     ];
@@ -225,7 +245,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
     const others = await Promise.all(
       ids.map(async (id) => {
         try {
-          return await loadCalendarParticipant(id, date);
+          return await loadCalendarParticipant(id, date, uid);
         } catch {
           unreadable++;
           return null;
@@ -421,6 +441,9 @@ export async function prepareCalendarPair(
   routing: RoutingAdapter,
 ) {
   checkDemoDate(date, timestamp());
+  if (await areUsersMutuallyBlocked(riderId, driverId)) {
+    throw new HttpsError('failed-precondition', 'Cannot request a ride with this commuter.');
+  }
   const [r, d] = await Promise.all([
     loadCalendarParticipant(riderId, date),
     loadCalendarParticipant(driverId, date),

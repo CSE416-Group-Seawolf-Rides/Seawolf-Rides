@@ -15,6 +15,7 @@ import { chatPartner } from './chatModel';
 import { ChatTimelineCard } from './ChatTimelineCard';
 import type { RideRequest } from '../mvp/rideRequestModel';
 import { useHomeClock } from '../rides/useHomeClock';
+import { useIsBlocked } from '../safety/safetyClient';
 
 export function LiveInboxScreen() {
   const { user } = useSession();
@@ -48,6 +49,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
   const screenKey = `${user?.id}:${chatId}`;
   const thread = chat.thread;
   const other = thread ? chatPartner(thread, user?.id ?? '') : '';
+  const isBlocked = useIsBlocked(user?.id, other);
   const { now } = useHomeClock(chat.messages.flatMap((entry) => entry.ride
     ? [entry.ride.plan.departure, entry.ride.plan.vehicleCampusArrival, entry.ride.plan.riderDestinationArrival] : []));
   const byId = new Map(chat.messages.map((entry) => [entry.id, entry]));
@@ -68,10 +70,15 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
     onLoadEarlier={chat.loadEarlier}
     onBack={() => router.back()}
     onOpenProfile={() => thread && openPublicProfile(other, thread.names[other] ?? 'Carpool partner')}
-    contextCard={<>
-      {thread && !thread.requestId && <ChatContextCard thread={thread} uid={user?.id ?? ''}
-        onViewTrip={() => setTripSelection({ screenKey })} />}
-    </>}
+    contextCard={<>{isBlocked ? (
+      <Card style={{ backgroundColor: 'rgba(217, 72, 72, 0.08)', borderColor: colors.error, borderWidth: 1, gap: spacing.xs, marginBottom: spacing.sm }}>
+        <Text style={{ color: colors.error, fontSize: 14, fontWeight: '700' }}>You have blocked this commuter.</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>You will not receive new match recommendations or notifications from them.</Text>
+      </Card>
+    ) : (
+      thread && !thread.requestId && <ChatContextCard thread={thread} uid={user?.id ?? ''}
+        onViewTrip={() => setTripSelection({ screenKey })} />
+    )}</>}
     renderMessage={(message) => {
       const entry = byId.get(message.id);
       return entry?.ride && (entry.type === 'RIDE_REQUEST' || entry.type === 'PRICE_CHANGE')
@@ -79,6 +86,9 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
             onViewRide={(ride) => setTripSelection({ screenKey, ride })} /> : null;
     }}
     onSendMessage={async (text) => {
+      if (isBlocked) {
+        throw new Error('You cannot message a blocked commuter. Unblock them first.');
+      }
       if (!pending.current || pending.current.uid !== user?.id || pending.current.chatId !== chatId || pending.current.text !== text)
         pending.current = { uid: user?.id, chatId, text, id: newMessageId() };
       const operation = pending.current;

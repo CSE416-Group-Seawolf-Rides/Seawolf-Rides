@@ -360,3 +360,88 @@ test('a price adjustment is readable by its driver and rider only, and never wri
   await assertFails(getDoc(doc(authenticatedUser('outsider'), 'priceAdjustments/driver_rider')));
   await assertFails(setDoc(doc(authenticatedUser('rider'), 'priceAdjustments/driver_rider'), { adjustment: -100 }));
 });
+
+test('users can manage their own blocked users list and cannot block themselves or spy on others', async () => {
+  const alice = authenticatedUser('alice');
+  const bob = authenticatedUser('bob', { email: 'bob@stonybrook.edu', email_verified: true });
+  const blockDoc = doc(alice, 'users/alice/blockedUsers/bob');
+
+  const validBlock = {
+    targetId: 'bob',
+    targetName: 'Bob SBU',
+    createdAt: Timestamp.now(),
+  };
+
+  // Alice can block Bob
+  await assertSucceeds(setDoc(blockDoc, validBlock));
+  await assertSucceeds(getDoc(blockDoc));
+
+  // Bob cannot read or write Alice's blocked list
+  await assertFails(getDoc(doc(bob, 'users/alice/blockedUsers/bob')));
+  await assertFails(setDoc(doc(bob, 'users/alice/blockedUsers/charlie'), validBlock));
+
+  // Cannot block oneself
+  await assertFails(setDoc(doc(alice, 'users/alice/blockedUsers/alice'), {
+    targetId: 'alice',
+    targetName: 'Alice SBU',
+    createdAt: Timestamp.now(),
+  }));
+
+  // Cannot include unauthorized fields
+  await assertFails(setDoc(doc(alice, 'users/alice/blockedUsers/bob'), {
+    ...validBlock,
+    secretField: true,
+  }));
+
+  // Alice can unblock Bob (delete)
+  const { deleteDoc } = await import('firebase/firestore');
+  await assertSucceeds(deleteDoc(blockDoc));
+});
+
+test('verified students can submit safety reports but cannot read or tamper with submitted reports', async () => {
+  const reporter = authenticatedUser('alice');
+  const otherStudent = authenticatedUser('bob', { email: 'bob@stonybrook.edu', email_verified: true });
+  const unverified = authenticatedUser('charlie', { email: 'charlie@stonybrook.edu', email_verified: false });
+
+  const validReport = {
+    reporterId: 'alice',
+    targetId: 'bob',
+    targetName: 'Bob SBU',
+    reason: 'harassment',
+    details: 'Repeated unwanted messages.',
+    createdAt: Timestamp.now(),
+  };
+
+  // Alice can submit a valid report against Bob
+  const reportRef = doc(reporter, 'reports/report-123');
+  await assertSucceeds(setDoc(reportRef, validReport));
+
+  // Cannot report oneself
+  await assertFails(setDoc(doc(reporter, 'reports/self-report'), {
+    ...validReport,
+    targetId: 'alice',
+  }));
+
+  // Cannot forge reporterId
+  await assertFails(setDoc(doc(reporter, 'reports/forged-report'), {
+    ...validReport,
+    reporterId: 'bob',
+  }));
+
+  // Cannot submit with invalid reason
+  await assertFails(setDoc(doc(reporter, 'reports/bad-reason'), {
+    ...validReport,
+    reason: 'i_just_dislike_them',
+  }));
+
+  // Unverified user cannot submit report
+  await assertFails(setDoc(doc(unverified, 'reports/unverified-report'), {
+    ...validReport,
+    reporterId: 'charlie',
+  }));
+
+  // No client can read or modify reports
+  await assertFails(getDoc(doc(reporter, 'reports/report-123')));
+  await assertFails(getDoc(doc(otherStudent, 'reports/report-123')));
+  await assertFails(setDoc(doc(reporter, 'reports/report-123'), { ...validReport, details: 'edited' }));
+});
