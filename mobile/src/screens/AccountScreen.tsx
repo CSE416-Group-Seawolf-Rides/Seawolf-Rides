@@ -21,10 +21,12 @@ import { effectiveEfficiency, EFFICIENCY_LIMITS } from '../payments/pricing';
 interface AccountScreenProps {
   user: AuthUser;
   firstName: string | null;
+  photoBase64?: string;
   role: CommuteRole;
   commute: CommuteSchedule | null;
   version: string;
   onEditCommute: () => void;
+  onEditProfile: () => void;
   onChangeRole: (role: CommuteRole) => void;
   onSignOut: () => void;
 }
@@ -36,10 +38,12 @@ type Sheet = 'role' | 'privacy' | 'signOut' | null;
 export function AccountScreen({
   user,
   firstName,
+  photoBase64,
   role,
   commute,
   version,
   onEditCommute,
+  onEditProfile,
   onChangeRole,
   onSignOut,
 }: AccountScreenProps) {
@@ -58,7 +62,7 @@ export function AccountScreen({
   return (
     <Screen title="Account">
       <View style={styles.identity}>
-        <Avatar name={displayName} size={60} />
+        <Avatar imageSource={photoBase64 ? { uri: `data:image/jpeg;base64,${photoBase64}` } : null} name={displayName} participantId={user.id} size={60} />
         <View style={styles.identityCopy}>
           <Text numberOfLines={1} style={styles.name}>
             {displayName}
@@ -75,6 +79,10 @@ export function AccountScreen({
           </View>
         </View>
       </View>
+
+      <SettingsGroup title="Profile">
+        <SettingsRow icon="person-outline" label="Edit public profile" last onPress={onEditProfile} value="Name, photo and bio" />
+      </SettingsGroup>
 
       <CommuteSummaryCard commute={commute} onEdit={onEditCommute} role={role} />
 

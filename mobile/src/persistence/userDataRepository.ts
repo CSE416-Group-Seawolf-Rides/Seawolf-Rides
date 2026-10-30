@@ -29,6 +29,10 @@ function primaryCommuteDocument(database: Firestore, userId: string) {
   return doc(database, 'users', userId, 'commutes', PRIMARY_COMMUTE_ID);
 }
 
+function publicProfileDocument(database: Firestore, userId: string) {
+  return doc(database, 'publicProfiles', userId);
+}
+
 export async function loadUserData(
   database: Firestore,
   userId: string,
@@ -58,8 +62,17 @@ export async function saveUserData(
   batch.set(
     userDocument(database, userId),
     { ...toUserProfileDocument(profile), updatedAt: serverTimestamp() },
-    { merge: true },
   );
+  const storedProfile = toUserProfileDocument(profile);
+  batch.set(publicProfileDocument(database, userId), {
+    schemaVersion: storedProfile.schemaVersion,
+    ownerId: userId,
+    displayName: storedProfile.firstName,
+    role: storedProfile.role,
+    ...(storedProfile.bio ? { bio: storedProfile.bio } : {}),
+    ...(storedProfile.photoBase64 ? { photoBase64: storedProfile.photoBase64 } : {}),
+    updatedAt: serverTimestamp(),
+  });
   if (commute) {
     batch.set(
       primaryCommuteDocument(database, userId),

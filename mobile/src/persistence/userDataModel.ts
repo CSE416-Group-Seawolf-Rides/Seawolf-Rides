@@ -16,7 +16,12 @@ export interface UserProfileDocument {
   schemaVersion: 1;
   firstName: string;
   role: CommuteRole;
+  bio?: string;
+  photoBase64?: string;
 }
+
+export const MAX_PROFILE_BIO_LENGTH = 160;
+export const MAX_PROFILE_PHOTO_LENGTH = 250_000;
 
 export interface CommuteDocument extends CommuteSchedule {
   schemaVersion: 1;
@@ -97,6 +102,8 @@ export function toUserProfileDocument(profile: OnboardingProfile): UserProfileDo
     schemaVersion: USER_DATA_SCHEMA_VERSION,
     firstName: profile.firstName,
     role: profile.role,
+    ...(profile.bio ? { bio: profile.bio } : {}),
+    ...(profile.photoBase64 ? { photoBase64: profile.photoBase64 } : {}),
   });
   return { schemaVersion: USER_DATA_SCHEMA_VERSION, ...parsed };
 }
@@ -107,16 +114,28 @@ export function parseUserProfileDocument(value: unknown): OnboardingProfile {
   }
   const firstName = typeof value.firstName === 'string' ? value.firstName.trim() : '';
   const role = value.role;
+  const bio = typeof value.bio === 'string' ? value.bio.trim() : '';
+  const photoBase64 = typeof value.photoBase64 === 'string' ? value.photoBase64 : '';
   if (
     value.schemaVersion !== USER_DATA_SCHEMA_VERSION ||
     !firstName ||
     firstName.length > 80 ||
     typeof role !== 'string' ||
-    !roles.has(role as CommuteRole)
+    !roles.has(role as CommuteRole) ||
+    bio.length > MAX_PROFILE_BIO_LENGTH ||
+    (photoBase64 !== '' &&
+      (photoBase64.length > MAX_PROFILE_PHOTO_LENGTH ||
+        photoBase64.length % 4 !== 0 ||
+        !/^\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(photoBase64)))
   ) {
     throw new Error('The persisted user profile contains invalid values.');
   }
-  return { firstName, role: role as CommuteRole };
+  return {
+    firstName,
+    role: role as CommuteRole,
+    ...(bio ? { bio } : {}),
+    ...(photoBase64 ? { photoBase64 } : {}),
+  };
 }
 
 export function toCommuteDocument(ownerId: string, commute: CommuteSchedule): CommuteDocument {

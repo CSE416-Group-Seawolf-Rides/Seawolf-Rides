@@ -9,7 +9,7 @@ import {
   toUserProfileDocument,
 } from '../src/persistence/userDataModel.ts';
 
-const profile = { firstName: 'Wolfie', role: 'both' };
+const profile = { firstName: 'Wolfie', role: 'both', bio: 'CS student', photoBase64: '/9j/AA==' };
 const commute = {
   startArea: toPrivacyArea({ latitude: 40.8646, longitude: -73.0818 }, 'Centereach area'),
   campusLot: 'tabler',
@@ -23,7 +23,7 @@ const commute = {
 test('serializes and parses the persisted user profile schema', () => {
   const document = toUserProfileDocument(profile);
 
-  assert.deepEqual(document, { schemaVersion: 1, firstName: 'Wolfie', role: 'both' });
+  assert.deepEqual(document, { schemaVersion: 1, firstName: 'Wolfie', role: 'both', bio: 'CS student', photoBase64: '/9j/AA==' });
   assert.deepEqual(parseUserProfileDocument(document), profile);
 });
 
@@ -44,6 +44,14 @@ test('rejects a commute loaded for a different user', () => {
 test('rejects malformed profile and commute data', () => {
   assert.throws(
     () => parseUserProfileDocument({ schemaVersion: 1, firstName: '', role: 'driver' }),
+    /invalid values/,
+  );
+  assert.throws(
+    () => parseUserProfileDocument({ schemaVersion: 1, firstName: 'Wolfie', role: 'driver', bio: 'x'.repeat(161) }),
+    /invalid values/,
+  );
+  assert.throws(
+    () => parseUserProfileDocument({ schemaVersion: 1, firstName: 'Wolfie', role: 'driver', photoBase64: 'file:///photo.jpg' }),
     /invalid values/,
   );
   assert.throws(

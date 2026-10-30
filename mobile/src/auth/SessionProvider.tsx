@@ -38,6 +38,7 @@ interface Session {
     commute?: CommuteSchedule | null,
   ) => Promise<void>;
   saveCommute: (commute: CommuteSchedule) => Promise<void>;
+  saveProfile: (profile: OnboardingProfile) => Promise<void>;
   signOut: () => Promise<void>;
   retry: () => Promise<void>;
   // TEMPORARY demo shortcut: a local-only session that skips sign-up and onboarding.
@@ -182,6 +183,13 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [isGuest, profile, user],
   );
 
+  const saveProfile = useCallback(
+    async (nextProfile: OnboardingProfile) => {
+      await completeOnboarding(nextProfile, commute);
+    },
+    [commute, completeOnboarding],
+  );
+
   const signInAsGuest = useCallback(async () => {
     // Against the local emulator, the guest is the seeded demo account, so every screen reads
     // real (rules-checked) data. A local-only guest would be denied by the Firestore rules.
@@ -228,6 +236,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       needsOnboarding: user !== null && profile === null,
       completeOnboarding,
       saveCommute,
+      saveProfile,
       signOut,
       retry: loadFirebaseUser,
       isGuest,
@@ -243,6 +252,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       error,
       completeOnboarding,
       saveCommute,
+      saveProfile,
       signOut,
       loadFirebaseUser,
     ],
