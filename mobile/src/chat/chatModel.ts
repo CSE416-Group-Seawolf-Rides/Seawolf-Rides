@@ -1,6 +1,7 @@
 import type { CalendarMatch } from '../calendar/calendarMatching';
 import type { Coordinates } from '../commute/commuteModel';
 import { requestInitiator, type RideRequest } from '../mvp/rideRequestModel';
+import type { PriceChangeRequest } from '../payments/priceChanges';
 
 export interface ChatThread {
   id: string;
@@ -21,6 +22,11 @@ export interface ChatMessage {
   text: string;
   sentAt: number;
   sequence: number;
+  /** Missing on existing ordinary text messages. */
+  type?: 'TEXT' | 'RIDE_REQUEST' | 'PRICE_CHANGE' | 'RIDE_CANCELLED';
+  requestId?: string;
+  ride?: RideRequest;
+  priceChange?: PriceChangeRequest;
 }
 export const chatPartner = (thread: ChatThread, uid: string) =>
   thread.participantIds.find((id) => id !== uid) ?? '';
@@ -35,7 +41,7 @@ export interface ChatTrip {
   pickup: number;
   vehicleCampusArrival: number;
 }
-export function chatContext(thread: ChatThread, uid: string, request?: RideRequest) {
+export function chatContext(thread: Pick<ChatThread, 'names' | 'trip'>, uid: string, request?: RideRequest) {
   if (!request) return { title: 'Match inquiry', status: '', trip: thread.trip };
   const initiator = requestInitiator(request);
   const title = initiator === uid ? 'You sent a request' : `${thread.names[initiator] ?? 'Your carpool partner'} sent you a request`;

@@ -21,8 +21,8 @@ import { LiveRequestCard } from './components/LiveRequestCard';
 import { AcceptedTripMap } from '../calendar/AcceptedTripMap';
 import { Card } from '../components/Card';
 import { useRideDecision } from './useRideDecision';
-import { AdjustPriceButton } from '../payments/components/AdjustPriceButton';
-import { formatCents } from '../payments/pricing';
+import { RidePriceChange } from '../payments/components/RidePriceChange';
+import { CancelRideButton } from './components/CancelRideButton';
 
 function useLiveRides() {
   const { user } = useSession();
@@ -84,7 +84,6 @@ export function LiveCarpoolScreen({ participantId }: { participantId: string }) 
         <Text style={{ color: colors.textMuted }}>
           {pool.accepted.length} confirmed · {pool.pending.length} pending trips together
         </Text>
-        <DriverPrice pool={[...pool.accepted, ...pool.pending]} uid={uid} riderId={pool.id} riderName={pool.name} />
         {[...pool.accepted, ...pool.pending]
           .sort((a, b) => a.plan.departure - b.plan.departure)
           .map((ride) => (
@@ -96,29 +95,12 @@ export function LiveCarpoolScreen({ participantId }: { participantId: string }) 
                     onCancel={(item) => void decision.cancel(item)} busyId={decision.busy} />}
               <AppButton label="View trip details" variant="secondary"
                 onPress={() => router.push(`/rides/${ride.id}`)} />
+              <CancelRideButton ride={ride} uid={uid} now={now} />
             </Card>
           ))}
       </>}
 
     </Screen>
-  );
-}
-// For the driver of this carpool: what the rider chips in, and a way to lower, waive or raise it.
-function DriverPrice({ pool, uid, riderId, riderName }: { pool: RideRequest[]; uid: string; riderId: string; riderName: string }) {
-  const latest = [...pool]
-    .filter((ride) => ride.driverId === uid && ride.price)
-    .sort((a, b) => b.localDate.localeCompare(a.localDate))[0];
-  if (!latest?.price) return null;
-  return (
-    <Card style={{ gap: spacing.xs }}>
-      <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>
-        {latest.price.cents === 0 ? `${riderName} rides free` : `${riderName} chips in ${formatCents(latest.price.cents)} a ride`}
-      </Text>
-      <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-        Suggested from this week’s gas price and your car’s mileage.
-      </Text>
-      <AdjustPriceButton driverId={uid} reference={latest.price} riderId={riderId} riderName={riderName} />
-    </Card>
   );
 }
 function TripItinerary({ ride, uid }: { ride: RideRequest; uid: string }) {
@@ -131,6 +113,7 @@ function TripItinerary({ ride, uid }: { ride: RideRequest; uid: string }) {
     <Text>Pickup · {rideTime(ride.plan.pickup)} · {ride.pickupLabel}</Text>
     <Text>Arrival · {rideTime(ride.plan.riderDestinationArrival)} · {ride.campusLabel}</Text>
     <Text style={{ color: colors.textMuted }}>New York time · Adds {Math.ceil(ride.metrics.driverExtraDurationSeconds / 60)} min driving</Text>
+    <RidePriceChange ride={ride} uid={uid} />
   </View>;
 }
 export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
@@ -168,6 +151,7 @@ export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
               />
             </>
           )}
+          <CancelRideButton ride={ride} uid={uid} now={now} />
         </>
       )}
     </Screen>

@@ -44,6 +44,14 @@ export async function cancelRideRequest(request: RideRequest): Promise<RideReque
   ).data;
 }
 
+export async function cancelAcceptedRide(request: RideRequest, reason: string): Promise<RideRequestResult> {
+  return (
+    await httpsCallable<{ requestId: string; reason: string; attemptId?: string }, RideRequestResult>(
+      getFirebaseFunctions(), 'cancelAcceptedRide', { timeout: 120000 },
+    )({ requestId: request.id, reason, ...(request.attemptId ? { attemptId: request.attemptId } : {}) })
+  ).data;
+}
+
 export function useRideRequests(uid?: string) {
   const [version, reload] = useState(0);
   const [state, setState] = useState<{

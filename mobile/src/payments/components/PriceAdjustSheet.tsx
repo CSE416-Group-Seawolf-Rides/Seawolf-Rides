@@ -22,6 +22,7 @@ export function PriceAdjustSheet({
   riderName,
   current,
   reference,
+  onSaved,
   onClose,
 }: {
   riderId: string;
@@ -29,6 +30,7 @@ export function PriceAdjustSheet({
   current: PriceAdjustment;
   // A recent price for this rider, to preview what each option means in dollars.
   reference?: RidePrice;
+  onSaved: (adjustment: PriceAdjustment, lowered: number) => void;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -42,7 +44,8 @@ export function PriceAdjustSheet({
     setSaving(true);
     setError(null);
     try {
-      await setPriceAdjustment(riderId, choice);
+      const result = await setPriceAdjustment(riderId, choice);
+      onSaved(result.adjustment, result.lowered);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
     } catch (failure) {
@@ -67,7 +70,7 @@ export function PriceAdjustSheet({
               <Text style={styles.per}>
                 {preview.cents === 0
                   ? `You cover the gas for ${riderName}`
-                  : `per ride · suggested ${formatCents(preview.suggestedCents ?? preview.cents)}`}
+                  : `per new request · suggested ${formatCents(preview.suggestedCents ?? preview.cents)}`}
               </Text>
             </View>
           )}
@@ -99,11 +102,7 @@ export function PriceAdjustSheet({
             })}
           </View>
 
-          <Text style={styles.rule}>
-            {raising
-              ? `A higher price applies only to new requests. Rides ${riderName} already agreed to keep their price.`
-              : `A lower price also applies to rides ${riderName} hasn’t paid for yet.`}
-          </Text>
+          <Text style={styles.rule}>New requests use this preference. To change an agreed ride, send a price-change request from its trip details.</Text>
 
           {error && (
             <Text accessibilityRole="alert" style={styles.error}>
@@ -112,7 +111,7 @@ export function PriceAdjustSheet({
           )}
           <AppButton
             disabled={saving || choice === current}
-            label={saving ? 'Saving…' : 'Save'}
+            label={saving ? 'Saving…' : raising ? 'Save for new requests' : 'Save price preference'}
             onPress={() => void save()}
           />
           <Pressable accessibilityRole="button" hitSlop={8} onPress={onClose} style={styles.cancel}>

@@ -13,6 +13,9 @@ import { ConversationScreen } from '../screens/ConversationScreen';
 import { colors, spacing } from '../theme';
 import { newMessageId, sendChatMessage, useChat, useChats, useChatRequest } from './chatClient';
 import { chatPartner } from './chatModel';
+import { ChatTimelineCard } from './ChatTimelineCard';
+import type { RideRequest } from '../mvp/rideRequestModel';
+import { useHomeClock } from '../rides/useHomeClock';
 
 export function LiveInboxScreen() {
   const { user } = useSession();
@@ -42,14 +45,17 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
   const { user } = useSession();
   const chat = useChat(chatId, user?.id);
   const pending = useRef<{ uid?: string; chatId: string; text: string; id: string } | null>(null);
-  const [tripKey, setTripKey] = useState('');
+  const [tripSelection, setTripSelection] = useState<{ screenKey: string; ride?: RideRequest } | null>(null);
   const [profileKey, setProfileKey] = useState('');
   const screenKey = `${user?.id}:${chatId}`;
   const thread = chat.thread;
   const context = useChatRequest(thread?.requestId, user?.id);
   const other = thread ? chatPartner(thread, user?.id ?? '') : '';
+  const { now } = useHomeClock(chat.messages.flatMap((entry) => entry.ride
+    ? [entry.ride.plan.departure, entry.ride.plan.vehicleCampusArrival, entry.ride.plan.riderDestinationArrival] : []));
+  const byId = new Map(chat.messages.map((entry) => [entry.id, entry]));
   return <><ConversationScreen
-    key={`${user?.id}:${chatId}`}
+    key={`conversation:${screenKey}`}
     conversation={{
       participantId: other,
       preview: { id: chatId, participantName: thread?.names[other] ?? 'Conversation',
@@ -65,7 +71,16 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
     onLoadEarlier={chat.loadEarlier}
     onBack={() => router.back()}
     onOpenProfile={() => setProfileKey(screenKey)}
-    contextCard={thread && <ChatContextCard thread={thread} uid={user?.id ?? ''} {...context} onViewTrip={() => setTripKey(screenKey)} />}
+    contextCard={<>
+      {thread && !thread.requestId && <ChatContextCard thread={thread} uid={user?.id ?? ''} {...context}
+        onViewTrip={() => setTripSelection({ screenKey })} />}
+    </>}
+    renderMessage={(message) => {
+      const entry = byId.get(message.id);
+      return entry?.ride && (entry.type === 'RIDE_REQUEST' || entry.type === 'PRICE_CHANGE')
+        ? <ChatTimelineCard entry={entry} uid={user?.id ?? ''} now={now.getTime() / 1000}
+            onViewRide={(ride) => setTripSelection({ screenKey, ride })} /> : null;
+    }}
     onSendMessage={async (text) => {
       if (!pending.current || pending.current.uid !== user?.id || pending.current.chatId !== chatId || pending.current.text !== text)
         pending.current = { uid: user?.id, chatId, text, id: newMessageId() };
@@ -74,7 +89,9 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
       if (pending.current === operation) pending.current = null;
     }}
   />
-    {thread && !chat.error && tripKey === screenKey && <ChatTripSheet key={screenKey} thread={thread} uid={user?.id ?? ''} onClose={() => setTripKey('')} />}
+    {thread && !chat.error && tripSelection?.screenKey === screenKey && <ChatTripSheet
+      key={`trip:${screenKey}:${tripSelection.ride?.id ?? 'inquiry'}:${tripSelection.ride?.attemptId ?? ''}`}
+      thread={thread} uid={user?.id ?? ''} selectedRide={tripSelection.ride} onClose={() => setTripSelection(null)} />}
     <Modal visible={!!thread && !chat.error && profileKey === screenKey} animationType="slide" presentationStyle="pageSheet"
       onRequestClose={() => setProfileKey('')}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.lg }}>

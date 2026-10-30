@@ -1,6 +1,7 @@
 import type { RideRequest } from '../mvp/rideRequestModel';
 import type { PaymentMethod } from './paymentHandles';
 import { parseRidePrice, type RidePrice } from './pricing';
+import { rideHasFinished } from './rideCompletion';
 
 // A rider telling the driver "I paid you $X for these rides". The driver can confirm it.
 export interface Settlement {
@@ -26,7 +27,8 @@ export interface OwedRide {
   cents: number;
 }
 
-// One running balance per person, like Splitwise: not a charge per trip.
+// One running balance per person and payment direction. Taking turns driving must
+// never combine opposite debts into a single payment to one driver.
 export interface Balance {
   counterpartId: string;
   counterpartName: string;
@@ -35,7 +37,7 @@ export interface Balance {
   // Rides that already happened and haven't been settled.
   due: OwedRide[];
   dueCents: number;
-  // Accepted rides still ahead this week, shown so the total isn't a surprise.
+  // All accepted rides still ahead, shown so the total isn't a surprise.
   upcomingCents: number;
   // Payments marked as sent but not yet confirmed by the driver.
   awaitingConfirmation: Settlement[];
@@ -52,11 +54,12 @@ export function computeBalances(
   uid: string,
   requests: RideRequest[],
   settlements: Settlement[],
-  today: string,
-  weekEnd: string,
+  now: number,
 ): Balance[] {
   const settled = new Set(settlements.flatMap((settlement) => settlement.requestIds));
   const byPerson = new Map<string, Balance>();
+  const keyFor = (counterpartId: string, direction: Balance['direction']) =>
+    JSON.stringify([counterpartId, direction]);
 
   for (const request of requests) {
     const price = priced(request);
@@ -64,12 +67,14 @@ export function computeBalances(
     if (request.driverId !== uid && request.riderId !== uid) continue;
     const owe = request.riderId === uid;
     const counterpartId = owe ? request.driverId : request.riderId;
+    const direction = owe ? 'owe' : 'owed';
+    const key = keyFor(counterpartId, direction);
     const balance =
-      byPerson.get(counterpartId) ??
+      byPerson.get(key) ??
       ({
         counterpartId,
         counterpartName: owe ? request.driverName : request.riderName,
-        direction: owe ? 'owe' : 'owed',
+        direction,
         due: [],
         dueCents: 0,
         upcomingCents: 0,
@@ -81,19 +86,32 @@ export function computeBalances(
     }
     if (settled.has(request.id)) {
       // Already paid or marked paid; nothing more to show for it.
-    } else if (request.localDate <= today) {
+    } else if (rideHasFinished(request, now)) {
       balance.due.push({ requestId: request.id, localDate: request.localDate, cents: price.cents });
       balance.dueCents += price.cents;
-    } else if (request.localDate <= weekEnd) {
+    } else {
       balance.upcomingCents += price.cents;
     }
-    byPerson.set(counterpartId, balance);
+    byPerson.set(key, balance);
   }
 
   for (const settlement of settlements) {
     if (settlement.status !== 'MARKED_PAID') continue;
+    if (settlement.payerId !== uid && settlement.payeeId !== uid) continue;
     const counterpartId = settlement.payerId === uid ? settlement.payeeId : settlement.payerId;
-    byPerson.get(counterpartId)?.awaitingConfirmation.push(settlement);
+    const direction = settlement.payerId === uid ? 'owe' : 'owed';
+    const key = keyFor(counterpartId, direction);
+    const balance = byPerson.get(key) ?? {
+      counterpartId,
+      counterpartName: direction === 'owe' ? settlement.payeeName : settlement.payerName,
+      direction,
+      due: [],
+      dueCents: 0,
+      upcomingCents: 0,
+      awaitingConfirmation: [],
+    };
+    balance.awaitingConfirmation.push(settlement);
+    byPerson.set(key, balance);
   }
 
   return [...byPerson.values()]
@@ -106,7 +124,7 @@ export function coveredThisMonth(uid: string, settlements: Settlement[], monthPr
   return settlements
     .filter(
       (s) =>
-        s.payeeId === uid &&
+        s.payeeId === uid && s.status === 'CONFIRMED' &&
         new Date(s.createdAt * 1000).toISOString().slice(0, 7) === monthPrefix,
     )
     .reduce((sum, s) => sum + s.cents, 0);
