@@ -80,6 +80,7 @@ test('the live chat header opens the Firebase profile without changing conversat
     './ChatContextCard': { ChatContextCard: 'context' }, './ChatTimelineCard': { ChatTimelineCard: 'request' },
     '../screens/ConversationScreen': { ConversationScreen: 'conversation' },
     '../rides/useHomeClock': { useHomeClock: () => ({ now: new Date() }) },
+    './chatPresentation': { formatBubbleTime: () => '', formatThreadTimestamp: () => '', getThreadBadge: () => null },
   });
   const { LiveChatScreen } = load('../src/chat/LiveChatScreens.tsx', h.mocks);
   const before = h.render(LiveChatScreen, { chatId: 'chat' }).props.children[0];

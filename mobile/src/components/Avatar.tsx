@@ -3,6 +3,7 @@ import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-n
 
 import type { SampleAvatar } from '../profiles/publicProfiles';
 import { chooseAvatarPresentation } from '../profiles/avatarModel';
+import { usePublicProfile } from '../profiles/profileClient';
 import { radii } from '../theme';
 
 interface AvatarProps {
@@ -14,13 +15,22 @@ interface AvatarProps {
 }
 
 export function Avatar({ name, size = 44, participantId, imageSource, sampleAvatar }: AvatarProps) {
-  const sourceKey = imageSource ? JSON.stringify(imageSource) : null;
+  const liveProfile = usePublicProfile(!imageSource && !sampleAvatar ? participantId : undefined);
+  const effectiveImageSource = imageSource ?? (liveProfile?.photoUri ? { uri: liveProfile.photoUri } : null);
+  const effectiveSampleAvatar = sampleAvatar ?? liveProfile?.sampleAvatar;
+  const effectiveName = liveProfile?.displayName || name;
+
+  const sourceKey = effectiveImageSource ? JSON.stringify(effectiveImageSource) : null;
   const [failedSourceKey, setFailedSourceKey] = useState<string | null>(null);
   const imageFailed = sourceKey !== null && failedSourceKey === sourceKey;
   const presentation = chooseAvatarPresentation({
-    hasImage: Boolean(imageSource), imageFailed, sampleAvatar,
+    hasImage: Boolean(effectiveImageSource),
+    imageFailed,
+    sampleAvatar: effectiveSampleAvatar,
   });
-  const palette = sampleAvatar ? samplePalettes[sampleAvatar] : defaultPalettes[stableIndex(participantId ?? name, defaultPalettes.length)];
+  const palette = effectiveSampleAvatar
+    ? samplePalettes[effectiveSampleAvatar]
+    : defaultPalettes[stableIndex(participantId ?? effectiveName, defaultPalettes.length)];
 
   return (
     <View
@@ -28,15 +38,15 @@ export function Avatar({ name, size = 44, participantId, imageSource, sampleAvat
       importantForAccessibility="no"
       style={[styles.avatar, { backgroundColor: palette.background, height: size, width: size }]}
     >
-      {presentation === 'IMAGE' && imageSource ? (
-        <Image onError={() => setFailedSourceKey(sourceKey)} source={imageSource} style={{ height: size, width: size }} />
+      {presentation === 'IMAGE' && effectiveImageSource ? (
+        <Image onError={() => setFailedSourceKey(sourceKey)} source={effectiveImageSource} style={{ height: size, width: size }} />
       ) : presentation === 'SAMPLE' ? (
         <View style={styles.sample}>
           <View style={[styles.sampleHead, { backgroundColor: palette.foreground, height: size * 0.31, width: size * 0.31 }]} />
           <View style={[styles.sampleShoulders, { backgroundColor: palette.foreground, height: size * 0.36, width: size * 0.68 }]} />
         </View>
       ) : (
-        <Text style={[styles.initial, { color: palette.foreground, fontSize: size * 0.42 }]}>{name.charAt(0).toUpperCase() || '?'}</Text>
+        <Text style={[styles.initial, { color: palette.foreground, fontSize: size * 0.42 }]}>{effectiveName.charAt(0).toUpperCase() || '?'}</Text>
       )}
     </View>
   );
