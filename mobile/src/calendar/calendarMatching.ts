@@ -53,6 +53,7 @@ export interface CalendarMatch {
   seatsRemaining?: number;
   seatsCapacity?: number;
   acceptedRidersCount?: number;
+  direction?: 'TO_CAMPUS' | 'FROM_CAMPUS';
 }
 export interface CalendarSearchResult {
   policyVersion: 3;
@@ -134,6 +135,7 @@ export async function evaluateCalendarPair(
   date: string,
   routing: RoutingAdapter,
   now: number,
+  direction: 'TO_CAMPUS' | 'FROM_CAMPUS' = 'TO_CAMPUS',
 ): Promise<PairEvaluation & { eta?: CalendarEta }> {
   if (driver.uid === rider.uid)
     return { status: 'INFEASIBLE', reasonCodes: ['SELF_MATCH'] };
@@ -151,6 +153,125 @@ export async function evaluateCalendarPair(
   const campus = CAMPUS_POINTS.find((p) => p.id === d.campusLot);
   if (!d.startPoint || !r.startPoint || !campus)
     return { status: 'UNKNOWN', reasonCodes: ['LOCATION_UNCONFIRMED'] };
+
+  if (direction === 'FROM_CAMPUS') {
+    if (driver.day.leaveAt === null || rider.day.leaveAt === null)
+      return { status: 'INFEASIBLE', reasonCodes: ['SKIPPED_OCCURRENCE'] };
+    if (
+      !Number.isFinite(now) ||
+      ![driver.day.leaveAt, rider.day.leaveAt].every((v) => Number.isInteger(v) && v >= 0 && v < 1440)
+    )
+      return { status: 'UNKNOWN', reasonCodes: ['MALFORMED_WINDOW'] };
+    if (!arrivalTargetsOverlap(driver.day.leaveAt, rider.day.leaveAt))
+      return { status: 'INFEASIBLE', reasonCodes: ['ARRIVAL_PREFERENCE_MISMATCH'] };
+
+    const earliest = Math.max(now + 1, localMinuteToEpoch(date, 0));
+    const driverTarget = localMinuteToEpoch(date, driver.day.leaveAt);
+    const riderTarget = localMinuteToEpoch(date, rider.day.leaveAt);
+    const earliestDeparture = Math.max(earliest, Math.min(driverTarget, riderTarget) - ARRIVAL_FLEX_MINUTES * 60);
+    const latestDeparture = Math.min(localMinuteToEpoch(date, 1439) + 59, Math.max(driverTarget, riderTarget) + ARRIVAL_FLEX_MINUTES * 60);
+    if (earliestDeparture > latestDeparture)
+      return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
+    const departure = Math.max(earliestDeparture, Math.min(driverTarget, latestDeparture));
+
+    const safeRoute = async (points: Parameters<RoutingAdapter['route']>[0]): Promise<RoutingResult> => {
+      try {
+        const result = await routing.route(points);
+        if (
+          result.status === 'SUCCESS' &&
+          ((!Number.isFinite(result.route.durationSeconds) || result.route.durationSeconds < 0 ||
+            !Number.isFinite(result.route.distanceMeters) || result.route.distanceMeters < 0) ||
+            result.route.legs.length !== points.length - 1 ||
+            result.route.legs.some((leg) => !Number.isFinite(leg.durationSeconds) || leg.durationSeconds < 0 || !Number.isFinite(leg.distanceMeters) || leg.distanceMeters < 0))
+        )
+          return { status: 'FAILURE', code: 'PROVIDER_ERROR', message: 'Unconfirmed routing anchors', retryable: true };
+        return result;
+      } catch {
+        return { status: 'FAILURE', code: 'PROVIDER_ERROR', message: 'Routing unavailable', retryable: true };
+      }
+    };
+
+    const acceptedStops = driver.acceptedStops ?? [];
+    const baseline = await safeRoute([campus.coordinate, d.startPoint]);
+    let shared: RoutingResult;
+    let pickupIndex = 0;
+    if (acceptedStops.length > 0) {
+      const routeOrderA = [campus.coordinate, ...acceptedStops.map((s) => s.coordinate), r.startPoint, d.startPoint];
+      const routeOrderB = [campus.coordinate, r.startPoint, ...acceptedStops.map((s) => s.coordinate), d.startPoint];
+      const [resA, resB] = await Promise.all([safeRoute(routeOrderA), safeRoute(routeOrderB)]);
+      const validA = resA.status === 'SUCCESS';
+      const validB = resB.status === 'SUCCESS';
+      if (validA && validB) {
+        if (resA.route.durationSeconds <= resB.route.durationSeconds) {
+          shared = resA;
+          pickupIndex = acceptedStops.length;
+        } else {
+          shared = resB;
+          pickupIndex = 0;
+        }
+      } else if (validA) {
+        shared = resA;
+        pickupIndex = acceptedStops.length;
+      } else {
+        shared = resB;
+        pickupIndex = 0;
+      }
+    } else {
+      shared = await safeRoute([campus.coordinate, r.startPoint, d.startPoint]);
+    }
+    if (baseline.status !== 'SUCCESS' || shared.status !== 'SUCCESS') {
+      if (baseline.status === 'FAILURE' && baseline.code === 'NO_ROUTE') {
+        return { status: 'INFEASIBLE', reasonCodes: ['NO_ROAD_ROUTE'] };
+      }
+      return { status: 'UNKNOWN', reasonCodes: ['MISSING_TRAVEL_ESTIMATE'] };
+    }
+
+    const totalServiceSeconds = (acceptedStops.length + 1) * PICKUP_SERVICE_SECONDS;
+    const soloDuration = Math.round(baseline.route.durationSeconds);
+    const soloDistance = Math.round(baseline.route.distanceMeters);
+    const sharedDuration = shared.route.legs.reduce((sum, leg) => sum + Math.round(leg.durationSeconds), totalServiceSeconds);
+    const sharedDistance = Math.round(shared.route.distanceMeters);
+    const driverExtra = sharedDuration - soloDuration;
+    if (driverExtra < 0) return { status: 'UNKNOWN', reasonCodes: ['INCONSISTENT_TRAVEL_ESTIMATES'] };
+    if (driverExtra > 30 * 60) return { status: 'INFEASIBLE', reasonCodes: ['DRIVER_DETOUR_LIMIT'] };
+
+    const pickup = departure;
+    const boardingComplete = pickup + PICKUP_SERVICE_SECONDS;
+    const riderDestinationArrival = boardingComplete + Math.round(shared.route.legs[pickupIndex].durationSeconds);
+    const vehicleCampusArrival = departure;
+
+    return {
+      status: 'FEASIBLE',
+      plan: {
+        occurrence: { localDate: date, direction: 'FROM_CAMPUS' },
+        feasibleDepartureWindow: { earliest: earliestDeparture, latest: latestDeparture },
+        departure,
+        pickup,
+        boardingComplete,
+        vehicleCampusArrival,
+        riderDestinationArrival,
+      },
+      metrics: {
+        soloDurationSeconds: soloDuration,
+        sharedDurationSeconds: sharedDuration,
+        driverExtraDurationSeconds: driverExtra,
+        activeDriverDetourLimitSeconds: 30 * 60,
+        riderInVehicleSeconds: Math.round(shared.route.legs[pickupIndex].durationSeconds),
+        riderExtraInVehicleSeconds: 0,
+        sharedDistanceMeters: sharedDistance,
+        driverExtraDistanceMeters: Math.max(0, sharedDistance - soloDistance),
+        accessWalkSeconds: 0,
+        egressWalkSeconds: 0,
+      },
+      eta: {
+        model: 'STATIC_ROAD',
+        provider: 'OSRM',
+        departureEpochSeconds: departure,
+        computedAtEpochSeconds: now,
+      },
+    };
+  }
+
   if (driver.day.arriveBy === null || rider.day.arriveBy === null)
     return { status: 'INFEASIBLE', reasonCodes: ['SKIPPED_OCCURRENCE'] };
   if (driver.day.startAt == null || rider.day.startAt == null)

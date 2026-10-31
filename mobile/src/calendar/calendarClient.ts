@@ -41,13 +41,17 @@ export function useCalendarOverrides(uid?: string) {
 export async function saveCalendarDay(localDate: string, mode: CalendarMode | 'default') {
   await httpsCallable(getFirebaseFunctions(), 'setCommuteDay')({ localDate, mode });
 }
-export async function searchCalendar(localDate: string, cursor?: string) {
+export async function searchCalendar(
+  localDate: string,
+  cursor?: string,
+  direction: 'TO_CAMPUS' | 'FROM_CAMPUS' = 'TO_CAMPUS',
+) {
   const result = (
-    await httpsCallable<{ localDate: string; cursor?: string }, CalendarSearchResult>(
+    await httpsCallable<{ localDate: string; cursor?: string; direction?: 'TO_CAMPUS' | 'FROM_CAMPUS' }, CalendarSearchResult>(
       getFirebaseFunctions(),
       'findCommuteMatches',
       { timeout: 120000 },
-    )({ localDate, ...(cursor ? { cursor } : {}) })
+    )({ localDate, direction, ...(cursor ? { cursor } : {}) })
   ).data;
   if (result.policyVersion !== 3) throw new Error('Restart your local backend to load buffered arrivals and drop-off preferences, then search again.');
   return result;

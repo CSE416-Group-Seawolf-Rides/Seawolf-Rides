@@ -33,12 +33,29 @@ import { vehicleIsComplete } from '../../mobile/src/vehicle/vehicleModel';
 
 const digest = (parts: string[]) =>
   createHash('sha256').update(JSON.stringify(parts)).digest('hex');
-export const requestIdFor = (rider: string, driver: string, date: string) =>
-  digest([rider, driver, date, 'TO_CAMPUS']);
-export const commitmentIdFor = (uid: string, date: string, requestId?: string) =>
-  requestId
-    ? digest([uid, date, 'TO_CAMPUS', requestId])
-    : digest([uid, date, 'TO_CAMPUS']);
+export const requestIdFor = (
+  rider: string,
+  driver: string,
+  date: string,
+  direction: string = 'TO_CAMPUS',
+) => digest([rider, driver, date, direction]);
+export const commitmentIdFor = (
+  uid: string,
+  date: string,
+  directionOrRequestId?: string,
+  maybeRequestId?: string,
+) => {
+  let direction = 'TO_CAMPUS';
+  let requestId = maybeRequestId;
+  if (directionOrRequestId === 'TO_CAMPUS' || directionOrRequestId === 'FROM_CAMPUS') {
+    direction = directionOrRequestId;
+  } else if (directionOrRequestId) {
+    requestId = directionOrRequestId;
+  }
+  return requestId
+    ? digest([uid, date, direction, requestId])
+    : digest([uid, date, direction]);
+};
 const now = () => Math.floor(Date.now() / 1000);
 function localOnly() {
   if (
@@ -74,13 +91,13 @@ function input(value: unknown): CreateRideRequestInput {
     (value.riderId !== undefined && !uidValue(value.riderId)) ||
     (value.attemptId !== undefined && !validAttempt(value.attemptId)) ||
     typeof value.localDate !== 'string' ||
-    value.direction !== 'TO_CAMPUS' ||
+    (value.direction !== 'TO_CAMPUS' && value.direction !== 'FROM_CAMPUS') ||
     typeof value.riderRevision !== 'string' ||
     typeof value.driverRevision !== 'string'
   )
     throw new HttpsError(
       'invalid-argument',
-      'Supply the selected driver, date, inbound direction and both saved revisions.',
+      'Supply the selected driver, date, direction and both saved revisions.',
     );
   return value as unknown as CreateRideRequestInput;
 }
@@ -120,6 +137,7 @@ export async function preparePair(
       data.riderRevision,
       data.driverRevision,
       routing,
+      data.direction,
     );
   const [rider, driver] = await Promise.all([participant(riderId), participant(data.driverId)]);
   if (!rider.saved.eligible || !driver.saved.eligible)
@@ -203,8 +221,8 @@ async function assertCurrent(tx: Transaction, prepared: PreparedPair) {
 }
 async function assertUncommitted(tx: Transaction, value: PreparedPair['value']) {
   const db = getFirestore();
-  const riderRef = db.doc(`_rideCommitments/${commitmentIdFor(value.riderId, value.localDate)}`);
-  const driverRef = db.doc(`_rideCommitments/${commitmentIdFor(value.driverId, value.localDate)}`);
+  const riderRef = db.doc(`_rideCommitments/${commitmentIdFor(value.riderId, value.localDate, value.direction)}`);
+  const driverRef = db.doc(`_rideCommitments/${commitmentIdFor(value.driverId, value.localDate, value.direction)}`);
   const [riderCommitment, driverCommitment, driverCommuteSnap] = await tx.getAll(
     riderRef,
     driverRef,
@@ -213,7 +231,7 @@ async function assertUncommitted(tx: Transaction, value: PreparedPair['value']) 
   if (riderCommitment.exists)
     throw new HttpsError(
       'failed-precondition',
-      'A participant already has an accepted inbound ride on this date.',
+      `A participant already has an accepted ${value.direction === 'FROM_CAMPUS' ? 'return' : 'inbound'} ride on this date.`,
     );
   const driverCommute = parseCommuteDocument(driverCommuteSnap.data(), value.driverId);
   const driverCapacity = driverCommute.seats ?? 0;
@@ -282,7 +300,7 @@ async function commitCreation(
     const state = await creationState(
       tx,
       id,
-      requestIdFor(prepared.value.driverId, prepared.value.riderId, prepared.value.localDate),
+      requestIdFor(prepared.value.driverId, prepared.value.riderId, prepared.value.localDate, prepared.value.direction),
       chatIdFor(prepared.value.driverId, prepared.value.riderId),
       attemptId,
     );
@@ -377,7 +395,7 @@ export async function commitAcceptance(
       requestId: id,
       userId: prepared.value.riderId,
       localDate: request.localDate,
-      direction: 'TO_CAMPUS',
+      direction: request.direction,
       reservedSeats: request.seats,
     });
     if (!driverCommitment.exists) {
@@ -386,7 +404,7 @@ export async function commitAcceptance(
         requestIds: [id],
         userId: prepared.value.driverId,
         localDate: request.localDate,
-        direction: 'TO_CAMPUS',
+        direction: request.direction,
         reservedSeats: request.seats,
       });
     } else {
@@ -397,12 +415,12 @@ export async function commitAcceptance(
         reservedSeats: currentReserved + request.seats,
         updatedAt: now(),
       });
-      const perRideDriverRef = db.doc(`_rideCommitments/${commitmentIdFor(prepared.value.driverId, request.localDate, id)}`);
+      const perRideDriverRef = db.doc(`_rideCommitments/${commitmentIdFor(prepared.value.driverId, request.localDate, request.direction, id)}`);
       tx.create(perRideDriverRef, {
         requestId: id,
         userId: prepared.value.driverId,
         localDate: request.localDate,
-        direction: 'TO_CAMPUS',
+        direction: request.direction,
         reservedSeats: request.seats,
       });
     }
@@ -447,12 +465,12 @@ export const createRideRequest = onCall(options, async (request) => {
       throw new HttpsError('permission-denied', 'Only a trip participant may send this request.');
     if (riderId === data.driverId)
       throw new HttpsError('invalid-argument', 'You cannot request yourself.');
-    const id = requestIdFor(riderId, data.driverId, data.localDate);
+    const id = requestIdFor(riderId, data.driverId, data.localDate, data.direction);
     const preview = await getFirestore().runTransaction(async (tx) => {
       const state = await creationState(
         tx,
         id,
-        requestIdFor(data.driverId, riderId, data.localDate),
+        requestIdFor(data.driverId, riderId, data.localDate, data.direction),
         chatIdFor(data.driverId, riderId),
         data.attemptId,
       );
@@ -643,9 +661,9 @@ export async function commitRideCancellation(id: string, uid: string, reason: st
       throw new HttpsError('failed-precondition', 'Only a confirmed ride that has not finished or been paid can be cancelled.');
 
     const threadRef = db.doc(`chats/${chatIdFor(ride.driverId, ride.riderId)}`);
-    const riderCommitmentRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.riderId, ride.localDate)}`);
-    const driverCommitmentRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.driverId, ride.localDate)}`);
-    const perRideDriverRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.driverId, ride.localDate, id)}`);
+    const riderCommitmentRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.riderId, ride.localDate, ride.direction)}`);
+    const driverCommitmentRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.driverId, ride.localDate, ride.direction)}`);
+    const perRideDriverRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.driverId, ride.localDate, ride.direction, id)}`);
     const [thread, settlement, riderCommitment, driverCommitment, perRideDriverSnap] = await tx.getAll(
       threadRef, db.doc(`_settledRequests/${id}`), riderCommitmentRef, driverCommitmentRef, perRideDriverRef,
     );

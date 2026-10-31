@@ -28,9 +28,9 @@ import { eligible, withMatchingRouting, trafficRoutingEnabled } from './matching
 import { ARRIVAL_BUFFER_SECONDS } from '../../mobile/src/commute/arrivalPolicy';
 import { DemoBusyError, DEMO_CANDIDATE_LIMIT } from './demoRouting';
 
-const commitmentId = (uid: string, date: string) =>
+const commitmentId = (uid: string, date: string, direction: 'TO_CAMPUS' | 'FROM_CAMPUS' = 'TO_CAMPUS') =>
   createHash('sha256')
-    .update(JSON.stringify([uid, date, 'TO_CAMPUS']))
+    .update(JSON.stringify([uid, date, direction]))
     .digest('hex');
 const timestamp = () => Math.floor(Date.now() / 1000);
 import { loadFuelPrices, pricer } from './payments';
@@ -57,13 +57,18 @@ export async function areUsersMutuallyBlocked(uidA: string, uidB: string): Promi
   return Boolean(aBlocksB?.exists || bBlocksA?.exists);
 }
 
-export async function loadCalendarParticipant(uid: string, date: string, requestingUid?: string) {
+export async function loadCalendarParticipant(
+  uid: string,
+  date: string,
+  requestingUid?: string,
+  direction: 'TO_CAMPUS' | 'FROM_CAMPUS' = 'TO_CAMPUS',
+) {
   const db = getFirestore();
   const refs = [
     db.doc(`users/${uid}/commuteDays/${date}`),
     db.doc(`users/${uid}`),
     db.doc(`users/${uid}/commutes/primary`),
-    db.doc(`_rideCommitments/${commitmentId(uid, date)}`),
+    db.doc(`_rideCommitments/${commitmentId(uid, date, direction)}`),
     db.doc(`publicProfiles/${uid}`),
   ];
   if (requestingUid && requestingUid !== uid) {
@@ -84,7 +89,7 @@ export async function loadCalendarParticipant(uid: string, date: string, request
   );
   if (
     !day ||
-    day.arriveBy === null ||
+    (direction === 'FROM_CAMPUS' ? day.leaveAt === null : day.arriveBy === null) ||
     !commute.discoveryEnabled ||
     !commute.startPoint
   )
@@ -122,6 +127,7 @@ export async function loadCalendarParticipant(uid: string, date: string, request
           const acceptedSnap = await db.collection('rideRequests')
             .where('driverId', '==', uid)
             .where('localDate', '==', date)
+            .where('direction', '==', direction)
             .where('status', '==', 'ACCEPTED')
             .get();
           const pickupRefs = acceptedSnap.docs.map((d) => db.doc(`ridePickups/${d.id}`));
@@ -204,11 +210,12 @@ export const setCommuteDay = onCall(options, async (call) => {
   const db = getFirestore();
   const ref = db.doc(`users/${uid}/commuteDays/${data.localDate}`);
   await db.runTransaction(async (tx) => {
-    const [lock, commute] = await tx.getAll(
-      db.doc(`_rideCommitments/${commitmentId(uid, data.localDate)}`),
+    const [lockInbound, lockOutbound, commute] = await tx.getAll(
+      db.doc(`_rideCommitments/${commitmentId(uid, data.localDate, 'TO_CAMPUS')}`),
+      db.doc(`_rideCommitments/${commitmentId(uid, data.localDate, 'FROM_CAMPUS')}`),
       db.doc(`users/${uid}/commutes/primary`),
     );
-    if (lock.exists)
+    if (lockInbound.exists || lockOutbound.exists)
       throw new HttpsError(
         'failed-precondition',
         'This date has an accepted ride. Changing an accepted trip is not available yet.',
@@ -239,12 +246,17 @@ export const findCommuteMatches = onCall(options, async (call) => {
       'permission-denied',
       'Sign in with a verified campus account.',
     );
+  const direction: 'TO_CAMPUS' | 'FROM_CAMPUS' =
+    call.data?.direction === 'FROM_CAMPUS' ? 'FROM_CAMPUS' : 'TO_CAMPUS';
   if (
     !call.data ||
     Object.keys(call.data).some(
-      (key) => !['localDate', 'cursor'].includes(key),
+      (key) => !['localDate', 'cursor', 'direction'].includes(key),
     ) ||
     typeof call.data.localDate !== 'string' ||
+    (call.data.direction !== undefined &&
+      call.data.direction !== 'TO_CAMPUS' &&
+      call.data.direction !== 'FROM_CAMPUS') ||
     (call.data.cursor !== undefined &&
       (typeof call.data.cursor !== 'string' || call.data.cursor.length > 256))
   )
@@ -259,16 +271,20 @@ export const findCommuteMatches = onCall(options, async (call) => {
     );
   }
   try {
-    const own = await loadCalendarParticipant(uid, date);
+    const own = await loadCalendarParticipant(uid, date, undefined, direction);
     if (!own)
       throw new HttpsError(
         'failed-precondition',
-        'Save your commute, confirm your private starting point, enable matching and set the morning start time for an inbound day.',
+        direction === 'FROM_CAMPUS'
+          ? 'Save your commute, confirm your private starting point, enable matching and set the evening return time.'
+          : 'Save your commute, confirm your private starting point, enable matching and set the morning start time for an inbound day.',
       );
     if (own.committed)
       throw new HttpsError(
         'failed-precondition',
-        'You already have an accepted ride on this date.',
+        direction === 'FROM_CAMPUS'
+          ? 'You already have an accepted return ride on this date.'
+          : 'You already have an accepted ride on this date.',
       );
     // Discover the complete opted-in metadata set before spending any public routing budget.
     const snapshot = await getFirestore()
@@ -291,7 +307,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
     const others = await Promise.all(
       ids.map(async (id) => {
         try {
-          return await loadCalendarParticipant(id, date, uid);
+          return await loadCalendarParticipant(id, date, uid, direction);
         } catch {
           unreadable++;
           return null;
@@ -307,7 +323,9 @@ export const findCommuteMatches = onCall(options, async (call) => {
       if (!loaded || loaded.committed) continue;
       const a = own.participant,
         b = loaded.participant;
-      if (!arrivalTargetsOverlap(a.day.arriveBy, b.day.arriveBy)) continue;
+      const targetA = direction === 'FROM_CAMPUS' ? a.day.leaveAt : a.day.arriveBy;
+      const targetB = direction === 'FROM_CAMPUS' ? b.day.leaveAt : b.day.arriveBy;
+      if (!arrivalTargetsOverlap(targetA, targetB)) continue;
       const aSeats = a.seatsRemaining !== undefined ? a.seatsRemaining : (a.commute.seats ?? 0);
       const bSeats = b.seatsRemaining !== undefined ? b.seatsRemaining : (b.commute.seats ?? 0);
       if (
@@ -325,23 +343,30 @@ export const findCommuteMatches = onCall(options, async (call) => {
     }
     // Closest saved targets are checked first; final ranking uses actual evaluated arrivals.
     const preferencePenalty = (proposal: typeof proposals[number]) =>
-      proposal.rider.commute.riderDropoffPreference === 'any' || proposal.rider.commute.campusLot === 'other' || proposal.rider.commute.campusLot === proposal.driver.commute.campusLot ? 0 : 1;
+      direction === 'FROM_CAMPUS'
+        ? 0
+        : (proposal.rider.commute.riderDropoffPreference === 'any' || proposal.rider.commute.campusLot === 'other' || proposal.rider.commute.campusLot === proposal.driver.commute.campusLot ? 0 : 1);
+    const ownTarget = direction === 'FROM_CAMPUS' ? own.participant.day.leaveAt! : own.participant.day.arriveBy!;
     proposals.sort(
-      (a, b) =>
-        Math.abs(a.other.day.arriveBy! - own.participant.day.arriveBy!) -
-          Math.abs(b.other.day.arriveBy! - own.participant.day.arriveBy!) ||
-        preferencePenalty(a) - preferencePenalty(b) ||
-        (a.driver.uid < b.driver.uid
-          ? -1
-          : a.driver.uid > b.driver.uid
-            ? 1
-            : 0) ||
-        (a.rider.uid < b.rider.uid ? -1 : a.rider.uid > b.rider.uid ? 1 : 0),
+      (a, b) => {
+        const aTarget = direction === 'FROM_CAMPUS' ? a.other.day.leaveAt! : a.other.day.arriveBy!;
+        const bTarget = direction === 'FROM_CAMPUS' ? b.other.day.leaveAt! : b.other.day.arriveBy!;
+        return (
+          Math.abs(aTarget - ownTarget) - Math.abs(bTarget - ownTarget) ||
+          preferencePenalty(a) - preferencePenalty(b) ||
+          (a.driver.uid < b.driver.uid
+            ? -1
+            : a.driver.uid > b.driver.uid
+              ? 1
+              : 0) ||
+          (a.rider.uid < b.rider.uid ? -1 : a.rider.uid > b.rider.uid ? 1 : 0)
+        );
+      },
     );
     const searchRevision = createHash('sha256')
       .update(
         JSON.stringify([
-          'buffered-arrival-dropoff-v3', date, trafficRoutingEnabled() ? 'tomtom-v1' : 'osrm',
+          'buffered-arrival-dropoff-v3', date, direction, trafficRoutingEnabled() ? 'tomtom-v1' : 'osrm',
           own.participant.revision,
           proposals.map((p) => [
             p.driver.uid,
@@ -415,6 +440,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
             date,
             routing,
             timestamp(),
+            direction,
           );
           if (evaluation.status === 'UNKNOWN') {
             result.unknownCount++;
@@ -433,7 +459,10 @@ export const findCommuteMatches = onCall(options, async (call) => {
             dropoffLabel: CAMPUS_POINTS.find((point) => point.id === driver.commute.campusLot)?.label,
             preferredDropoffLabel: rider.commute.riderDropoffPreference === 'any' || rider.commute.campusLot === 'other' ? 'Any' : CAMPUS_POINTS.find((point) => point.id === rider.commute.campusLot)?.label,
             dropoffPreferenceMatch: preferencePenalty({ driver, rider, other }) === 0,
-            savedDriverDeparture: localMinuteToEpoch(date, driver.day.startAt!),
+            savedDriverDeparture: localMinuteToEpoch(
+              date,
+              direction === 'FROM_CAMPUS' ? driver.day.leaveAt! : driver.day.startAt!,
+            ),
             driverId: driver.uid,
             riderId: rider.uid,
             driverRevision: driver.revision,
@@ -445,18 +474,22 @@ export const findCommuteMatches = onCall(options, async (call) => {
             addedDrivingSeconds: evaluation.metrics.driverExtraDurationSeconds,
             arrivalDifferenceSeconds: Math.abs(
               ownArrival -
-                (localMinuteToEpoch(date, own.participant.day.arriveBy!) - ARRIVAL_BUFFER_SECONDS),
+                (localMinuteToEpoch(
+                  date,
+                  direction === 'FROM_CAMPUS' ? own.participant.day.leaveAt! : own.participant.day.arriveBy!,
+                ) - (direction === 'FROM_CAMPUS' ? 0 : ARRIVAL_BUFFER_SECONDS)),
             ),
             metrics: evaluation.metrics,
             price: await priceFor(driver.uid, rider.uid, evaluation.metrics),
             seatsRemaining: driver.seatsRemaining !== undefined ? driver.seatsRemaining : (driver.commute.seats ?? 1),
             seatsCapacity: driver.seatsCapacity !== undefined ? driver.seatsCapacity : (driver.commute.seats ?? 1),
             acceptedRidersCount: driver.acceptedStops?.length ?? 0,
+            direction,
           });
         }
       }, true);
     // Never return results based on inputs edited during routing.
-    const fresh = await loadCalendarParticipant(uid, date);
+    const fresh = await loadCalendarParticipant(uid, date, undefined, direction);
     if (
       !fresh ||
       fresh.committed ||
@@ -465,7 +498,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
       throw new HttpsError('aborted', 'Your calendar changed. Search again.');
     for (const item of [...result.matches]) {
       const otherId = item.driverId === uid ? item.riderId : item.driverId;
-      const other = await loadCalendarParticipant(otherId, date);
+      const other = await loadCalendarParticipant(otherId, date, undefined, direction);
       if (
         !other ||
         other.committed ||
@@ -490,14 +523,15 @@ export async function prepareCalendarPair(
   riderRevision: string,
   driverRevision: string,
   routing: RoutingAdapter,
+  direction: 'TO_CAMPUS' | 'FROM_CAMPUS' = 'TO_CAMPUS',
 ) {
   checkDemoDate(date, timestamp());
   if (await areUsersMutuallyBlocked(riderId, driverId)) {
     throw new HttpsError('failed-precondition', 'Cannot request a ride with this commuter.');
   }
   const [r, d] = await Promise.all([
-    loadCalendarParticipant(riderId, date),
-    loadCalendarParticipant(driverId, date),
+    loadCalendarParticipant(riderId, date, undefined, direction),
+    loadCalendarParticipant(driverId, date, undefined, direction),
   ]);
   if (
     !r ||
@@ -517,6 +551,7 @@ export async function prepareCalendarPair(
     date,
     routing,
     timestamp(),
+    direction,
   );
   if (evaluated.status !== 'FEASIBLE')
     throw new HttpsError(
@@ -544,11 +579,11 @@ export async function prepareCalendarPair(
       driverName: d.participant.name,
       riderName: r.participant.name,
       localDate: date,
-      direction: 'TO_CAMPUS',
+      direction,
       riderRevision,
       driverRevision,
       seats: 1,
-      pickupLabel: r.participant.commute.startArea.label,
+      pickupLabel: direction === 'FROM_CAMPUS' ? 'Stony Brook Campus' : r.participant.commute.startArea.label,
       campusLabel: CAMPUS_POINTS.find(
         (p) => p.id === d.participant.commute.campusLot,
       )!.label,

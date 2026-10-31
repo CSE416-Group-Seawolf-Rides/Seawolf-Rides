@@ -28,7 +28,7 @@ import { useHomeClock } from '../rides/useHomeClock';
 import { homeHeaderDate, partnerName, requestNeedsAnswer, rideEnd } from '../mvp/ridePresentation';
 import type { RideRequest } from '../mvp/rideRequestModel';
 import { TRAFFIC_ESTIMATE_MAX_AGE_SECONDS } from '../routing/types';
-import { colors, spacing } from '../theme';
+import { colors, radii, spacing } from '../theme';
 
 const time = (epoch: number) =>
   new Date(epoch * 1000).toLocaleTimeString('en-US', {
@@ -57,13 +57,14 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
   ]);
   const today = localDateAt(now.getTime() / 1000);
   const [selected, setSelected] = useState(initialDate ?? today);
+  const [direction, setDirection] = useState<'TO_CAMPUS' | 'FROM_CAMPUS'>('TO_CAMPUS');
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [matchesOpen, setMatchesOpen] = useState(false);
   const overrides = useCalendarOverrides(user?.id);
   const vehicle = useVehicle(user?.id);
   const [vehicleRequired, setVehicleRequired] = useState(false);
   const [resultKey, setResultKey] = useState('');
-  const basis = JSON.stringify([selected, commute, overrides.days]);
+  const basis = JSON.stringify([selected, direction, commute, overrides.days]);
   const result = resultKey === basis ? searchResult : null;
   const [busy, setBusy] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -74,7 +75,9 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     commute && profile
       ? calendarDay(commute, profile.role, selected, overrides.days[selected])
       : null;
-  const acceptedRides = requests.items.filter((r) => r.localDate === selected && r.status === 'ACCEPTED');
+  const acceptedRides = requests.items.filter(
+    (r) => r.localDate === selected && (r.direction ?? 'TO_CAMPUS') === direction && r.status === 'ACCEPTED',
+  );
   const accepted = acceptedRides[0];
   const isDriver = (day?.mode === 'drive' || (day?.mode === 'either' && (commute?.seats ?? 0) > 0)) || (accepted && accepted.driverId === user?.id);
   const seatsCapacity = commute?.seats ?? 1;
@@ -89,7 +92,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     requestNeedsAnswer(r, user?.id ?? '', now.getTime() / 1000),
   );
   const pendingForDay = requests.items.filter(
-    (r) => r.status === 'PENDING' && r.localDate === selected,
+    (r) => r.status === 'PENDING' && r.localDate === selected && (r.direction ?? 'TO_CAMPUS') === direction,
   );
   const week =
     commute && profile && user
@@ -114,7 +117,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
       }
     }, [initialDate]),
   );
-  const search = async (date = selected, more = false) => {
+  const search = async (date = selected, more = false, dir = direction) => {
     if (busy) return;
     const previous = more ? result : null;
     if (more && !previous?.nextCursor) return;
@@ -124,16 +127,16 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     setBusy(true);
     setMessage(null);
     if (!more) setResult(null);
-    setResultKey(JSON.stringify([date, commute, overrides.days]));
+    setResultKey(JSON.stringify([date, dir, commute, overrides.days]));
     try {
-      let combined = await searchCalendar(date, previous?.nextCursor ?? undefined);
+      let combined = await searchCalendar(date, previous?.nextCursor ?? undefined, dir);
       if (previous) {
         combined = mergeCalendarPages(previous, combined);
       } else {
         // Automatically fetch initial candidates so all top matches appear together
         // rather than the single "best match first" quirk.
         while (combined.nextCursor && combined.matches.length < 5) {
-          const next = await searchCalendar(date, combined.nextCursor);
+          const next = await searchCalendar(date, combined.nextCursor, dir);
           combined = mergeCalendarPages(combined, next);
         }
       }
@@ -169,7 +172,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
         driverId: match.driverId,
         riderId: match.riderId,
         localDate: selected,
-        direction: 'TO_CAMPUS',
+        direction: match.direction ?? direction,
         riderRevision: match.riderRevision,
         driverRevision: match.driverRevision,
       });
@@ -279,7 +282,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
           {nextTrip ? (
             <Card style={styles.nextTrip}>
               <Text style={styles.nextEyebrow}>
-                YOUR NEXT TRIP · {dateLabel(nextTrip.localDate)}
+                YOUR NEXT TRIP · {dateLabel(nextTrip.localDate)}{nextTrip.direction === 'FROM_CAMPUS' ? ' · RETURN' : ''}
               </Text>
               <Text style={styles.nextHeadline}>
                 {nextTrip.driverId === user?.id
@@ -302,7 +305,9 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                 · {nextTrip.campusLabel}
               </Text>
               <Text style={styles.nextDetail}>
-                Campus arrival {time(nextTrip.plan.riderDestinationArrival)} · New York time
+                {nextTrip.direction === 'FROM_CAMPUS'
+                  ? `Drop-off arrival ${time(nextTrip.plan.riderDestinationArrival)} · New York time`
+                  : `Campus arrival ${time(nextTrip.plan.riderDestinationArrival)} · New York time`}
               </Text>
               {nextTrip.localDate === today && user && (
                 <RideDayDirections ride={nextTrip} uid={user.id} />
@@ -465,12 +470,12 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
           <View style={styles.section}>
             <Text style={styles.heading}>
               {accepted
-                ? 'Your selected trip'
+                ? `Your selected ${direction === 'FROM_CAMPUS' ? 'return ' : ''}trip`
                 : day?.mode === 'drive'
-                  ? 'Find passengers'
+                  ? `Find ${direction === 'FROM_CAMPUS' ? 'return ' : ''}passengers`
                   : day?.mode === 'either'
-                    ? 'Find drivers and passengers'
-                    : 'Find a driver'}
+                    ? `Find ${direction === 'FROM_CAMPUS' ? 'return ' : ''}drivers and passengers`
+                    : `Find a ${direction === 'FROM_CAMPUS' ? 'return ' : ''}driver`}
             </Text>
             <Card style={styles.searchCard}>
               <View style={styles.row}>
@@ -482,6 +487,54 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   onPress={() => setCalendarOpen(true)}
                 >
                   <Ionicons name="calendar-outline" size={22} color={colors.accent} />
+                </Pressable>
+              </View>
+              <View style={styles.directionToggleContainer}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Morning trip to campus"
+                  style={[styles.directionTab, direction === 'TO_CAMPUS' && styles.directionTabActive]}
+                  onPress={() => {
+                    setDirection('TO_CAMPUS');
+                    setResult(null);
+                  }}
+                >
+                  <Ionicons
+                    name="sunny-outline"
+                    size={16}
+                    color={direction === 'TO_CAMPUS' ? colors.accent : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.directionTabText,
+                      direction === 'TO_CAMPUS' && styles.directionTabTextActive,
+                    ]}
+                  >
+                    To Campus (Morning)
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Evening return trip home"
+                  style={[styles.directionTab, direction === 'FROM_CAMPUS' && styles.directionTabActive]}
+                  onPress={() => {
+                    setDirection('FROM_CAMPUS');
+                    setResult(null);
+                  }}
+                >
+                  <Ionicons
+                    name="moon-outline"
+                    size={16}
+                    color={direction === 'FROM_CAMPUS' ? colors.accent : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.directionTabText,
+                      direction === 'FROM_CAMPUS' && styles.directionTabTextActive,
+                    ]}
+                  >
+                    Return Home (Evening)
+                  </Text>
                 </Pressable>
               </View>
               <Text style={styles.searchRole}>
@@ -508,8 +561,10 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     </Text>
                   )}
                   <Text>
-                    Departure {time(accepted.plan.departure)} · campus{' '}
-                    {time(accepted.plan.riderDestinationArrival)}
+                    Departure {time(accepted.plan.departure)} ·{' '}
+                    {direction === 'FROM_CAMPUS'
+                      ? `drop-off ${time(accepted.plan.riderDestinationArrival)}`
+                      : `campus ${time(accepted.plan.riderDestinationArrival)}`}
                   </Text>
                   <AppButton
                     label={acceptedRides.length > 1 ? `View ${acceptedRides.length} accepted rides` : 'View accepted ride'}
@@ -526,10 +581,18 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                 </>
               ) : (
                 <>
-                  {day?.arriveBy != null && (
-                    <Text style={styles.searchDetail}>
-                      Arrive on campus around {formatTime(day.arriveBy)} · New York time
-                    </Text>
+                  {direction === 'TO_CAMPUS' ? (
+                    day?.arriveBy != null && (
+                      <Text style={styles.searchDetail}>
+                        Arrive on campus around {formatTime(day.arriveBy)} · New York time
+                      </Text>
+                    )
+                  ) : (
+                    day?.leaveAt != null && (
+                      <Text style={styles.searchDetail}>
+                        Leave campus around {formatTime(day.leaveAt)} · New York time
+                      </Text>
+                    )
                   )}
                   {pendingForDay.length > 0 && (
                     <Text style={styles.muted}>
@@ -538,24 +601,25 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                       Rides.
                     </Text>
                   )}
-                  {!day || day.arriveBy === null ? (
+                  {!day || (direction === 'FROM_CAMPUS' ? day.leaveAt === null : day.arriveBy === null) ? (
                     <>
                       <Text style={styles.muted}>
-                        No trip to campus is saved for this date. Use the calendar to choose another
-                        day or adjust this date.
+                        {direction === 'FROM_CAMPUS'
+                          ? 'No return trip from campus is scheduled for this date. Update your commute to include an evening departure time.'
+                          : 'No trip to campus is saved for this date. Use the calendar to choose another day or adjust this date.'}
                       </Text>
                       <AppButton
-                        label="Open calendar"
+                        label={direction === 'FROM_CAMPUS' ? 'Edit commute schedule' : 'Open calendar'}
                         variant="secondary"
-                        onPress={() => setCalendarOpen(true)}
+                        onPress={() => direction === 'FROM_CAMPUS' ? router.push('/commute-setup') : setCalendarOpen(true)}
                       />
                     </>
-                  ) : !commute.startPoint || !commute.discoveryEnabled || day.startAt == null ? (
+                  ) : !commute.startPoint || !commute.discoveryEnabled || (direction === 'TO_CAMPUS' && day.startAt == null) ? (
                     <>
                       <Text style={styles.muted}>
                         {!commute.startPoint
                           ? 'Confirm your private starting point to get road estimates.'
-                          : day.startAt == null
+                          : day?.startAt == null
                             ? 'Add your morning start time in your usual commute before matching.'
                             : 'Matching is turned off in your commute settings.'}
                       </Text>
@@ -581,10 +645,10 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                           busy
                             ? 'Finding matches…'
                             : day.mode === 'drive'
-                              ? 'Find passengers'
+                              ? `Find passengers (${direction === 'FROM_CAMPUS' ? 'return' : 'morning'})`
                               : day.mode === 'either'
-                                ? 'Find matches'
-                                : 'Find drivers'
+                                ? `Find matches (${direction === 'FROM_CAMPUS' ? 'return' : 'morning'})`
+                                : `Find drivers (${direction === 'FROM_CAMPUS' ? 'return' : 'morning'})`
                         }
                         disabled={busy || !withinHorizon || !overrides.loaded || !requests.loaded}
                         onPress={() => void search()}
@@ -641,6 +705,37 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   searchCard: { gap: spacing.lg, padding: spacing.xl },
+  directionToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: radii.md,
+    padding: 3,
+  },
+  directionTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: radii.sm,
+  },
+  directionTabActive: {
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  directionTabText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  directionTabTextActive: {
+    color: colors.accent,
+    fontWeight: '700',
+  },
   searchDate: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.text },
   searchRole: {
     alignSelf: 'flex-start',
