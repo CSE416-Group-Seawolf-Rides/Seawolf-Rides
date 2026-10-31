@@ -1,6 +1,6 @@
 import { evaluatePair } from '../matching/evaluatePair';
 import type { PairEvaluation, StaticRouteEstimate } from '../matching/types';
-import type { CommuteSchedule, DaySchedule, PrivacyArea } from '../commute/commuteModel';
+import type { CommuteSchedule, Coordinates, DaySchedule, PrivacyArea } from '../commute/commuteModel';
 import type { RoutingAdapter, RoutingResult } from '../routing/types';
 import {
   CAMPUS_POINTS,
@@ -10,12 +10,19 @@ import {
 import type { RidePrice } from '../payments/pricing';
 import { ARRIVAL_BUFFER_SECONDS, ARRIVAL_FLEX_MINUTES, preferredArrivalWindow } from '../commute/arrivalPolicy';
 
+export interface AcceptedStop {
+  coordinate: Coordinates;
+  name: string;
+}
 export interface CalendarParticipant {
   uid: string;
   name: string;
   revision: string;
   commute: CommuteSchedule;
   day: DaySchedule;
+  seatsRemaining?: number;
+  seatsCapacity?: number;
+  acceptedStops?: AcceptedStop[];
 }
 export interface CalendarEta {
   model: 'STATIC_ROAD' | 'TRAFFIC_FORECAST';
@@ -43,6 +50,9 @@ export interface CalendarMatch {
   metrics: Extract<PairEvaluation, { status: 'FEASIBLE' }>['metrics'];
   /** The rider's gas share for this trip, from the driver's car and this week's fuel price. */
   price?: RidePrice;
+  seatsRemaining?: number;
+  seatsCapacity?: number;
+  acceptedRidersCount?: number;
 }
 export interface CalendarSearchResult {
   policyVersion: 3;
@@ -104,6 +114,17 @@ function routeEstimate(result: RoutingResult, index?: number): StaticRouteEstima
       }
     : { status: 'MISSING' };
 }
+function routeLegsEstimate(result: RoutingResult, startLeg: number, endLeg: number): StaticRouteEstimate {
+  if (result.status === 'FAILURE')
+    return { status: result.code === 'NO_ROUTE' ? 'UNREACHABLE' : 'MISSING' };
+  if (!result.route || !result.route.legs || result.route.legs.length === 0)
+    return { status: 'MISSING' };
+  const legs = result.route.legs.slice(startLeg, endLeg + 1);
+  if (legs.length === 0) return { status: 'MISSING' };
+  const durationSeconds = Math.round(legs.reduce((sum, leg) => sum + leg.durationSeconds, 0));
+  const distanceMeters = Math.round(legs.reduce((sum, leg) => sum + leg.distanceMeters, 0));
+  return { status: 'AVAILABLE', durationSeconds, distanceMeters };
+}
 /** A proposed trip uses the driver's concrete campus stop. Rider drop-off preference
  * affects ranking, not feasibility. Saved driver departure is a reference for review,
  * not a reservation; rider readiness remains a real bound. */
@@ -125,7 +146,8 @@ export async function evaluateCalendarPair(
     r = rider.commute;
   if (!d.discoveryEnabled || !r.discoveryEnabled)
     return { status: 'INFEASIBLE', reasonCodes: ['SKIPPED_OCCURRENCE'] };
-  if (!(d.seats ?? 0)) return { status: 'INFEASIBLE', reasonCodes: ['NO_SEAT'] };
+  const availableSeats = driver.seatsRemaining !== undefined ? driver.seatsRemaining : (d.seats ?? 0);
+  if (availableSeats <= 0) return { status: 'INFEASIBLE', reasonCodes: ['NO_SEAT'] };
   const campus = CAMPUS_POINTS.find((p) => p.id === d.campusLot);
   if (!d.startPoint || !r.startPoint || !campus)
     return { status: 'UNKNOWN', reasonCodes: ['LOCATION_UNCONFIRMED'] };
@@ -226,14 +248,38 @@ export async function evaluateCalendarPair(
     if (driverStart < earliest || driverStart >= arrivalLatest)
       return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
   }
-  const [baseline, shared] = await Promise.all([
-    safeRoute([d.startPoint, campus.coordinate]),
-    safeRoute(
+  const acceptedStops = driver.acceptedStops ?? [];
+  const baseline = await safeRoute([d.startPoint, campus.coordinate]);
+  let shared: RoutingResult;
+  let pickupIndex = 0;
+  if (!routing.timeDependent && acceptedStops.length > 0) {
+    const routeOrderA = [d.startPoint, ...acceptedStops.map((s) => s.coordinate), r.startPoint, campus.coordinate];
+    const routeOrderB = [d.startPoint, r.startPoint, ...acceptedStops.map((s) => s.coordinate), campus.coordinate];
+    const [resA, resB] = await Promise.all([safeRoute(routeOrderA), safeRoute(routeOrderB)]);
+    const validA = resA.status === 'SUCCESS';
+    const validB = resB.status === 'SUCCESS';
+    if (validA && validB) {
+      if (resA.route.durationSeconds <= resB.route.durationSeconds) {
+        shared = resA;
+        pickupIndex = acceptedStops.length;
+      } else {
+        shared = resB;
+        pickupIndex = 0;
+      }
+    } else if (validA) {
+      shared = resA;
+      pickupIndex = acceptedStops.length;
+    } else {
+      shared = resB;
+      pickupIndex = 0;
+    }
+  } else {
+    shared = await safeRoute(
       routing.timeDependent
         ? [d.startPoint, r.startPoint]
         : [d.startPoint, r.startPoint, campus.coordinate],
-    ),
-  ]);
+    );
+  }
   // A traffic-dependent second leg must start AFTER driving to pickup and boarding.
   const pickupToCampus = routing.timeDependent
     ? shared.status === 'SUCCESS'
@@ -243,8 +289,9 @@ export async function evaluateCalendarPair(
         )
       : shared
     : shared;
+  const totalServiceSeconds = (acceptedStops.length + 1) * PICKUP_SERVICE_SECONDS;
   if (!routing.timeDependent && shared.status === 'SUCCESS') {
-    const duration = shared.route.legs.reduce((sum, leg) => sum + Math.round(leg.durationSeconds), PICKUP_SERVICE_SECONDS);
+    const duration = shared.route.legs.reduce((sum, leg) => sum + Math.round(leg.durationSeconds), totalServiceSeconds);
     if (Number.isSafeInteger(duration)) driverStart = desiredArrival - duration;
   }
   // A whole date is the finite domain bound, not an asserted user detour preference.
@@ -258,7 +305,7 @@ export async function evaluateCalendarPair(
         : { earliest, latest: arrivalLatest },
       campusArrivalWindow: driverArrival,
       preferredDeparture: driverStart,
-      seatsRemaining: d.seats ?? 0,
+      seatsRemaining: availableSeats,
       maxExtraDurationSeconds: dateBound,
     },
     rider: {
@@ -292,8 +339,14 @@ export async function evaluateCalendarPair(
     pickupServiceSeconds: PICKUP_SERVICE_SECONDS,
     travel: {
       startToCampus: routeEstimate(baseline),
-      startToPickup: routeEstimate(shared, 0),
-      pickupToCampus: routeEstimate(pickupToCampus, routing.timeDependent ? 0 : 1),
+      startToPickup: routing.timeDependent
+        ? routeEstimate(shared, 0)
+        : (acceptedStops.length > 0 ? routeLegsEstimate(shared, 0, pickupIndex) : routeEstimate(shared, 0)),
+      pickupToCampus: routing.timeDependent
+        ? routeEstimate(pickupToCampus, 0)
+        : (acceptedStops.length > 0 && shared.status === 'SUCCESS'
+            ? routeLegsEstimate(shared, pickupIndex + 1, shared.route.legs.length - 1)
+            : routeEstimate(pickupToCampus, 1)),
     },
   });
   if (evaluation.status !== 'FEASIBLE') return evaluation;

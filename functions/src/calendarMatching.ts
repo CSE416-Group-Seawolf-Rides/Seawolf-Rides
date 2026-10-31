@@ -104,14 +104,60 @@ export async function loadCalendarParticipant(uid: string, date: string, request
       ),
     )
     .digest('hex');
+  const commitmentSnap = snapshots[3];
+  let committed = commitmentSnap.exists;
+  let seatsRemaining = commute.seats ?? 0;
+  const seatsCapacity = commute.seats ?? 0;
+  const acceptedStops: Array<{ coordinate: { latitude: number; longitude: number }; name: string }> = [];
+
+  const isDriver = day.mode === 'drive' || (day.mode === 'either' && seatsCapacity > 0);
+  if (isDriver) {
+    if (commitmentSnap.exists) {
+      const commitmentData = commitmentSnap.data();
+      const reservedSeats = Number.isInteger(commitmentData?.reservedSeats) ? commitmentData!.reservedSeats : 1;
+      if (reservedSeats < seatsCapacity) {
+        committed = false;
+        seatsRemaining = seatsCapacity - reservedSeats;
+        try {
+          const acceptedSnap = await db.collection('rideRequests')
+            .where('driverId', '==', uid)
+            .where('localDate', '==', date)
+            .where('status', '==', 'ACCEPTED')
+            .get();
+          const pickupRefs = acceptedSnap.docs.map((d) => db.doc(`ridePickups/${d.id}`));
+          const pickupSnaps = pickupRefs.length ? await db.getAll(...pickupRefs) : [];
+          pickupSnaps.forEach((s, idx) => {
+            if (s.exists && s.data()?.riderPickup) {
+              acceptedStops.push({
+                coordinate: s.data()!.riderPickup,
+                name: acceptedSnap.docs[idx].data().riderName || `Passenger ${idx + 1}`,
+              });
+            }
+          });
+        } catch {
+          // If query fails, continue without accepted stops
+        }
+      } else {
+        committed = true;
+        seatsRemaining = 0;
+      }
+    } else {
+      committed = false;
+      seatsRemaining = seatsCapacity;
+    }
+  }
+
   const participant: CalendarParticipant = {
     uid,
     name: profile.firstName,
     revision,
     commute,
     day,
+    seatsRemaining,
+    seatsCapacity,
+    acceptedStops,
   };
-  return { participant, snapshots, committed: snapshots[3].exists };
+  return { participant, snapshots, committed };
 }
 const options = {
   region: 'us-central1',
@@ -262,16 +308,18 @@ export const findCommuteMatches = onCall(options, async (call) => {
       const a = own.participant,
         b = loaded.participant;
       if (!arrivalTargetsOverlap(a.day.arriveBy, b.day.arriveBy)) continue;
+      const aSeats = a.seatsRemaining !== undefined ? a.seatsRemaining : (a.commute.seats ?? 0);
+      const bSeats = b.seatsRemaining !== undefined ? b.seatsRemaining : (b.commute.seats ?? 0);
       if (
         a.day.mode !== 'ride' &&
         b.day.mode !== 'drive' &&
-        (a.commute.seats ?? 0) > 0
+        aSeats > 0
       )
         proposals.push({ driver: a, rider: b, other: b });
       if (
         b.day.mode !== 'ride' &&
         a.day.mode !== 'drive' &&
-        (b.commute.seats ?? 0) > 0
+        bSeats > 0
       )
         proposals.push({ driver: b, rider: a, other: b });
     }
@@ -401,6 +449,9 @@ export const findCommuteMatches = onCall(options, async (call) => {
             ),
             metrics: evaluation.metrics,
             price: await priceFor(driver.uid, rider.uid, evaluation.metrics),
+            seatsRemaining: driver.seatsRemaining !== undefined ? driver.seatsRemaining : (driver.commute.seats ?? 1),
+            seatsCapacity: driver.seatsCapacity !== undefined ? driver.seatsCapacity : (driver.commute.seats ?? 1),
+            acceptedRidersCount: driver.acceptedStops?.length ?? 0,
           });
         }
       }, true);
