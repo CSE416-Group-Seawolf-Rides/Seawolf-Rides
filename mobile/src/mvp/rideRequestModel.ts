@@ -18,7 +18,7 @@ export interface RideRequest {
   driverName: string;
   riderName: string;
   localDate: string;
-  direction: 'TO_CAMPUS';
+  direction: 'TO_CAMPUS' | 'FROM_CAMPUS';
   status: RideRequestStatus;
   riderRevision: string;
   driverRevision: string;
@@ -52,7 +52,7 @@ export interface CreateRideRequestInput {
   localDate: string;
   riderRevision: string;
   driverRevision: string;
-  direction: 'TO_CAMPUS';
+  direction: 'TO_CAMPUS' | 'FROM_CAMPUS';
 }
 export interface RideRequestResult {
   /** Shared conversation opened by a successful request creation/retry. */
