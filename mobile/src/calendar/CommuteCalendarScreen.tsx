@@ -121,8 +121,17 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     if (!more) setResult(null);
     setResultKey(JSON.stringify([date, commute, overrides.days]));
     try {
-      const next = await searchCalendar(date, previous?.nextCursor ?? undefined);
-      const combined = previous ? mergeCalendarPages(previous, next) : next;
+      let combined = await searchCalendar(date, previous?.nextCursor ?? undefined);
+      if (previous) {
+        combined = mergeCalendarPages(previous, combined);
+      } else {
+        // Automatically fetch initial candidates so all top matches appear together
+        // rather than the single "best match first" quirk.
+        while (combined.nextCursor && combined.matches.length < 5) {
+          const next = await searchCalendar(date, combined.nextCursor);
+          combined = mergeCalendarPages(combined, next);
+        }
+      }
       if (generation.current === requestGeneration) setResult(combined);
     } catch (error) {
       if (generation.current === requestGeneration) {
