@@ -7,6 +7,7 @@ export async function saveMatchingFixture(
   weekday,
   seatsRequested = 1,
   revision = 'v1',
+  driverSeats = 2,
 ) {
   const commute = {
     schemaVersion: 1,
@@ -25,7 +26,7 @@ export async function saveMatchingFixture(
         leaveAt: null,
       },
     ],
-    ...(mode === 'driver' ? { seats: 2 } : {}),
+    ...(mode === 'driver' ? { seats: driverSeats } : {}),
   };
   const setup = {
     schemaVersion: 1,
