@@ -1,7 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commitmentIdFor, requestIdFor } from '../../functions/src/rideRequests.ts';
+import crypto from 'node:crypto';
 import { evaluateCalendarPair } from '../src/calendar/calendarMatching.ts';
+
+const digest = (parts) => crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
+const requestIdFor = (rider, driver, date, direction = 'TO_CAMPUS') =>
+  digest([rider, driver, date, direction]);
+const commitmentIdFor = (uid, date, directionOrRequestId, maybeRequestId) => {
+  let direction = 'TO_CAMPUS';
+  let requestId = maybeRequestId;
+  if (directionOrRequestId === 'TO_CAMPUS' || directionOrRequestId === 'FROM_CAMPUS') {
+    direction = directionOrRequestId;
+  } else if (directionOrRequestId) {
+    requestId = directionOrRequestId;
+  }
+  return requestId
+    ? digest([uid, date, direction, requestId])
+    : digest([uid, date, direction]);
+};
 
 const fakeRouting = {
   timeDependent: false,
