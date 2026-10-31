@@ -20,3 +20,15 @@ export function timelinePriceActions(entry: ChatMessage, uid: string): 'RESPOND'
 export const priceChangeLabel = (status: string) => ({
   PENDING: 'Pending', ACCEPTED: 'Accepted', DECLINED: 'Rejected', CANCELLED: 'Withdrawn', EXPIRED: 'Expired',
 }[status] ?? status);
+
+export function timelineAmendmentActions(entry: ChatMessage, uid: string): 'RESPOND' | 'WITHDRAW' | 'NONE' {
+  const { ride, amendment } = entry;
+  if (entry.type !== 'RIDE_AMENDMENT' || !ride || !amendment || amendment.status !== 'PENDING'
+      || ride.status !== 'ACCEPTED' || ride.settledAt !== undefined
+      || (uid !== ride.driverId && uid !== ride.riderId)) return 'NONE';
+  return amendment.recipientId === uid ? 'RESPOND' : amendment.proposerId === uid ? 'WITHDRAW' : 'NONE';
+}
+
+export const amendmentStatusLabel = (status: string) => ({
+  PENDING: 'Pending', ACCEPTED: 'Accepted', DECLINED: 'Declined', CANCELLED: 'Withdrawn',
+}[status] ?? status);

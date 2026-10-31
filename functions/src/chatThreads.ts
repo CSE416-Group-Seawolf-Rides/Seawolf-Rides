@@ -5,6 +5,7 @@ import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
 import { requestInitiator } from '../../mobile/src/mvp/rideRequestModel';
 import type { ChatMessage } from '../../mobile/src/chat/chatModel';
 import type { PriceChangeRequest } from '../../mobile/src/payments/priceChanges';
+import type { RideAmendment } from '../../mobile/src/mvp/rideAmendmentModel';
 
 type Trip = Pick<RideRequest, 'driverId' | 'riderId' | 'driverName' | 'riderName' | 'localDate' | 'campusLabel' | 'plan'>;
 /** One conversation per pair, even when Either participants swap roles or dates. */
@@ -13,6 +14,7 @@ export const chatIdFor = (driverId: string, riderId: string) =>
 const hash = (parts: string[]) => createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 export const rideEntryId = (ride: Pick<RideRequest, 'id' | 'attemptId'>) => `ride-${hash([ride.id, ride.attemptId ?? 'legacy'])}`;
 export const priceEntryId = (requestId: string, proposalId: string) => `price-${hash([requestId, proposalId])}`;
+export const amendmentEntryId = (requestId: string, proposalId: string) => `amendment-${hash([requestId, proposalId])}`;
 const cleanRide = (ride: RideRequest): RideRequest => JSON.parse(JSON.stringify(ride));
 export function rideEntry(ride: RideRequest, sentAt = Date.now()) {
   return { id: rideEntryId(ride), type: 'RIDE_REQUEST' as const, requestId: ride.id,
@@ -23,6 +25,16 @@ export function priceEntry(ride: RideRequest, change: PriceChangeRequest, sentAt
   return { id: priceEntryId(ride.id, change.id), type: 'PRICE_CHANGE' as const, requestId: ride.id,
     senderId: change.proposerId, sentAt, text: `Price-change request · ${ride.localDate}`,
     ride: cleanRide(ride), priceChange: change };
+}
+export function amendmentEntry(ride: RideRequest, amendment: RideAmendment, sentAt = Date.now()) {
+  const desc = amendment.type === 'TIME'
+    ? 'Time change'
+    : amendment.type === 'LOCATION'
+      ? 'Pickup change'
+      : 'Trip change';
+  return { id: amendmentEntryId(ride.id, amendment.id), type: 'RIDE_AMENDMENT' as const, requestId: ride.id,
+    senderId: amendment.proposerId, sentAt, text: `${desc} request · ${ride.localDate}`,
+    ride: cleanRide(ride), amendment };
 }
 
 /** Append cards using the same counter as text. Their identity and position never change. */
@@ -60,6 +72,7 @@ export async function readRideChatEntries(tx: Transaction, ride: RideRequest) {
   const messages = getFirestore().collection(`chats/${chatIdFor(ride.driverId, ride.riderId)}/messages`);
   const refs = [messages.doc(rideEntryId(ride))];
   if (ride.priceChange) refs.push(messages.doc(priceEntryId(ride.id, ride.priceChange.id)));
+  if (ride.amendment) refs.push(messages.doc(amendmentEntryId(ride.id, ride.amendment.id)));
   return tx.getAll(...refs);
 }
 export function updateRideChatEntries(tx: Transaction, entries: DocumentSnapshot[], ride: RideRequest) {
@@ -69,6 +82,8 @@ export function updateRideChatEntries(tx: Transaction, entries: DocumentSnapshot
       ride: cleanRide(ride),
       ...(entry.get('type') === 'PRICE_CHANGE' && ride.priceChange?.id === entry.get('priceChange.id')
         ? { priceChange: ride.priceChange } : {}),
+      ...(entry.get('type') === 'RIDE_AMENDMENT' && ride.amendment?.id === entry.get('amendment.id')
+        ? { amendment: ride.amendment } : {}),
     });
   });
 }

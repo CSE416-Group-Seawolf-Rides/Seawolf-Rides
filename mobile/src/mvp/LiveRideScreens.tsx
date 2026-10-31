@@ -24,6 +24,7 @@ import { AcceptedTripMap } from '../calendar/AcceptedTripMap';
 import { Card } from '../components/Card';
 import { useRideDecision } from './useRideDecision';
 import { RidePriceChange } from '../payments/components/RidePriceChange';
+import { RideAmendmentCard } from '../rides/components/RideAmendmentCard';
 import { CancelRideButton } from './components/CancelRideButton';
 
 function useLiveRides() {
@@ -116,7 +117,7 @@ function TripItinerary({ ride, uid, otherRides = [] }: { ride: RideRequest; uid:
       <View style={{ gap: 2 }}>
         <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMuted }}>Other passengers on this carpool:</Text>
         {otherRides.map((other) => (
-          <PublicProfileLink key={other.id} participantId={partnerId(other, uid)} name={partnerName(other, uid)} />
+          <PublicProfileLink key={other.id} participantId={other.riderId} name={other.riderName} />
         ))}
       </View>
     )}
@@ -125,6 +126,7 @@ function TripItinerary({ ride, uid, otherRides = [] }: { ride: RideRequest; uid:
     <Text>Arrival · {rideTime(ride.plan.riderDestinationArrival)} · {ride.campusLabel}</Text>
     <Text style={{ color: colors.textMuted }}>New York time · Adds {Math.ceil(ride.metrics.driverExtraDurationSeconds / 60)} min driving</Text>
     <RidePriceChange ride={ride} uid={uid} />
+    <RideAmendmentCard ride={ride} uid={uid} />
   </View>;
 }
 export function LiveRideDetailScreen({ rideId }: { rideId: string }) {

@@ -108,3 +108,8 @@ export {
   proposeRidePriceChange,
   respondToRidePriceChange,
 } from './payments';
+
+export {
+  proposeRideAmendment,
+  respondToRideAmendment,
+} from './rideAmendments';

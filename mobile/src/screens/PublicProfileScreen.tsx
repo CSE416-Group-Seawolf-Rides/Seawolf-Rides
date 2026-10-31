@@ -66,7 +66,7 @@ export function PublicProfileScreen({
           </Pressable>
           {role && <Text style={styles.role}>{role}</Text>}
           {profile.synthetic && <Text style={styles.synthetic}>Demo profile — synthetic user</Text>}
-          {!profileKnown && (
+          {!profileKnown && !profile.publicInfo.length && (
             <Text style={styles.fallback}>This person’s public profile details are not available yet.</Text>
           )}
         </Card>
