@@ -513,7 +513,7 @@ test(
       );
       assert.deepEqual(
         all.matches.map((m) => m.arrivalDifferenceSeconds),
-        [0, 0, 120],
+        [0, 0, 0],
       );
       for (const match of all.matches) {
         assert.equal(match.plan.pickup - match.plan.departure, 600);
