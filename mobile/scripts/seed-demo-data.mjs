@@ -43,6 +43,7 @@ const people = {
     password: DEMO_ACCOUNT.password,
     name: 'Wolfie',
     role: 'both',
+    bio: 'Senior studying Computer Science · Commuter Student Association. Always down for early morning carpools to West Side!',
     point: { latitude: 40.8584, longitude: -73.0996 },
     area: 'Centereach area',
     days: [
@@ -60,6 +61,7 @@ const people = {
     uid: 'demo-alex',
     name: 'Alex',
     role: 'driver',
+    bio: 'Mechanical Engineering grad student. Driving from Lake Grove with great playlists and smooth highway routes.',
     point: { latitude: 40.8526, longitude: -73.1152 },
     area: 'Lake Grove area',
     days: [day('mon', 'drive', 530, 485), day('wed', 'drive', 530, 485), day('fri', 'drive', 530, 485)],
@@ -71,6 +73,7 @@ const people = {
     uid: 'demo-sam',
     name: 'Sam',
     role: 'driver',
+    bio: 'Sophomore majoring in Economics. Driving an all-electric Tesla Model 3 from Hauppauge. Quiet and comfortable ride.',
     point: { latitude: 40.8257, longitude: -73.2027 },
     area: 'Hauppauge area',
     days: [day('fri', 'drive', 595, 545, 840), day('mon', 'drive', 545, 500)],
@@ -82,6 +85,7 @@ const people = {
     uid: 'demo-maya',
     name: 'Maya',
     role: 'rider',
+    bio: 'Biochemistry major · Class of 27. Riding from Lake Ronkonkoma on Tuesdays and Thursdays for morning lab.',
     point: { latitude: 40.8085, longitude: -73.1145 },
     area: 'Lake Ronkonkoma area',
     days: [day('tue', 'ride', 555, 500, 990), day('thu', 'ride', 555, 500, 990)],
@@ -94,6 +98,16 @@ const people = {
     point: { latitude: 40.916691, longitude: -73.139807 },
     area: 'Stony Brook area',
     days: [day('tue', 'ride', 570, 525, 990), day('thu', 'ride', 570, 525, 990)],
+    bio: 'Senior studying Applied Math & Statistics. Commutes from Stony Brook Station. Early bird for 8:30 AM classes.',
+  },
+  jordan: {
+    uid: 'demo-jordan',
+    name: 'Jordan',
+    role: 'rider',
+    bio: 'Junior in Biology (Pre-Med). Commuting from Selden for morning labs. Coffee lover and podcast listener!',
+    point: { latitude: 40.87, longitude: -73.05 },
+    area: 'Selden area',
+    days: [day('tue', 'ride', 570, 525, 990), day('thu', 'ride', 570, 525, 990)],
   },
 };
 
@@ -103,6 +117,14 @@ async function account(p) {
   await auth.createUser({ uid: p.uid, email, emailVerified: true, password: p.password ?? 'seawolf-demo-2026', displayName: p.name });
   const now = Timestamp.now();
   await db.doc(`users/${p.uid}`).set({ schemaVersion: 1, firstName: p.name, role: p.role, updatedAt: now });
+  await db.doc(`publicProfiles/${p.uid}`).set({
+    schemaVersion: 1,
+    ownerId: p.uid,
+    displayName: p.name,
+    role: p.role,
+    bio: p.bio ?? '',
+    updatedAt: now,
+  });
   await db.doc(`users/${p.uid}/commutes/primary`).set({
     schemaVersion: 1,
     ownerId: p.uid,

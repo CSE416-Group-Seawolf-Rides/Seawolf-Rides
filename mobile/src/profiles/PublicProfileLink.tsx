@@ -20,6 +20,6 @@ export function PublicProfileLink({ participantId, name, children, disabled, onO
       if (onOpen) onOpen();
       else openPublicProfile(participantId, name);
     }}>
-    {children ?? <Text style={{ color: colors.accent, fontWeight: '700' }}>View public profile</Text>}
+    {children ?? <Text style={{ color: colors.accent, fontWeight: '700' }}>{name ? `View ${name}’s public profile` : 'View public profile'}</Text>}
   </Pressable>;
 }

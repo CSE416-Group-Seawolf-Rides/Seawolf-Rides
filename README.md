@@ -20,7 +20,7 @@ These are requirements, not claims of implemented functionality. Stripe cost sha
 
 ## Technology Stack
 
-The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.30, and TypeScript 6.0.3. Node.js 24.21.0 and npm are standardized for local development and CI. Firebase Authentication now provides verified Stony Brook identities, while Cloud Firestore stores each user's profile and primary commute. The M3 integration adds persisted matching setup, an authenticated matching service, route estimates and ranked real-user results; see [M3 setup](docs/m3-matching-mvp.md).
+The mobile development foundation uses React Native 0.88, Expo SDK 58, React 19, and TypeScript 5.9. Node.js 24 and npm are standardized for local development and CI. Firebase Authentication provides verified Stony Brook identities, Cloud Firestore stores profiles, commutes, vehicles, and ride commitments, while Cloud Functions powers the deterministic matching engine, multi-passenger capacity management, and OSRM/TomTom road routing; see [M3 setup](docs/m3-matching-mvp.md).
 
 ## Repository Structure
 
@@ -31,20 +31,19 @@ The mobile development foundation uses React Native 0.86.3, Expo SDK 57.0.30, an
 ├── .nvmrc                    # Exact Node.js version
 ├── package.json              # Root convenience scripts
 ├── README.md
-├── mobile/                   # Minimal Expo/React Native TypeScript application
+├── functions/                # Firebase Cloud Functions (matching, ride requests, chat, pricing)
+├── mobile/                   # Expo/React Native TypeScript mobile application
 │   ├── app.json
 │   ├── package.json
 │   ├── package-lock.json
-│   ├── src/app/              # Expo Router routes: (auth) sign-in and (tabs) Home, Rides, Inbox, Account
-│   ├── src/                  # Screens, shared UI, fixtures, auth, and Firestore read
-│   └── test/
+│   ├── src/app/              # Expo Router routes: (auth), (tabs) Home, Rides, Map, Inbox, Account
+│   ├── src/                  # Calendar, matching, routing, profiles, vehicle, chat, theme
+│   └── test/                 # Node.js automated unit tests
 └── docs/
     ├── requirements.md       # Preserved M1 proposal and requirements
     ├── design.md             # M2 architecture and technical design
     └── architecture.mmd      # Editable Mermaid architecture diagram
 ```
-
-No backend or Firebase Functions directory exists yet; those will be added only after the team confirms the backend architecture.
 
 ## Getting Started
 
@@ -60,7 +59,7 @@ macOS and Linux developers can use [nvm](https://github.com/nvm-sh/nvm). Windows
 ### Initial setup
 
 ```bash
-git clone https://github.com/justinlee166/Seawolf-Rides.git
+git clone https://github.com/CSE416-Group-Seawolf-Rides/Seawolf-Rides.git
 cd Seawolf-Rides
 nvm install
 nvm use
