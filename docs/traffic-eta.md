@@ -15,7 +15,7 @@ For each traffic candidate, use the same canonical evaluator with an arrival-bas
 3. Driver → pickup at that same proposed departure.
 4. Pickup → campus at departure + evaluated drive-to-pickup seconds + the existing 120-second boarding allowance.
 
-Boarding is included once in the canonical plan. The second driving leg uses its own appropriate departure time; another date or departure cannot reuse the first forecast. Units remain seconds/meters. The ±30-minute discovery rule, strict no-late/five-minute-early actual arrival windows, seat/readiness/role checks, private point validation, UNKNOWN versus incompatible results and deterministic ranking stay in place.
+Boarding is included once in the canonical plan. The second driving leg uses its own appropriate departure time; another date or departure cannot reuse the first forecast. Units remain seconds/meters. The ±30-minute discovery rule, strict no-late/20-minute-early actual arrival windows, seat/readiness/role checks, private point validation, UNKNOWN versus incompatible results and deterministic ranking stay in place.
 
 Traffic mode evaluates **one arrangement per backend page**, with at most four uncached route requests; OSRM keeps two arrangements/four requests. Display pages of 1/2/5/10 people are separate from these bounded routing batches. The existing cross-invocation Firestore guard, spacing, timeout, budget and abandoned-owner lock behavior remain shared across traffic matching, onboarding suggestions and legacy previews. No automatic retries, lease takeover or direct mobile provider requests are added.
 

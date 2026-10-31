@@ -25,7 +25,7 @@ For a saved **9:00 AM** campus arrival, aim for **8:57 AM**. Every proposed camp
 
 Saved driver Departure is now a reference, rather than a fixed reservation. Matching may propose an earlier departure to accommodate pickups, or a later one to avoid arriving excessively early. The match card/details show the proposed departure and usual departure when different. Sending/accepting requires review of those exact times; the saved weekly schedule is not rewritten. Already accepted rides keep their snapshots. A pending proposal from the previous policy may need cancellation, a fresh search, review and resend.
 
-The ±30-minute rule now concerns **discovery only**, not permission to arrive late. Two people with saved arrival targets 15 minutes apart can enter discovery but still have no feasible common stop/arrival within their individual five-minute windows. These incompatible times can be changed and searched again; they are not silently relaxed. API policy version 3 and a changed search fingerprint reject stale client/backend combinations and cursors.
+The ±30-minute rule concerns **discovery only**, not permission to arrive late. Two people with saved arrival targets up to 20 minutes apart can enter discovery and find a feasible common arrival satisfying their arrival windows (`ARRIVAL_EARLY_SECONDS = 20 * 60`). API policy version 3 and a changed search fingerprint reject stale client/backend combinations and cursors.
 
 Traffic estimates use at most four protected requests per candidate:
 
