@@ -105,13 +105,21 @@ export function LiveCarpoolScreen({ participantId }: { participantId: string }) 
     </Screen>
   );
 }
-function TripItinerary({ ride, uid }: { ride: RideRequest; uid: string }) {
+function TripItinerary({ ride, uid, otherRides = [] }: { ride: RideRequest; uid: string; otherRides?: RideRequest[] }) {
   return <View style={{ gap: spacing.sm }}>
     <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>{rideDate(ride.localDate)}</Text>
     <Text style={{ color: ride.status === 'ACCEPTED' ? colors.success : colors.accent }}>
       {ride.status === 'ACCEPTED' ? 'Confirmed' : ride.status === 'PENDING' ? 'Pending' : ride.status === 'CANCELLED' ? 'Cancelled' : 'Declined'} · {uid === ride.driverId ? `Driving ${ride.riderName}` : `Riding with ${ride.driverName}`}
     </Text>
     <PublicProfileLink participantId={partnerId(ride, uid)} name={partnerName(ride, uid)} />
+    {otherRides.length > 0 && (
+      <View style={{ gap: 2 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMuted }}>Other passengers on this carpool:</Text>
+        {otherRides.map((other) => (
+          <PublicProfileLink key={other.id} participantId={partnerId(other, uid)} name={partnerName(other, uid)} />
+        ))}
+      </View>
+    )}
     <Text>Departure · {rideTime(ride.plan.departure)}</Text>
     <Text>Pickup · {rideTime(ride.plan.pickup)} · {ride.pickupLabel}</Text>
     <Text>Arrival · {rideTime(ride.plan.riderDestinationArrival)} · {ride.campusLabel}</Text>
@@ -135,7 +143,17 @@ export function LiveRideDetailScreen({ rideId }: { rideId: string }) {
       {ride && (
         <>
           {ride.status === 'ACCEPTED' ? <>
-            <TripItinerary ride={ride} uid={uid} />
+            <TripItinerary
+              ride={ride}
+              uid={uid}
+              otherRides={requests.items.filter(
+                (r) =>
+                  r.id !== ride.id &&
+                  r.status === 'ACCEPTED' &&
+                  r.localDate === ride.localDate &&
+                  r.driverId === ride.driverId,
+              )}
+            />
             <AcceptedTripMap key={ride.id} ride={ride} routePreview />
           </> : <LiveRequestCard ride={ride} uid={uid} now={now}
             onCancel={(item) => void decision.cancel(item)} busyId={decision.busy} />}

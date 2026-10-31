@@ -12,9 +12,10 @@ export function LiveAgenda({ days, uid }: { days: LiveAgendaDay[]; uid: string }
     <View style={styles.group}>
       {days.map((day, index) => {
         const request = day.requests[0];
+        const passengerNames = day.requests.map((r) => partnerName(r, uid)).join(', ');
         const headline =
           day.status === 'confirmed'
-            ? `${rideTime(day.mode === 'drive' ? request.plan.departure : request.plan.pickup)} · ${partnerName(request, uid)}`
+            ? `${rideTime(day.mode === 'drive' ? request.plan.departure : request.plan.pickup)} · ${passengerNames}`
             : day.status === 'pending'
               ? `${day.requests.length} pending request${day.requests.length === 1 ? '' : 's'}`
               : day.mode === 'drive'
@@ -24,7 +25,7 @@ export function LiveAgenda({ days, uid }: { days: LiveAgendaDay[]; uid: string }
                   : 'No ride yet';
         const detail =
           day.status === 'confirmed'
-            ? `${day.mode === 'drive' ? 'Driving' : 'Riding'} · ${request.campusLabel}`
+            ? `${day.mode === 'drive' ? (day.requests.length > 1 ? `Driving ${day.requests.length} passengers` : 'Driving') : 'Riding'} · ${request.campusLabel}`
             : day.status === 'pending'
               ? requestRecipient(request) === uid
                 ? 'Waiting on your answer'

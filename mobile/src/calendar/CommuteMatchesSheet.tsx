@@ -391,6 +391,16 @@ export function CommuteMatchesSheet({
                     <Text style={styles.muted}>
                       {best.driverId === uid ? 'You’re driving' : 'You’re riding'}
                     </Text>
+                    {best.seatsRemaining !== undefined && best.role === 'driver' && (
+                      <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+                        {best.seatsRemaining} of {best.seatsCapacity ?? best.seatsRemaining} seats available
+                      </Text>
+                    )}
+                    {best.acceptedRidersCount !== undefined && best.acceptedRidersCount > 0 && (
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                        {best.acceptedRidersCount} passenger{best.acceptedRidersCount === 1 ? '' : 's'} already in car
+                      </Text>
+                    )}
                     <MatchTimes match={best} uid={uid} request={active} />
                     {requestActions(best, true)}
                     <AppButton label={chatBusy ? 'Opening chat…' : 'Send chat'} variant="secondary"

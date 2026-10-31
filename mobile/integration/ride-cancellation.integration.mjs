@@ -214,7 +214,7 @@ test('legacy confirmed rides without proposal IDs or chat threads can cancel and
 test('released reservations permit the actual acceptance transaction for another ride on the same date', async () => {
   const old = await seed();
   const weekday = weekdayForDate(old.localDate);
-  await saveMatchingFixture(driver, 'driver', weekday);
+  await saveMatchingFixture(driver, 'driver', weekday, 1, 'v1', 1);
   await saveMatchingFixture(outsider, 'rider', weekday);
   const { refs: _refs, chatId: _chatId, ...record } = old;
   const id = requestIdFor(outsider.uid, driver.uid, old.localDate);

@@ -74,7 +74,12 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
     commute && profile
       ? calendarDay(commute, profile.role, selected, overrides.days[selected])
       : null;
-  const accepted = requests.items.find((r) => r.localDate === selected && r.status === 'ACCEPTED');
+  const acceptedRides = requests.items.filter((r) => r.localDate === selected && r.status === 'ACCEPTED');
+  const accepted = acceptedRides[0];
+  const isDriver = (day?.mode === 'drive' || (day?.mode === 'either' && (commute?.seats ?? 0) > 0)) || (accepted && accepted.driverId === user?.id);
+  const seatsCapacity = commute?.seats ?? 1;
+  const seatsFilled = isDriver ? acceptedRides.reduce((sum, r) => sum + (r.seats || 1), 0) : acceptedRides.length;
+  const seatsRemaining = isDriver ? Math.max(0, seatsCapacity - seatsFilled) : (acceptedRides.length > 0 ? 0 : 1);
   const nextTrip = nextAcceptedRide(requests.items, now.getTime() / 1000);
   const nextScheduled =
     commute && profile
@@ -282,8 +287,19 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   : `${time(nextTrip.plan.pickup)} pickup`}
               </Text>
               <Text style={styles.nextDetail}>
-                With {nextTrip.driverId === user?.id ? nextTrip.riderName : nextTrip.driverName} ·{' '}
-                {nextTrip.campusLabel}
+                With{' '}
+                {nextTrip.driverId === user?.id
+                  ? requests.items
+                      .filter(
+                        (r) =>
+                          r.localDate === nextTrip.localDate &&
+                          r.status === 'ACCEPTED' &&
+                          r.driverId === user?.id,
+                      )
+                      .map((r) => r.riderName)
+                      .join(', ')
+                  : nextTrip.driverName}{' '}
+                · {nextTrip.campusLabel}
               </Text>
               <Text style={styles.nextDetail}>
                 Campus arrival {time(nextTrip.plan.riderDestinationArrival)} · New York time
@@ -480,17 +496,33 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
               {accepted ? (
                 <>
                   <Text style={{ color: colors.success }}>
-                    Accepted with{' '}
-                    {accepted.driverId === user?.id ? accepted.riderName : accepted.driverName}
+                    {accepted.driverId === user?.id
+                      ? `Accepted with ${acceptedRides.map((r) => r.riderName).join(', ')}`
+                      : `Accepted with ${accepted.driverName}`}
                   </Text>
+                  {isDriver && (
+                    <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                      {seatsRemaining > 0
+                        ? `${seatsFilled} of ${seatsCapacity} seats filled · ${seatsRemaining} seat${seatsRemaining === 1 ? '' : 's'} available`
+                        : `Car full (${seatsFilled} of ${seatsCapacity} seats filled)`}
+                    </Text>
+                  )}
                   <Text>
-                    Pickup {time(accepted.plan.pickup)} · campus{' '}
+                    Departure {time(accepted.plan.departure)} · campus{' '}
                     {time(accepted.plan.riderDestinationArrival)}
                   </Text>
                   <AppButton
-                    label="View accepted ride"
+                    label={acceptedRides.length > 1 ? `View ${acceptedRides.length} accepted rides` : 'View accepted ride'}
                     onPress={() => router.push(`/rides/${accepted.id}`)}
                   />
+                  {isDriver && seatsRemaining > 0 && (
+                    <AppButton
+                      label={busy ? 'Finding passengers…' : 'Find more passengers'}
+                      variant="secondary"
+                      disabled={busy || !withinHorizon || !overrides.loaded || !requests.loaded}
+                      onPress={() => void search()}
+                    />
+                  )}
                 </>
               ) : (
                 <>

@@ -35,7 +35,10 @@ const digest = (parts: string[]) =>
   createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 export const requestIdFor = (rider: string, driver: string, date: string) =>
   digest([rider, driver, date, 'TO_CAMPUS']);
-export const commitmentIdFor = (uid: string, date: string) => digest([uid, date, 'TO_CAMPUS']);
+export const commitmentIdFor = (uid: string, date: string, requestId?: string) =>
+  requestId
+    ? digest([uid, date, 'TO_CAMPUS', requestId])
+    : digest([uid, date, 'TO_CAMPUS']);
 const now = () => Math.floor(Date.now() / 1000);
 function localOnly() {
   if (
@@ -200,16 +203,27 @@ async function assertCurrent(tx: Transaction, prepared: PreparedPair) {
 }
 async function assertUncommitted(tx: Transaction, value: PreparedPair['value']) {
   const db = getFirestore();
-  const refs = value.participantIds.map((uid) =>
-    db.doc(`_rideCommitments/${commitmentIdFor(uid, value.localDate)}`),
+  const riderRef = db.doc(`_rideCommitments/${commitmentIdFor(value.riderId, value.localDate)}`);
+  const driverRef = db.doc(`_rideCommitments/${commitmentIdFor(value.driverId, value.localDate)}`);
+  const [riderCommitment, driverCommitment, driverCommuteSnap] = await tx.getAll(
+    riderRef,
+    driverRef,
+    db.doc(`users/${value.driverId}/commutes/primary`),
   );
-  const commitments = await tx.getAll(...refs);
-  if (commitments.some((c) => c.exists))
+  if (riderCommitment.exists)
     throw new HttpsError(
       'failed-precondition',
       'A participant already has an accepted inbound ride on this date.',
     );
-  return refs;
+  const driverCommute = parseCommuteDocument(driverCommuteSnap.data(), value.driverId);
+  const driverCapacity = driverCommute.seats ?? 0;
+  const currentReserved = driverCommitment.exists ? (driverCommitment.data()?.reservedSeats ?? 1) : 0;
+  if (currentReserved + value.seats > driverCapacity)
+    throw new HttpsError(
+      'failed-precondition',
+      'Insufficient passenger seats.',
+    );
+  return { riderRef, driverRef, driverCommitment, currentReserved };
 }
 function result(snapshot: DocumentSnapshot): RideRequestResult {
   const value = snapshot.data()!;
@@ -357,17 +371,41 @@ export async function commitAcceptance(
         'The proposed timing changed. This request cannot be accepted with different times.',
       );
     await assertCurrent(tx, prepared);
-    const refs = await assertUncommitted(tx, prepared.value);
+    const { riderRef, driverRef, driverCommitment, currentReserved } = await assertUncommitted(tx, prepared.value);
     const chatEntries = await readRideChatEntries(tx, request);
-    refs.forEach((commitment, i) =>
-      tx.create(commitment, {
+    tx.create(riderRef, {
+      requestId: id,
+      userId: prepared.value.riderId,
+      localDate: request.localDate,
+      direction: 'TO_CAMPUS',
+      reservedSeats: request.seats,
+    });
+    if (!driverCommitment.exists) {
+      tx.create(driverRef, {
         requestId: id,
-        userId: prepared.value.participantIds[i],
+        requestIds: [id],
+        userId: prepared.value.driverId,
         localDate: request.localDate,
         direction: 'TO_CAMPUS',
         reservedSeats: request.seats,
-      }),
-    );
+      });
+    } else {
+      const existingRequestIds = driverCommitment.data()?.requestIds ?? [driverCommitment.data()?.requestId].filter(Boolean);
+      tx.update(driverRef, {
+        requestId: id,
+        requestIds: [...existingRequestIds, id],
+        reservedSeats: currentReserved + request.seats,
+        updatedAt: now(),
+      });
+      const perRideDriverRef = db.doc(`_rideCommitments/${commitmentIdFor(prepared.value.driverId, request.localDate, id)}`);
+      tx.create(perRideDriverRef, {
+        requestId: id,
+        userId: prepared.value.driverId,
+        localDate: request.localDate,
+        direction: 'TO_CAMPUS',
+        reservedSeats: request.seats,
+      });
+    }
     if (prepared.privatePickup) tx.set(db.doc(`ridePickups/${id}`), prepared.privatePickup);
     // Revalidate routing and schedules, but keep the price from the transaction's request
     // snapshot (including any discount applied while it was pending). Legacy unpriced
@@ -605,16 +643,24 @@ export async function commitRideCancellation(id: string, uid: string, reason: st
       throw new HttpsError('failed-precondition', 'Only a confirmed ride that has not finished or been paid can be cancelled.');
 
     const threadRef = db.doc(`chats/${chatIdFor(ride.driverId, ride.riderId)}`);
-    const commitmentRefs = [ride.driverId, ride.riderId].map((participantId) =>
-      db.doc(`_rideCommitments/${commitmentIdFor(participantId, ride.localDate)}`));
-    const [thread, settlement, ...commitments] = await tx.getAll(
-      threadRef, db.doc(`_settledRequests/${id}`), ...commitmentRefs,
+    const riderCommitmentRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.riderId, ride.localDate)}`);
+    const driverCommitmentRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.driverId, ride.localDate)}`);
+    const perRideDriverRef = db.doc(`_rideCommitments/${commitmentIdFor(ride.driverId, ride.localDate, id)}`);
+    const [thread, settlement, riderCommitment, driverCommitment, perRideDriverSnap] = await tx.getAll(
+      threadRef, db.doc(`_settledRequests/${id}`), riderCommitmentRef, driverCommitmentRef, perRideDriverRef,
     );
     if (settlement.exists)
       throw new HttpsError('failed-precondition', 'A paid ride cannot be cancelled.');
-    // Never remove a different ride's reservation, including during retries/resends.
-    if (commitments.some((item) => item.exists && item.get('requestId') !== id))
+    if (riderCommitment.exists && riderCommitment.get('requestId') !== id)
       throw new HttpsError('failed-precondition', 'This ride’s reservation changed. Reload your rides.');
+    if (driverCommitment.exists) {
+      const driverReqId = driverCommitment.get('requestId');
+      const driverReqIds = driverCommitment.get('requestIds');
+      const matches = driverReqId === id || (Array.isArray(driverReqIds) && driverReqIds.includes(id));
+      if (!matches) {
+        throw new HttpsError('failed-precondition', 'This ride’s reservation changed. Reload your rides.');
+      }
+    }
     const participants = [ride.driverId, ride.riderId].sort();
     if (thread.exists && JSON.stringify(thread.get('participantIds')) !== JSON.stringify(participants))
       throw new HttpsError('failed-precondition', 'This ride’s conversation is unavailable.');
@@ -646,7 +692,23 @@ export async function commitRideCancellation(id: string, uid: string, reason: st
       tx.set(db.doc(`_priceChangeAttempts/${digest([id, ride.priceChange.id])}`), {
         ...ride.priceChange, status: 'EXPIRED', updatedAt: timestamp,
       });
-    commitments.forEach((item) => { if (item.exists) tx.delete(item.ref); });
+    if (riderCommitment.exists) tx.delete(riderCommitmentRef);
+    if (perRideDriverSnap.exists) tx.delete(perRideDriverRef);
+    if (driverCommitment.exists) {
+      const currentReserved = driverCommitment.data()?.reservedSeats ?? ride.seats;
+      const remainingReserved = currentReserved - ride.seats;
+      const existingReqIds = (driverCommitment.data()?.requestIds ?? [driverCommitment.data()?.requestId]).filter((rId: string) => rId !== id);
+      if (remainingReserved <= 0 || existingReqIds.length === 0) {
+        tx.delete(driverCommitmentRef);
+      } else {
+        tx.update(driverCommitmentRef, {
+          reservedSeats: remainingReserved,
+          requestIds: existingReqIds,
+          requestId: existingReqIds[existingReqIds.length - 1],
+          updatedAt: timestamp,
+        });
+      }
+    }
     tx.delete(db.doc(`ridePickups/${id}`));
     tx.create(threadRef.collection('messages').doc(messageId), {
       senderId: uid, text, sentAt, sequence, type: 'RIDE_CANCELLED', requestId: id,
