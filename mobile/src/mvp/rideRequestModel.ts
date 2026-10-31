@@ -1,6 +1,7 @@
 import type { MatchCard } from './service';
 import type { RidePrice } from '../payments/pricing';
 import type { PriceChangeRequest } from '../payments/priceChanges';
+import type { RideAmendment } from './rideAmendmentModel';
 
 export type RideRequestStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED';
 /** Server-owned dated request. ACCEPTED is the persisted ride/reservation record. */
@@ -31,6 +32,7 @@ export interface RideRequest {
   price?: RidePrice;
   /** Last price-change proposal; only its recipient can accept or decline. */
   priceChange?: PriceChangeRequest;
+  amendment?: RideAmendment;
   /** Marking a payment locks this ride's price permanently. */
   settledAt?: number;
   /** Present only when a confirmed ride was cancelled, rather than a pending ask. */

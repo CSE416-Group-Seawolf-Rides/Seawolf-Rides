@@ -2,6 +2,7 @@ import type { CalendarMatch } from '../calendar/calendarMatching';
 import type { Coordinates } from '../commute/commuteModel';
 import { requestInitiator, type RideRequest } from '../mvp/rideRequestModel';
 import type { PriceChangeRequest } from '../payments/priceChanges';
+import type { RideAmendment } from '../mvp/rideAmendmentModel';
 
 export interface ChatThread {
   id: string;
@@ -23,10 +24,11 @@ export interface ChatMessage {
   sentAt: number;
   sequence: number;
   /** Missing on existing ordinary text messages. */
-  type?: 'TEXT' | 'RIDE_REQUEST' | 'PRICE_CHANGE' | 'RIDE_CANCELLED';
+  type?: 'TEXT' | 'RIDE_REQUEST' | 'PRICE_CHANGE' | 'RIDE_CANCELLED' | 'RIDE_AMENDMENT';
   requestId?: string;
   ride?: RideRequest;
   priceChange?: PriceChangeRequest;
+  amendment?: RideAmendment;
 }
 export const chatPartner = (thread: ChatThread, uid: string) =>
   thread.participantIds.find((id) => id !== uid) ?? '';
