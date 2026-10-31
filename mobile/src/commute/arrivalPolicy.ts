@@ -3,7 +3,7 @@ import { localMinuteToEpoch } from '../mvp/settings';
 /** Discovery remains broad; a proposed trip must meet the actual arrival deadline. */
 export const ARRIVAL_FLEX_MINUTES = 30;
 export const ARRIVAL_FLEX_SECONDS = ARRIVAL_FLEX_MINUTES * 60;
-export const ARRIVAL_EARLY_SECONDS = 5 * 60;
+export const ARRIVAL_EARLY_SECONDS = 20 * 60;
 export const ARRIVAL_BUFFER_SECONDS = 3 * 60;
 /** Legacy persisted-input bound; actual proposed arrivals use the stricter window below. */
 export function latestStartMinute(day: {

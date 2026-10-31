@@ -45,13 +45,13 @@ test('a late usual departure is proposed earlier for review, with pickup/boardin
   assert.equal(result.plan.vehicleCampusArrival, at(537));
   assert.equal(driver.day.startAt, 530);
 });
-test('9 AM is a real deadline; five minutes early and exactly on time are inclusive', async () => {
-  assert.deepEqual(preferredArrivalWindow(date, { arriveBy: 540, leaveAt: null }), { earliest: at(535), latest: at(540) });
+test('9 AM is a real deadline; arrival window respects early bounds and deadline is inclusive', async () => {
+  assert.deepEqual(preferredArrivalWindow(date, { arriveBy: 540, leaveAt: null }), { earliest: at(520), latest: at(540) });
   const atDeadline = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, startAt: 513 } }, date, routing, now);
   assert.equal(atDeadline.status, 'FEASIBLE');
   assert.equal(atDeadline.plan.vehicleCampusArrival, at(540));
   assert.equal((await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, startAt: 514 } }, date, routing, now)).status, 'INFEASIBLE');
-  assert.equal((await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 546 } }, date, routing, now)).status, 'INFEASIBLE');
+  assert.equal((await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 565 } }, date, routing, now)).status, 'INFEASIBLE');
 });
 test('buffered onboarding rounding stays 2–5 minutes early for fractional-minute durations', () => {
   for (const duration of [60,308,1800,1801,2700,3509]) {

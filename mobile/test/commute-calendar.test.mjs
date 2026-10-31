@@ -248,16 +248,16 @@ test('preferred arrival target discovery is inclusive at ±30 minutes and reject
     }
   }
 });
-test('saved departures are reviewable references; proposals arrive at most five minutes early and never late', async () => {
+test('saved departures are reviewable references; proposals arrive within relaxed early window and never late', async () => {
   for (const startAt of [473, 500, 533, 534]) {
     const result = await evaluateCalendarPair({ ...driver, day: { ...driver.day, startAt } }, rider, date, router, now);
     assert.equal(result.status, 'FEASIBLE');
     assert.equal(result.plan.vehicleCampusArrival, localMinuteToEpoch(date, 537));
     assert.equal(result.plan.departure, localMinuteToEpoch(date, 500));
   }
-  const noSharedWindow = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 550 } }, date, router, now);
+  const noSharedWindow = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 565 } }, date, router, now);
   assert.equal(noSharedWindow.status, 'INFEASIBLE');
-  const returnBound = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, leaveAt: 534 } }, date, router, now);
+  const returnBound = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, leaveAt: 515 } }, date, router, now);
   assert.equal(returnBound.status, 'INFEASIBLE');
 });
 test('invalid saved arrival/start times and nonfinite current times remain UNKNOWN', async () => {
