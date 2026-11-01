@@ -28,9 +28,12 @@ export function AcceptedTripMap({ ride, routePreview = false }: {
   if (ride.status !== 'ACCEPTED') return null;
   if (ride.source !== 'CALENDAR') return <Text>Exact pickup is unavailable for this older trip.</Text>;
   if (!pickup) return <Text>{error ?? 'Loading the confirmed pickup…'}</Text>;
+  const isReturn = ride.direction === 'FROM_CAMPUS';
   const campus = pickup.campus ?? CAMPUS_POINTS.find((p) => p.label === ride.campusLabel)?.coordinate;
   const points = routePreview
-    ? [pickup.driverStart, pickup.riderPickup, ...(campus ? [campus] : [])]
+    ? (isReturn
+        ? [campus, pickup.riderPickup, pickup.driverStart].filter((p): p is NonNullable<typeof p> => Boolean(p))
+        : [pickup.driverStart, pickup.riderPickup, ...(campus ? [campus] : [])])
     : [pickup.riderPickup];
   const fitPoints = route?.geometry.length ? [...points, ...route.geometry] : points;
   const latitudes = fitPoints.map((p) => p.latitude), longitudes = fitPoints.map((p) => p.longitude);
@@ -53,15 +56,22 @@ export function AcceptedTripMap({ ride, routePreview = false }: {
   };
   // The whole trip in one handoff: current location → pickup(s) in order → campus lot.
   const openDirections = async () => {
-    const destination = campus ?? pickup.riderPickup;
-    const stops = campus ? [pickup.riderPickup] : [];
-    try { await Linking.openURL(tripDirectionsUrl(Platform.OS, stops, destination)); }
-    catch { setMessage('Could not open Maps. The confirmed pickup pin is shown above.'); }
+    if (isReturn) {
+      const destination = pickup.driverStart;
+      const stops = [pickup.riderPickup];
+      try { await Linking.openURL(tripDirectionsUrl(Platform.OS, stops, destination)); }
+      catch { setMessage('Could not open Maps. The drop-off pin is shown above.'); }
+    } else {
+      const destination = campus ?? pickup.riderPickup;
+      const stops = campus ? [pickup.riderPickup] : [];
+      try { await Linking.openURL(tripDirectionsUrl(Platform.OS, stops, destination)); }
+      catch { setMessage('Could not open Maps. The confirmed pickup pin is shown above.'); }
+    }
   };
   return (
     <View style={styles.section}>
       <Text style={styles.heading}>{routePreview ? 'Your trip route' : 'Confirmed pickup'}</Text>
-      <Text style={styles.detail}>{ride.pickupLabel} · Exact pickup pin shared after acceptance</Text>
+      <Text style={styles.detail}>{isReturn ? `${ride.campusLabel} → ${ride.dropoffLabel ?? (driving ? `${ride.riderName}’s drop-off` : 'Home')} · Exact drop-off pin shared after acceptance` : `${ride.pickupLabel} · Exact pickup pin shared after acceptance`}</Text>
       <MapView
         key={JSON.stringify(fitPoints)}
         style={styles.map}
@@ -70,9 +80,19 @@ export function AcceptedTripMap({ ride, routePreview = false }: {
           longitudeDelta: Math.max(0.008, (maxLng - minLng) * 1.4) }}
         accessibilityLabel="Confirmed pickup and trip map"
       >
-        <Marker coordinate={pickup.riderPickup} title="Confirmed pickup" description={ride.pickupLabel} pinColor={colors.accent} />
-        {routePreview && <Marker coordinate={pickup.driverStart} title="Driver departure" />}
-        {routePreview && campus && <Marker coordinate={campus} title={ride.campusLabel} pinColor={colors.success} />}
+        {isReturn ? (
+          <>
+            {campus && <Marker coordinate={campus} title="Campus departure" pinColor={colors.success} />}
+            <Marker coordinate={pickup.riderPickup} title={`Drop off ${ride.riderName}`} description={ride.dropoffLabel ?? ride.pickupLabel} pinColor={colors.accent} />
+            {routePreview && <Marker coordinate={pickup.driverStart} title="Driver destination (home)" />}
+          </>
+        ) : (
+          <>
+            <Marker coordinate={pickup.riderPickup} title="Confirmed pickup" description={ride.pickupLabel} pinColor={colors.accent} />
+            {routePreview && <Marker coordinate={pickup.driverStart} title="Driver departure" />}
+            {routePreview && campus && <Marker coordinate={campus} title={ride.campusLabel} pinColor={colors.success} />}
+          </>
+        )}
         {route && <Polyline coordinates={route.geometry} strokeColor={colors.accent} strokeWidth={5} />}
       </MapView>
       {routePreview && <>
@@ -83,7 +103,7 @@ export function AcceptedTripMap({ ride, routePreview = false }: {
           : 'Load the road route when needed. The pins show confirmed locations.'} Route previews do not change agreed times or include pickup waiting.</Text>
       </>}
       <AppButton
-        label={driving ? `Directions: pick up ${ride.riderName}, then ${ride.campusLabel}` : `Directions to ${ride.campusLabel} via your pickup`}
+        label={isReturn ? (driving ? `Directions: drop off ${ride.riderName}, then home` : `Directions home from campus`) : (driving ? `Directions: pick up ${ride.riderName}, then ${ride.campusLabel}` : `Directions to ${ride.campusLabel} via your pickup`)}
         variant="secondary"
         onPress={() => void openDirections()}
       />

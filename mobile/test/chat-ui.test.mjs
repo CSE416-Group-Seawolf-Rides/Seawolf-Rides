@@ -63,6 +63,7 @@ function harness() {
     './chatTimeline': timeline, './ChatTimelineCard': { ChatTimelineCard: View },
     './chatPresentation': { formatBubbleTime: () => '', formatThreadTimestamp: () => '', getThreadBadge: () => null },
     '../rides/useHomeClock': { useHomeClock: () => ({ now: new Date(1_000_000_000_000) }) },
+    '../mvp/rideErrors': { friendlyRideError: (e) => ({ title: 'Error', message: String(e) }) },
   };
   mocks['./ChatContextCard'] = loadComponent('../src/chat/ChatContextCard.tsx', { ...mocks, '../mvp/ridePresentation': { rideTime } });
   mocks['../payments/components/PriceTag'] = loadComponent('../src/payments/components/PriceTag.tsx', {

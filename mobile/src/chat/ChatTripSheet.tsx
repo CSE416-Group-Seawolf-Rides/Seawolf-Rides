@@ -24,6 +24,7 @@ import { chatPartner, type ChatMatchDetails, type ChatThread } from './chatModel
 import { chatRequestActions, chatRequestInput } from './chatTripActions';
 import { CancelRideButton, RideCancellationNotice } from '../mvp/components/CancelRideButton';
 import type { RideRequest } from '../mvp/rideRequestModel';
+import { friendlyRideError } from '../mvp/rideErrors';
 import { sameRideAttempt } from './chatTimeline';
 
 export function ChatTripSheet({ thread, uid, selectedRide, onClose }: { thread: ChatThread; uid: string; selectedRide?: RideRequest; onClose: () => void }) {
@@ -149,14 +150,16 @@ export function ChatTripSheet({ thread, uid, selectedRide, onClose }: { thread: 
           {estimateError && <Text accessibilityRole="alert">{estimateError}</Text>}
           {request && <Text style={styles.status}>{request.status === 'ACCEPTED' ? 'Confirmed ride' : request.status === 'PENDING' ? (request.plan.departure > epoch ? 'Request pending' : 'Departure has passed') : request.status === 'CANCELLED' ? (request.cancellation ? 'Ride cancelled' : 'Request cancelled') : 'Request declined'}</Text>}
           {request && <RideCancellationNotice ride={request} uid={uid} />}
-          {plan && <Card style={{ gap: spacing.md }}>
+          {(() => {
+            const isReturn = request?.direction === 'FROM_CAMPUS' || thread.trip?.direction === 'FROM_CAMPUS';
+            return plan && <Card style={{ gap: spacing.md }}>
             <Text style={styles.name}>{archived ? 'Original trip' : request?.status === 'ACCEPTED' ? 'Agreed trip' : request?.status === 'PENDING' ? 'Requested trip' : selectedRide ? 'Original trip' : 'Estimated trip'}</Text>
-            <Text>Departure · {rideTime(plan.departure)}</Text>
+            <Text>Departure · {rideTime(plan.departure)}{isReturn ? ` · ${request?.campusLabel ?? thread.campusLabel}` : ''}</Text>
             {canPropose && details?.match.savedDriverDeparture !== undefined && details.match.savedDriverDeparture !== plan.departure &&
               <Text style={styles.muted}>Usual driver departure · {rideTime(details.match.savedDriverDeparture)}</Text>}
             <Text>Pickup · {rideTime(plan.pickup)}{request ? ` · ${request.pickupLabel}` : ''}</Text>
-            <Text>Arrival · {rideTime(plan.vehicleCampusArrival)} · {details?.match.dropoffLabel ?? request?.campusLabel ?? thread.campusLabel}</Text>
-            <Text style={styles.muted}>New York time · {Math.ceil((plan.pickup - plan.departure) / 60)} min to pickup</Text>
+            <Text>{isReturn ? 'Drop-off' : 'Arrival'} · {rideTime(isReturn ? plan.riderDestinationArrival : plan.vehicleCampusArrival)} · {details?.match.dropoffLabel ?? request?.dropoffLabel ?? (isReturn ? 'Drop-off area' : request?.campusLabel ?? thread.campusLabel)}</Text>
+            <Text style={styles.muted}>New York time · {isReturn ? `${Math.ceil((plan.riderDestinationArrival - plan.departure) / 60)} min return ride` : `${Math.ceil((plan.pickup - plan.departure) / 60)} min to pickup`}</Text>
             {details && <Text style={styles.muted}>{Math.ceil(details.match.addedDrivingSeconds / 60)} min added driving · {details.match.eta?.model === 'TRAFFIC_FORECAST' ? 'Traffic-aware forecast · TomTom' : 'Road estimate · no live traffic'}</Text>}
             <Text style={styles.name}>Gas share</Text>
             {price ? <>
@@ -168,7 +171,8 @@ export function ChatTripSheet({ thread, uid, selectedRide, onClose }: { thread: 
             </> : <Text style={styles.muted}>
               {request && !canPropose ? 'No gas share was recorded for this request.' : 'Refresh the match to check its gas share.'}
             </Text>}
-          </Card>}
+          </Card>;
+          })()}
           {canPropose && details && <>
             <View style={styles.map} accessibilityLabel={`Your starting point and ${name}'s approximate area`}>
               <MapView style={StyleSheet.absoluteFill} initialRegion={matchMapRegion(details.ownPoint, details.match.area)}
@@ -187,7 +191,15 @@ export function ChatTripSheet({ thread, uid, selectedRide, onClose }: { thread: 
             <Text style={styles.name}>Finish setting up your vehicle</Text>
             <AppButton label="Set up my vehicle" disabled={busy} onPress={() => close(() => router.push('/vehicle-setup'))} />
           </Card>}
-          {!!error && <Text accessibilityRole="alert">{error}</Text>}
+          {!!error && (() => {
+            const friendly = friendlyRideError(error, actions === 'CANCEL' ? 'cancel' : 'accept', name);
+            return (
+              <View style={{ gap: 4, padding: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.md, borderColor: colors.border, borderWidth: 1 }}>
+                <Text style={{ fontWeight: '800', color: colors.accent }}>{friendly.title}</Text>
+                <Text style={{ fontSize: 13, color: colors.text }}>{friendly.message}</Text>
+              </View>
+            );
+          })()}
           {!context.loading && !context.error && canPropose && <>
             {details && !stale && <AppButton label={busy ? 'Sending…' : 'Send request'} disabled={busy || estimateLoading}
               onPress={() => void mutate('SEND')} />}

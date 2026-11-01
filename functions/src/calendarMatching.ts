@@ -456,7 +456,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
               : evaluation.plan.riderDestinationArrival;
           result.matches.push({
             eta: evaluation.eta,
-            dropoffLabel: CAMPUS_POINTS.find((point) => point.id === driver.commute.campusLot)?.label,
+            dropoffLabel: direction === 'FROM_CAMPUS' ? rider.commute.startArea.label : CAMPUS_POINTS.find((point) => point.id === driver.commute.campusLot)?.label,
             preferredDropoffLabel: rider.commute.riderDropoffPreference === 'any' || rider.commute.campusLot === 'other' ? 'Any' : CAMPUS_POINTS.find((point) => point.id === rider.commute.campusLot)?.label,
             dropoffPreferenceMatch: preferencePenalty({ driver, rider, other }) === 0,
             savedDriverDeparture: localMinuteToEpoch(
@@ -585,6 +585,9 @@ export async function prepareCalendarPair(
       seats: 1,
       pickupLabel: direction === 'FROM_CAMPUS' ? 'Stony Brook Campus' : r.participant.commute.startArea.label,
       campusLabel: CAMPUS_POINTS.find(
+        (p) => p.id === d.participant.commute.campusLot,
+      )!.label,
+      dropoffLabel: direction === 'FROM_CAMPUS' ? r.participant.commute.startArea.label : CAMPUS_POINTS.find(
         (p) => p.id === d.participant.commute.campusLot,
       )!.label,
       plan: evaluated.plan,

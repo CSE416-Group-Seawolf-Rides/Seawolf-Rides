@@ -127,11 +127,11 @@ export const getChatMatch = onCall(options, async (call): Promise<ChatMatchDetai
         chatIdFor(trip.driverId, trip.riderId) !== data.chatId || typeof trip.localDate !== 'string')
       throw new HttpsError('failed-precondition', 'Find a current match from your calendar to start a new trip.');
     const [driver, rider] = await Promise.all([
-      loadCalendarParticipant(trip.driverId, trip.localDate), loadCalendarParticipant(trip.riderId, trip.localDate),
+      loadCalendarParticipant(trip.driverId, trip.localDate, undefined, trip.direction), loadCalendarParticipant(trip.riderId, trip.localDate, undefined, trip.direction),
     ]);
     if (!driver || !rider) throw new HttpsError('failed-precondition', 'This match is no longer available.');
     const prepared = await withMatchingRouting((routing) => prepareCalendarPair(
-      trip.riderId, trip.driverId, trip.localDate, rider.participant.revision, driver.participant.revision, routing,
+      trip.riderId, trip.driverId, trip.localDate, rider.participant.revision, driver.participant.revision, routing, trip.direction,
     ), true);
     // Recheck after routing; a changed inquiry or saved plan must not be displayed as current.
     const [freshThread, ...current] = await getFirestore().getAll(ref, ...prepared.snapshots.map((s) => s.ref));

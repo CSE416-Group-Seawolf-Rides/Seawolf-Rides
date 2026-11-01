@@ -42,6 +42,8 @@ export interface ChatTrip {
   departure: number;
   pickup: number;
   vehicleCampusArrival: number;
+  direction?: 'TO_CAMPUS' | 'FROM_CAMPUS';
+  riderDestinationArrival?: number;
 }
 export function chatContext(thread: Pick<ChatThread, 'names' | 'trip'>, uid: string, request?: RideRequest) {
   if (!request) return { title: 'Match inquiry', status: '', trip: thread.trip };

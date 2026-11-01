@@ -22,6 +22,7 @@ export function LiveRequestCard({
   onCancel?: (ride: RideRequest) => void;
   busyId?: string | null;
 }) {
+  const isReturn = ride.direction === 'FROM_CAMPUS';
   const status =
     ride.status === 'ACCEPTED' && rideEnd(ride) > now
       ? 'Confirmed'
@@ -46,7 +47,9 @@ export function LiveRequestCard({
         </Text>
       </View>
       <Text style={styles.route}>
-        {ride.pickupLabel} → {ride.campusLabel}
+        {isReturn
+          ? `${ride.campusLabel} → ${ride.dropoffLabel ?? (partnerId(ride, uid) === ride.riderId ? `${ride.riderName}’s area` : 'Home')}`
+          : `${ride.pickupLabel} → ${ride.campusLabel}`}
       </Text>
       {ride.price && (
         <Text style={styles.price}>
@@ -60,7 +63,7 @@ export function LiveRequestCard({
       )}
       {ride.driverId === uid && (
         <Text style={styles.detail}>
-          Leave your starting point · {rideTime(ride.plan.departure)}
+          Leave {isReturn ? ride.campusLabel : 'your starting point'} · {rideTime(ride.plan.departure)}
         </Text>
       )}
       <View style={styles.timing}>
@@ -69,7 +72,7 @@ export function LiveRequestCard({
           <Text style={styles.time}>{rideTime(ride.plan.pickup)}</Text>
         </View>
         <View style={styles.copy}>
-          <Text style={styles.caption}>CAMPUS ARRIVAL</Text>
+          <Text style={styles.caption}>{isReturn ? 'DROP-OFF' : 'CAMPUS ARRIVAL'}</Text>
           <Text style={styles.time}>{rideTime(ride.plan.riderDestinationArrival)}</Text>
         </View>
       </View>
