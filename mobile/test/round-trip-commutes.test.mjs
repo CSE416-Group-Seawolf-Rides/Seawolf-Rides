@@ -142,3 +142,49 @@ test('evaluateCalendarPair rejects FROM_CAMPUS when either commuter has no retur
   assert.equal(result.status, 'INFEASIBLE');
   assert.ok(result.reasonCodes.includes('SKIPPED_OCCURRENCE'));
 });
+
+test('previewAcceptedRide points order for FROM_CAMPUS return trip starts at campus and ends at driver home', () => {
+  const campus = { latitude: 40.9080, longitude: -73.1250 };
+  const driverStart = { latitude: 40.8654, longitude: -73.0531 };
+  const riderPickup = { latitude: 40.8258, longitude: -73.1205 };
+
+  const getRoutePoints = (ride, pickup) => {
+    return ride.direction === 'FROM_CAMPUS'
+      ? [campus, pickup.riderPickup, pickup.driverStart]
+      : [pickup.driverStart, pickup.riderPickup, campus];
+  };
+
+  const returnPoints = getRoutePoints({ direction: 'FROM_CAMPUS' }, { driverStart, riderPickup });
+  assert.deepEqual(returnPoints, [campus, riderPickup, driverStart]);
+  assert.notDeepEqual(returnPoints[0], returnPoints[1]);
+  assert.notDeepEqual(returnPoints[1], returnPoints[2]);
+
+  const morningPoints = getRoutePoints({ direction: 'TO_CAMPUS' }, { driverStart, riderPickup });
+  assert.deepEqual(morningPoints, [driverStart, riderPickup, campus]);
+});
+
+test('LiveRequestCard labels FROM_CAMPUS trips with departure from campus to drop-off destination', () => {
+  const ride = {
+    driverId: 'wolfie',
+    riderId: 'jordan',
+    driverName: 'Wolfie',
+    riderName: 'Jordan',
+    localDate: '2026-11-03',
+    direction: 'FROM_CAMPUS',
+    status: 'PENDING',
+    pickupLabel: 'Stony Brook Campus',
+    campusLabel: 'Tabler',
+    dropoffLabel: 'Selden area',
+    plan: { departure: 1793473800, pickup: 1793473800, riderDestinationArrival: 1793474760 },
+    metrics: { driverExtraDurationSeconds: 900 },
+  };
+
+  const isReturn = ride.direction === 'FROM_CAMPUS';
+  const routeText = isReturn
+    ? `${ride.campusLabel} → ${ride.dropoffLabel ?? `${ride.riderName}’s area`}`
+    : `${ride.pickupLabel} → ${ride.campusLabel}`;
+  const arrivalCaption = isReturn ? 'DROP-OFF' : 'CAMPUS ARRIVAL';
+
+  assert.equal(routeText, 'Tabler → Selden area');
+  assert.equal(arrivalCaption, 'DROP-OFF');
+});

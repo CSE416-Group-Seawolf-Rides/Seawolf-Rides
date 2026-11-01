@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '../auth/SessionProvider';
 import { AppButton } from '../components/AppButton';
 import { PublicProfileLink } from '../profiles/PublicProfileLink';
 import { Screen } from '../components/Screen';
 import { useHomeClock } from '../rides/useHomeClock';
-import { colors, spacing } from '../theme';
+import { colors, radii, spacing } from '../theme';
 import { useRideRequests } from './rideRequestClient';
 import type { RideRequest } from './rideRequestModel';
 import {
@@ -121,9 +122,16 @@ function TripItinerary({ ride, uid, otherRides = [] }: { ride: RideRequest; uid:
         ))}
       </View>
     )}
-    <Text>Departure · {rideTime(ride.plan.departure)}</Text>
-    <Text>Pickup · {rideTime(ride.plan.pickup)} · {ride.pickupLabel}</Text>
-    <Text>Arrival · {rideTime(ride.plan.riderDestinationArrival)} · {ride.campusLabel}</Text>
+    {(() => {
+      const isReturn = ride.direction === 'FROM_CAMPUS';
+      return (
+        <>
+          <Text>Departure · {rideTime(ride.plan.departure)}{isReturn ? ` · ${ride.campusLabel}` : ''}</Text>
+          <Text>Pickup · {rideTime(ride.plan.pickup)} · {ride.pickupLabel}</Text>
+          <Text>{isReturn ? 'Drop-off' : 'Arrival'} · {rideTime(ride.plan.riderDestinationArrival)} · {isReturn ? (ride.dropoffLabel ?? (uid === ride.driverId ? `${ride.riderName}’s area` : 'Home')) : ride.campusLabel}</Text>
+        </>
+      );
+    })()}
     <Text style={{ color: colors.textMuted }}>New York time · Adds {Math.ceil(ride.metrics.driverExtraDurationSeconds / 60)} min driving</Text>
     <RidePriceChange ride={ride} uid={uid} />
     <RideAmendmentCard ride={ride} uid={uid} />
@@ -184,6 +192,11 @@ export function LiveRequestReviewScreen() {
   const { requests, uid, now } = useLiveRides();
   const decision = useRideDecision();
   const [deferred, setDeferred] = useState<string[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef<any>(null);
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.max(280, width - spacing.xl * 2);
+
   const waiting = requests.items
     .filter((r) => requestNeedsAnswer(r, uid, now))
     .sort((a, b) => a.plan.departure - b.plan.departure || a.id.localeCompare(b.id));
@@ -191,12 +204,21 @@ export function LiveRequestReviewScreen() {
     ...waiting.filter((r) => !deferred.includes(r.id)),
     ...deferred.flatMap((id) => waiting.filter((r) => r.id === id)),
   ];
-  const current = queue[0];
+
+  const safeIndex = Math.min(activeIndex, Math.max(0, queue.length - 1));
+  const current = queue[safeIndex];
+
+  const switchIndex = (next: number) => {
+    const clamped = Math.max(0, Math.min(next, queue.length - 1));
+    setActiveIndex(clamped);
+    scrollRef.current?.scrollTo({ x: clamped * (cardWidth + spacing.md), animated: true });
+  };
+
   return (
     <Screen
       title="Ride requests"
       onBack={() => router.canGoBack() ? router.back() : router.replace('/rides')}
-      eyebrow={current ? `${queue.length} WAITING FOR YOUR ANSWER` : undefined}
+      eyebrow={current ? (queue.length > 1 ? `${queue.length} WAITING FOR YOUR ANSWER · (${safeIndex + 1}/${queue.length})` : `${queue.length} WAITING FOR YOUR ANSWER`) : undefined}
       afterContent={decision.sheet}
     >
       {(requests.error || decision.error) && (
@@ -215,31 +237,160 @@ export function LiveRequestReviewScreen() {
         </>
       )}
       {current && (
-        <View style={{ gap: spacing.lg }}>
-          <LiveRequestCard ride={current} uid={uid} now={now} />
-          <AppButton
-            label={decision.busy ? 'Saving…' : 'Accept request'}
-            disabled={!!decision.busy}
-            onPress={() => void decision.decide(current, 'ACCEPTED')}
-          />
-          <AppButton
-            label="Decline request"
-            variant="secondary"
-            disabled={!!decision.busy}
-            onPress={() => void decision.decide(current, 'DECLINED')}
-          />
+        <View style={{ gap: spacing.md }}>
           {queue.length > 1 && (
+            <View style={reviewStyles.pagerHeader}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Previous request"
+                disabled={safeIndex === 0}
+                onPress={() => switchIndex(safeIndex - 1)}
+                hitSlop={8}
+                style={[reviewStyles.navBtn, safeIndex === 0 && reviewStyles.navBtnDisabled]}
+              >
+                <Ionicons name="chevron-back" size={18} color={safeIndex === 0 ? colors.textMuted : colors.accent} />
+                <Text style={[reviewStyles.navBtnText, safeIndex === 0 && reviewStyles.navBtnTextDisabled]}>Prev</Text>
+              </Pressable>
+
+              <View style={reviewStyles.pagerInfo}>
+                <Text style={reviewStyles.pagerCounter}>
+                  Request {safeIndex + 1} of {queue.length}
+                </Text>
+                <View style={reviewStyles.dotsRow}>
+                  {queue.map((item, idx) => (
+                    <View
+                      key={item.id}
+                      style={[
+                        reviewStyles.dot,
+                        idx === safeIndex ? reviewStyles.dotActive : reviewStyles.dotInactive,
+                      ]}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Next request"
+                disabled={safeIndex === queue.length - 1}
+                onPress={() => switchIndex(safeIndex + 1)}
+                hitSlop={8}
+                style={[reviewStyles.navBtn, safeIndex === queue.length - 1 && reviewStyles.navBtnDisabled]}
+              >
+                <Text style={[reviewStyles.navBtnText, safeIndex === queue.length - 1 && reviewStyles.navBtnTextDisabled]}>Next</Text>
+                <Ionicons name="chevron-forward" size={18} color={safeIndex === queue.length - 1 ? colors.textMuted : colors.accent} />
+              </Pressable>
+            </View>
+          )}
+
+          <ScrollView
+            ref={scrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={cardWidth + spacing.md}
+            decelerationRate="fast"
+            onMomentumScrollEnd={(e) => {
+              const offset = e.nativeEvent.contentOffset.x;
+              const nextIdx = Math.round(offset / (cardWidth + spacing.md));
+              if (nextIdx >= 0 && nextIdx < queue.length) {
+                setActiveIndex(nextIdx);
+              }
+            }}
+            contentContainerStyle={{ gap: spacing.md }}
+          >
+            {queue.map((ride) => (
+              <View key={ride.id} style={{ width: cardWidth }}>
+                <LiveRequestCard ride={ride} uid={uid} now={now} />
+              </View>
+            ))}
+          </ScrollView>
+
+          <View style={{ gap: spacing.sm, marginTop: spacing.xs }}>
             <AppButton
-              label="Decide later"
+              label={decision.busy ? 'Saving…' : (queue.length > 1 ? `Accept request (${current.riderName})` : 'Accept request')}
+              disabled={!!decision.busy}
+              onPress={() => void decision.decide(current, 'ACCEPTED')}
+            />
+            <AppButton
+              label={queue.length > 1 ? `Decline request (${current.riderName})` : 'Decline request'}
               variant="secondary"
               disabled={!!decision.busy}
-              onPress={() =>
-                setDeferred((ids) => [...ids.filter((id) => id !== current.id), current.id])
-              }
+              onPress={() => void decision.decide(current, 'DECLINED')}
             />
-          )}
+            {queue.length > 1 && (
+              <AppButton
+                label="Decide later"
+                variant="secondary"
+                disabled={!!decision.busy}
+                onPress={() => {
+                  setDeferred((ids) => [...ids.filter((id) => id !== current.id), current.id]);
+                  setActiveIndex(0);
+                  scrollRef.current?.scrollTo({ x: 0, animated: false });
+                }}
+              />
+            )}
+          </View>
         </View>
       )}
     </Screen>
   );
 }
+
+const reviewStyles = StyleSheet.create({
+  pagerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  navBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    gap: 2,
+  },
+  navBtnDisabled: {
+    opacity: 0.35,
+  },
+  navBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  navBtnTextDisabled: {
+    color: colors.textMuted,
+  },
+  pagerInfo: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  pagerCounter: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  dotActive: {
+    backgroundColor: colors.accent,
+    width: 14,
+  },
+  dotInactive: {
+    backgroundColor: colors.border,
+  },
+});

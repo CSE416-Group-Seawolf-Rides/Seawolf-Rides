@@ -182,7 +182,7 @@ export async function preparePair(
     riderName: parseUserProfileDocument(rider.saved.profile).firstName,
     driverName: card.firstName,
     localDate: data.localDate,
-    direction: 'TO_CAMPUS',
+    direction: data.direction ?? 'TO_CAMPUS',
     riderRevision: data.riderRevision,
     driverRevision: data.driverRevision,
     seats: setup.seatsRequested,
@@ -568,7 +568,7 @@ export const respondToRideRequest = onCall(options, async (call) => {
             ...(saved.source === 'CALENDAR' ? { source: 'CALENDAR' as const } : {}),
             driverId: saved.driverId,
             localDate: saved.localDate,
-            direction: 'TO_CAMPUS',
+            direction: saved.direction ?? 'TO_CAMPUS',
             riderRevision: saved.riderRevision,
             driverRevision: saved.driverRevision,
           },
@@ -775,7 +775,9 @@ export const previewAcceptedRide = onCall(options, async (call) => {
     if (!isValidRouteCoordinate(pickup?.driverStart) || !isValidRouteCoordinate(pickup?.riderPickup) ||
         !isValidRouteCoordinate(campus))
       throw new HttpsError('failed-precondition', 'The confirmed route points are unavailable.');
-    const points = [pickup.driverStart, pickup.riderPickup, campus];
+    const points = ride.direction === 'FROM_CAMPUS'
+      ? [campus, pickup.riderPickup, pickup.driverStart]
+      : [pickup.driverStart, pickup.riderPickup, campus];
     // Preview only: never modifies agreed timing, commitments, or acceptance state.
     return await withMatchingRouting(
       (routing) => routing.route(points, { departureEpochSeconds: Math.max(now() + 60, ride.plan.departure) }),

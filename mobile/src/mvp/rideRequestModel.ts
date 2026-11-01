@@ -26,6 +26,7 @@ export interface RideRequest {
   seats: number;
   pickupLabel: string;
   campusLabel: string;
+  dropoffLabel?: string;
   plan: MatchCard['plan'];
   metrics: MatchCard['metrics'];
   /** Gas share locked when the request was sent. Absent on older records. */

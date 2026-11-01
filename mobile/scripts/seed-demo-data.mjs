@@ -104,9 +104,9 @@ const people = {
     uid: 'demo-jordan',
     name: 'Jordan',
     role: 'rider',
-    bio: 'Junior in Biology (Pre-Med). Commuting from Selden for morning labs. Coffee lover and podcast listener!',
-    point: { latitude: 40.87, longitude: -73.05 },
-    area: 'Selden area',
+    bio: 'Junior in Biology (Pre-Med). Commuting from Centereach for morning labs. Coffee lover and podcast listener!',
+    point: { latitude: 40.8620, longitude: -73.1050 },
+    area: 'Centereach area',
     days: [day('tue', 'ride', 570, 525, 990), day('thu', 'ride', 570, 525, 990)],
   },
   taylor: {
@@ -234,6 +234,7 @@ async function ride({ driver, rider, date, status, initiator = rider, adjustment
     seats: 1,
     pickupLabel: isReturn ? 'Stony Brook Campus' : rider.area,
     campusLabel: 'Tabler',
+    dropoffLabel: isReturn ? rider.area : 'Tabler',
     plan: {
       occurrence: { localDate: date, direction },
       feasibleDepartureWindow: { earliest: departure - 600, latest: departure + 300 },
@@ -251,9 +252,7 @@ async function ride({ driver, rider, date, status, initiator = rider, adjustment
   await db.doc(`rideRequests/${id}`).set(value);
   if (status === 'ACCEPTED') {
     await db.doc(`ridePickups/${id}`).set(
-      isReturn
-        ? { campus: CAMPUS.tabler, driverStart: CAMPUS.tabler, riderPickup: CAMPUS.tabler }
-        : { campus: CAMPUS.tabler, driverStart: driver.point, riderPickup: rider.point },
+      { campus: CAMPUS.tabler, driverStart: driver.point, riderPickup: rider.point },
     );
     for (const uid of value.participantIds)
       await db.doc(`_rideCommitments/${commitmentIdFor(uid, date, direction)}`).set({
@@ -328,7 +327,7 @@ async function chat(driver, rider, request, lines) {
     localDate: request.value.localDate,
     campusLabel: 'Tabler',
     trip: {
-      driverId: driver.uid, riderId: rider.uid, localDate: request.value.localDate, campusLabel: 'Tabler',
+      driverId: driver.uid, riderId: rider.uid, localDate: request.value.localDate, campusLabel: 'Tabler', direction: request.value.direction,
       departure: request.value.plan.departure, pickup: request.value.plan.pickup,
       vehicleCampusArrival: request.value.plan.vehicleCampusArrival,
     },
