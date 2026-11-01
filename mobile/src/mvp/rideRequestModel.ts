@@ -76,10 +76,12 @@ export function findTripRequest(
   requests: RideRequest[],
   pair: { driverId: string; riderId: string },
   date: string,
+  direction?: 'TO_CAMPUS' | 'FROM_CAMPUS',
 ): RideRequest | undefined {
   const same = requests.filter(
     (request) =>
       request.localDate === date &&
+      (!direction || !request.direction || request.direction === direction) &&
       ((request.driverId === pair.driverId && request.riderId === pair.riderId) ||
         (request.driverId === pair.riderId && request.riderId === pair.driverId)),
   );

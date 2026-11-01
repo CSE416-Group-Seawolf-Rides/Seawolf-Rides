@@ -135,17 +135,19 @@ export function RideAmendmentCard({
 
           <View style={styles.changeDetails}>
             {(amendment.type === 'TIME' || amendment.type === 'BOTH') && amendment.originalDeparture && amendment.proposedDeparture && (
-              <View style={styles.detailRow}>
-                <Text style={styles.label}>Departure</Text>
-                <Text style={styles.value}>
-                  {rideTime(amendment.originalDeparture)} → {rideTime(amendment.proposedDeparture)}{' '}
+              <View style={styles.changeBlock}>
+                <View style={styles.changeHeaderRow}>
+                  <Text style={styles.label}>Departure</Text>
                   <Text style={styles.highlight}>({formatTimeDelta(amendment.deltaSeconds ?? 0)})</Text>
+                </View>
+                <Text style={styles.value}>
+                  {rideTime(amendment.originalDeparture)} → {rideTime(amendment.proposedDeparture)}
                 </Text>
               </View>
             )}
 
             {(amendment.type === 'LOCATION' || amendment.type === 'BOTH') && amendment.originalPickupLabel && amendment.proposedPickupLabel && (
-              <View style={styles.detailRow}>
+              <View style={styles.changeBlock}>
                 <Text style={styles.label}>Pickup</Text>
                 <Text style={styles.value}>
                   {amendment.originalPickupLabel} →{' '}
@@ -447,12 +449,19 @@ const styles = StyleSheet.create({
   changeDetails: {
     backgroundColor: 'rgba(153,0,0,0.04)',
     borderRadius: radii.sm,
-    padding: spacing.sm,
-    gap: spacing.xs,
+    padding: spacing.md,
+    gap: spacing.sm,
   },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
-  value: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  changeBlock: {
+    gap: 3,
+  },
+  changeHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  label: { color: colors.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  value: { color: colors.text, fontSize: 14, fontWeight: '700', lineHeight: 20 },
   highlight: { color: colors.accent, fontWeight: '800' },
   noteBox: {
     marginTop: spacing.xs,
@@ -460,7 +469,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
-  noteText: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic' },
+  noteText: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic', lineHeight: 18 },
   buttonGroup: { gap: spacing.sm, marginTop: spacing.xs },
   triggerContainer: { gap: spacing.xs },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(23,33,43,0.4)' },

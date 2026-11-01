@@ -129,7 +129,7 @@ export function CommuteMatchesSheet({
   const person = people.find((item) => item.id === detailId);
   const selectedMatch =
     person?.options.find((item) => item.driverId === driverOption) ?? person?.options[0];
-  const request = selectedMatch ? findTripRequest(requests, selectedMatch, date) : undefined;
+  const request = selectedMatch ? findTripRequest(requests, selectedMatch, date, selectedMatch.direction ?? (selectedMatch.plan?.occurrence?.direction as any)) : undefined;
   const match =
     person?.options.find(
       (item) =>
@@ -179,7 +179,7 @@ export function CommuteMatchesSheet({
     });
   };
   const requestActions = (candidate: CalendarMatch, fromCard = false) => {
-    const existing = findTripRequest(requests, candidate, date);
+    const existing = findTripRequest(requests, candidate, date, candidate.direction ?? (candidate.plan?.occurrence?.direction as any));
     if (existing?.status === 'PENDING')
       return (
         <View style={{ gap: spacing.sm }}>
@@ -353,7 +353,7 @@ export function CommuteMatchesSheet({
                 </View>
               )}
               {current.people.map((item) => {
-                const active = findTripRequest(requests, item.options[0], date);
+                const active = findTripRequest(requests, item.options[0], date, item.options[0].direction ?? (item.options[0].plan?.occurrence?.direction as any));
                 const best =
                   item.options.find(
                     (option) =>

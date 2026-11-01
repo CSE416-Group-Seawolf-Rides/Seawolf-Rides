@@ -29,8 +29,8 @@ const auth = getAuth();
 const db = getFirestore();
 
 const sha = (parts) => createHash('sha256').update(JSON.stringify(parts)).digest('hex');
-const requestIdFor = (rider, driver, date) => sha([rider, driver, date, 'TO_CAMPUS']);
-const commitmentIdFor = (uid, date) => sha([uid, date, 'TO_CAMPUS']);
+const requestIdFor = (rider, driver, date, direction = 'TO_CAMPUS') => sha([rider, driver, date, direction]);
+const commitmentIdFor = (uid, date, direction = 'TO_CAMPUS') => sha([uid, date, direction]);
 const chatIdFor = (a, b) => sha([a, b].sort());
 const CAMPUS = { tabler: { latitude: 40.9097068, longitude: -73.1269548 } };
 const PHOTO = '/9j/AA=='; // Placeholder thumbnail accepted by the demo validator.
@@ -109,6 +109,21 @@ const people = {
     area: 'Selden area',
     days: [day('tue', 'ride', 570, 525, 990), day('thu', 'ride', 570, 525, 990)],
   },
+  taylor: {
+    uid: 'demo-taylor',
+    name: 'Taylor',
+    role: 'rider',
+    bio: 'Junior in Computer Engineering · Robotics Club. Commuting from Port Jefferson Station for afternoon labs.',
+    point: { latitude: 40.9250, longitude: -73.0550 },
+    area: 'Port Jefferson Station area',
+    days: [
+      day('mon', 'ride', 540, 495, 1020),
+      day('tue', 'ride', 570, 525, 990),
+      day('wed', 'ride', 540, 495, 1020),
+      day('thu', 'ride', 570, 525, 990),
+      day('fri', 'ride', 600, 555, 840),
+    ],
+  },
 };
 
 async function account(p) {
@@ -159,8 +174,10 @@ async function clearSeeded() {
         if (name === 'rideRequests') {
           await db.doc(`ridePickups/${doc.id}`).delete();
           await db.doc(`_settledRequests/${doc.id}`).delete();
-          for (const uid of doc.data().participantIds ?? [])
-            await db.doc(`_rideCommitments/${commitmentIdFor(uid, doc.data().localDate)}`).delete();
+          for (const uid of doc.data().participantIds ?? []) {
+            await db.doc(`_rideCommitments/${commitmentIdFor(uid, doc.data().localDate, 'TO_CAMPUS')}`).delete();
+            await db.doc(`_rideCommitments/${commitmentIdFor(uid, doc.data().localDate, 'FROM_CAMPUS')}`).delete();
+          }
         }
         await doc.ref.delete();
       }
@@ -177,11 +194,12 @@ function nearest(dayName, from, direction, count) {
   return dates;
 }
 
-async function ride({ driver, rider, date, status, initiator = rider, adjustment, pickupMinute }) {
-  const departureMinute = pickupMinute - 15;
+async function ride({ driver, rider, date, status, initiator = rider, adjustment, pickupMinute, direction = 'TO_CAMPUS' }) {
+  const isReturn = direction === 'FROM_CAMPUS';
+  const departureMinute = isReturn ? (pickupMinute ?? 16 * 60 + 30) : (pickupMinute - 15);
   const departure = localMinuteToEpoch(date, departureMinute);
-  const pickup = localMinuteToEpoch(date, pickupMinute);
-  const arrival = pickup + 25 * 60;
+  const pickup = isReturn ? departure : localMinuteToEpoch(date, pickupMinute);
+  const arrival = isReturn ? (pickup + 20 * 60) : (pickup + 25 * 60);
   const metrics = {
     soloDurationSeconds: 1500,
     sharedDurationSeconds: 2400,
@@ -196,7 +214,7 @@ async function ride({ driver, rider, date, status, initiator = rider, adjustment
   };
   const vehicle = people[Object.keys(people).find((k) => people[k].uid === driver.uid)].vehicle;
   const price = applyAdjustment(ridePrice(metrics, vehicle ?? null, DEFAULT_FUEL_PRICES), adjustment);
-  const id = requestIdFor(rider.uid, driver.uid, date);
+  const id = requestIdFor(rider.uid, driver.uid, date, direction);
   const created = Math.floor(Date.now() / 1000) - 86400 * 3;
   const value = {
     schemaVersion: 1,
@@ -209,20 +227,20 @@ async function ride({ driver, rider, date, status, initiator = rider, adjustment
     driverName: driver.name,
     riderName: rider.name,
     localDate: date,
-    direction: 'TO_CAMPUS',
+    direction,
     status,
     riderRevision: 'seed',
     driverRevision: 'seed',
     seats: 1,
-    pickupLabel: rider.area,
+    pickupLabel: isReturn ? 'Stony Brook Campus' : rider.area,
     campusLabel: 'Tabler',
     plan: {
-      occurrence: { localDate: date, direction: 'TO_CAMPUS' },
+      occurrence: { localDate: date, direction },
       feasibleDepartureWindow: { earliest: departure - 600, latest: departure + 300 },
       departure,
       pickup,
       boardingComplete: pickup + 120,
-      vehicleCampusArrival: arrival,
+      vehicleCampusArrival: isReturn ? departure : arrival,
       riderDestinationArrival: arrival,
     },
     metrics,
@@ -232,18 +250,22 @@ async function ride({ driver, rider, date, status, initiator = rider, adjustment
   };
   await db.doc(`rideRequests/${id}`).set(value);
   if (status === 'ACCEPTED') {
-    await db.doc(`ridePickups/${id}`).set({ campus: CAMPUS.tabler, driverStart: driver.point, riderPickup: rider.point });
+    await db.doc(`ridePickups/${id}`).set(
+      isReturn
+        ? { campus: CAMPUS.tabler, driverStart: CAMPUS.tabler, riderPickup: CAMPUS.tabler }
+        : { campus: CAMPUS.tabler, driverStart: driver.point, riderPickup: rider.point },
+    );
     for (const uid of value.participantIds)
-      await db.doc(`_rideCommitments/${commitmentIdFor(uid, date)}`).set({
-        requestId: id, userId: uid, localDate: date, direction: 'TO_CAMPUS', reservedSeats: 1,
+      await db.doc(`_rideCommitments/${commitmentIdFor(uid, date, direction)}`).set({
+        requestId: id, userId: uid, localDate: date, direction, reservedSeats: 1,
       });
   }
   return { id, value };
 }
 
 // Signs in as the rider and goes through search → request exactly like the app does.
-async function realRequest(rider, driver, date) {
-  const app = clientApp({ projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' }, `seed-${rider.uid}`);
+async function realRequest(rider, driver, date, direction = 'TO_CAMPUS') {
+  const app = clientApp({ projectId: 'demo-seawolf-rides', apiKey: 'emulator-only' }, `seed-${rider.uid}-${direction}`);
   try {
     const signIn = clientAuth(app);
     connectAuthEmulator(signIn, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, { disableWarnings: true });
@@ -262,7 +284,7 @@ async function realRequest(rider, driver, date) {
     };
     let cursor;
     for (let page = 0; page < 6; page++) {
-      const result = await call('findCommuteMatches', { localDate: date, ...(cursor ? { cursor } : {}) });
+      const result = await call('findCommuteMatches', { localDate: date, direction, ...(cursor ? { cursor } : {}) });
       const match = result.matches.find((m) => m.driverId === driver.uid && m.riderId === rider.uid);
       if (match) {
         const created = await call('createRideRequest', {
@@ -275,23 +297,24 @@ async function realRequest(rider, driver, date) {
           driverId: match.driverId,
           riderId: match.riderId,
           localDate: date,
-          direction: 'TO_CAMPUS',
+          direction,
           riderRevision: match.riderRevision,
           driverRevision: match.driverRevision,
-          attemptId: sha([rider.uid, driver.uid, date, Date.now()]).slice(0, 20),
+          attemptId: sha([rider.uid, driver.uid, date, direction, Date.now()]).slice(0, 20),
         });
         return { id: created.id, value: (await db.doc(`rideRequests/${created.id}`).get()).data() };
       }
       if (!result.nextCursor) break;
       cursor = result.nextCursor;
     }
-    console.warn(`No route-feasible match for ${rider.name} → ${driver.name} on ${date}; skipped the pending request.`);
+    console.warn(`No route-feasible match for ${rider.name} → ${driver.name} on ${date} (${direction}); creating direct pending request.`);
+    return await ride({ driver, rider, date, status: 'PENDING', direction, pickupMinute: direction === 'FROM_CAMPUS' ? 990 : 540 });
   } catch (error) {
-    console.warn(`Couldn’t create ${rider.name}’s request through the backend (${error.message}). Is it running with --live-osrm?`);
+    console.warn(`Couldn’t create ${rider.name} request via backend (${error.message}); creating direct pending request.`);
+    return await ride({ driver, rider, date, status: 'PENDING', direction, pickupMinute: direction === 'FROM_CAMPUS' ? 990 : 540 });
   } finally {
     await deleteClient(app);
   }
-  return null;
 }
 
 async function chat(driver, rider, request, lines) {
@@ -349,9 +372,11 @@ async function main() {
   const pastWithMaya = [...nearest('tue', today, -1, 1), ...nearest('thu', today, -1, 1)].sort();
   const aheadWithMaya = [...nearest('tue', shiftDate(today, 1), 1, 1), ...nearest('thu', shiftDate(today, 1), 1, 1)];
   const mayaRides = [];
-  for (const date of [...pastWithMaya, ...aheadWithMaya])
-    mayaRides.push(await ride({ driver: wolfie, rider: maya, date, status: 'ACCEPTED', adjustment: -25, pickupMinute: 530 }));
-  const sent = mayaRides.find((r) => r.value.localDate === pastWithMaya[0]);
+  for (const date of [...pastWithMaya, ...aheadWithMaya]) {
+    mayaRides.push(await ride({ driver: wolfie, rider: maya, date, status: 'ACCEPTED', adjustment: -25, pickupMinute: 530, direction: 'TO_CAMPUS' }));
+    mayaRides.push(await ride({ driver: wolfie, rider: maya, date, status: 'ACCEPTED', adjustment: -25, pickupMinute: 990, direction: 'FROM_CAMPUS' }));
+  }
+  const sent = mayaRides.find((r) => r.value.localDate === pastWithMaya[0] && r.value.direction === 'TO_CAMPUS');
   await db.collection('settlements').doc('seed-maya-sent').set({
     schemaVersion: 1, participantIds: [maya.uid, wolfie.uid], payerId: maya.uid, payeeId: wolfie.uid,
     payerName: maya.name, payeeName: wolfie.name, requestIds: [sent.id], cents: sent.value.price.cents,
@@ -360,10 +385,14 @@ async function main() {
   });
   await db.doc(`_settledRequests/${sent.id}`).set({ settlementId: 'seed-maya-sent', createdAt: 0 });
 
-  // Chris is waiting on Wolfie's answer for a Thursday drive. It's created through the real
-  // search → request callables, so the server's timing and commute checks pass on accept.
+  // Chris is waiting on Wolfie's answer for a Thursday morning drive.
   const chrisDate = nearest('thu', shiftDate(today, 8), 1, 1)[0];
-  const chrisRequest = await realRequest(chris, wolfie, chrisDate);
+  const chrisRequest = await realRequest(chris, wolfie, chrisDate, 'TO_CAMPUS');
+
+  // Jordan is waiting on Wolfie's answer for an evening return trip home.
+  const jordan = people.jordan;
+  const jordanDate = nearest('tue', shiftDate(today, 1), 1, 1)[0];
+  const jordanReturnRequest = await realRequest(jordan, wolfie, jordanDate, 'FROM_CAMPUS');
 
   await chat(alex, wolfie, alexRides.at(-1), [
     [alex, 'Hey! Accepted your Mon/Wed request. I’ll be at the Smith Haven Mall Macy’s entrance.'],
@@ -378,6 +407,10 @@ async function main() {
   if (chrisRequest)
     await chat(wolfie, chris, chrisRequest, [
       [chris, 'Hi! I sent a request for that Thursday, I have a 9:30 lab.'],
+    ]);
+  if (jordanReturnRequest)
+    await chat(wolfie, jordan, jordanReturnRequest, [
+      [jordan, 'Hi Wolfie! Any room in your car for the return trip home from Tabler on Tuesday afternoon?'],
     ]);
 
   console.log(`Seeded the demo account: ${DEMO_ACCOUNT.email} / ${DEMO_ACCOUNT.password}`);
