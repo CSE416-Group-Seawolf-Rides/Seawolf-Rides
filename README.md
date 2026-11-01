@@ -2,61 +2,69 @@
 
 ## Overview
 
-Seawolf Rides is a mobile-first carpool coordination platform for the Stony Brook community, developed for CSE 416 — Software Engineering. It is designed to help drivers and riders plan recurring or scheduled commutes by comparing schedules, travel direction, route compatibility, and estimated pickup detour. The system will recommend practical matches; it will not automatically dispatch or assign rides.
+Seawolf Rides is a mobile-first carpool coordination platform for the Stony Brook community, developed for CSE 416 — Software Engineering. It is designed to help drivers and riders coordinate recurring and scheduled campus commutes by comparing timetables, travel direction, route compatibility, and pickup detours. The platform recommends practical matches and provides end-to-end carpool management, mutual trip modifications, messaging, and route previews without automatic dispatching or commercial ride-hailing.
 
-## Core Features
+## Core Features (M4 Scope)
 
-The planned semester scope includes:
+The Milestone 4 implementation delivers the complete carpool lifecycle:
 
-- Stony Brook email-based authentication and user profiles
-- Driver and rider commute profiles for planned and recurring travel
-- Deterministic schedule, location, route, and detour matching
-- Ranked recommendations controlled by driver seat and detour preferences
-- Ride request accept, reject, and cancel flows
-- Basic messaging and persistent shared data
-- External routing integration
-
-These are requirements, not claims of implemented functionality. Stripe cost sharing and Trip Mode are stretch goals; on-the-go matching is a major reach goal.
+- **Verified SBU Identity & Public Profiles**: Stony Brook (`@stonybrook.edu`) email-verified authentication, vehicle configuration with seat capacity, and public commuter profiles with bios, majors, and verified badges.
+- **Commute Calendar & Schedule Management**: Weekly schedule planning supporting bidirectional commutes (**To Campus / Morning** and **Return Home / Evening**) with per-day mode overrides (`drive`, `ride`, `either`, `skip`).
+- **Deterministic Multi-Passenger Matching**: Candidate evaluation factoring in driver seat availability, overlapping arrival/departure windows, and bounded driver detour limits (under 30 minutes).
+- **Carpool Proposal & Decision Lifecycle**:
+  - Dated ride requests initiated by riders or drivers.
+  - Multi-request review queue with horizontal swipe gestures and step navigation.
+  - Mutual ride amendments (proposing departure time adjustments or pickup point changes).
+  - Explicit accept, decline, and cancellation flows with atomic commitment locking preventing double-bookings.
+- **In-App Messaging & Interactive Trip Cards**: Real-time Firestore chat threads per carpool match with live message delivery, message sequence tracking, and interactive modal cards to review gas share and accept/cancel proposals directly in conversation.
+- **Fair Gas Cost Sharing**: Standard non-commercial gas share calculations powered by weekly Long Island fuel prices, driver price adjustments (-50% to +50%), and peer settlement tracking (Venmo, PayPal, Zelle, Cash) with receipt confirmation.
+- **Turn-by-Turn Routing & Directions Handoff**: Multi-point road route previews via OSRM (and traffic-forecasted ETAs via TomTom) with accurate waypoint ordering and one-tap handoff to Apple Maps and Google Maps.
+- **Trust & Safety Controls**: Commuter blocking (instantly hiding mutual search results and locking chat threads) and moderation reporting.
 
 ## Technology Stack
 
-The mobile development foundation uses React Native 0.88, Expo SDK 58, React 19, and TypeScript 5.9. Node.js 24 and npm are standardized for local development and CI. Firebase Authentication provides verified Stony Brook identities, Cloud Firestore stores profiles, commutes, vehicles, and ride commitments, while Cloud Functions powers the deterministic matching engine, multi-passenger capacity management, and OSRM/TomTom road routing; see [M3 setup](docs/m3-matching-mvp.md).
+- **Mobile Client**: React Native 0.88, Expo SDK 58, React 19, TypeScript 5.9, Expo Router v4.
+- **Backend & Cloud Services**: Firebase Cloud Functions (Node.js 24 runtime), Cloud Firestore, Firebase Authentication.
+- **Routing & Maps**: Open Source Routing Machine (OSRM) for fast offline/local road geometry and distance metrics; TomTom Routing API for traffic-aware departure forecasting; `react-native-maps` for interactive native mapping.
+- **Tooling & CI**: Node.js 24 and npm, parallel GitHub Actions CI workflow (lint, TypeScript type-check, 462 automated unit tests, and Expo bundle export).
 
 ## Repository Structure
 
 ```text
 .
-├── .github/workflows/ci.yml  # Parallel lint, type-check, unit-test, and export checks
+├── .github/workflows/ci.yml   # Parallel lint, type-check, unit tests, and export checks
 ├── .gitignore
-├── .nvmrc                    # Exact Node.js version
-├── package.json              # Root convenience scripts
+├── .nvmrc                     # Exact Node.js version (24.21.0)
+├── firebase.json              # Firebase production configuration
+├── firebase.demo.json         # Firebase local emulator configuration
+├── package.json               # Root convenience scripts
 ├── README.md
-├── functions/                # Firebase Cloud Functions (matching, ride requests, chat, pricing)
-├── mobile/                   # Expo/React Native TypeScript mobile application
+├── functions/                 # Firebase Cloud Functions backend
+│   ├── src/                   # Matching engine, ride requests, chat, pricing, routing
+│   ├── test/                  # Functions unit and integration tests
+│   └── package.json
+├── mobile/                    # Expo/React Native TypeScript mobile application
 │   ├── app.json
 │   ├── package.json
-│   ├── package-lock.json
-│   ├── src/app/              # Expo Router routes: (auth), (tabs) Home, Rides, Map, Inbox, Account
-│   ├── src/                  # Calendar, matching, routing, profiles, vehicle, chat, theme
-│   └── test/                 # Node.js automated unit tests
-└── docs/
-    ├── requirements.md       # Preserved M1 proposal and requirements
-    ├── design.md             # M2 architecture and technical design
-    └── architecture.mmd      # Editable Mermaid architecture diagram
+│   ├── scripts/               # Demo seed scripts, test helpers, local runner
+│   ├── src/app/               # Expo Router file-based screens: (auth), (tabs) Home, Rides, Map, Inbox, Account
+│   ├── src/                   # Commute calendar, matching, chat, payments, safety, navigation
+│   └── test/                  # Node.js automated unit test suite (462 tests)
+└── docs/                      # Architectural, requirement, and operational documentation
 ```
 
 ## Getting Started
 
-### Required tools
+### Required Tools
 
 - Git
-- Node.js **24.21.0** (the exact version in `.nvmrc`)
-- npm, included with Node.js
-- Expo Go on an iOS or Android device for the initial physical-device workflow
+- Node.js **24.21.0** (the exact version specified in `.nvmrc`)
+- npm (bundled with Node.js)
+- Expo Go on an iOS or Android device (or an Android/iOS emulator)
 
-macOS and Linux developers can use [nvm](https://github.com/nvm-sh/nvm). Windows developers can use [nvm-windows](https://github.com/coreybutler/nvm-windows) or [fnm](https://github.com/Schniz/fnm). Everyone should use the same Node.js version and committed npm lockfile regardless of operating system.
+macOS and Linux developers can use [nvm](https://github.com/nvm-sh/nvm). Windows developers can use [nvm-windows](https://github.com/coreybutler/nvm-windows) or [fnm](https://github.com/Schniz/fnm).
 
-### Initial setup
+### Initial Setup
 
 ```bash
 git clone https://github.com/CSE416-Group-Seawolf-Rides/Seawolf-Rides.git
@@ -65,64 +73,64 @@ nvm install
 nvm use
 cd mobile
 npm ci
+cd ../functions
+npm ci
+cd ..
 ```
 
-Do not run `npm ci` at the repository root: dependencies and `package-lock.json` currently live in `mobile/`. With nvm-windows, use `nvm install 24.21.0` and `nvm use 24.21.0`; with fnm, use `fnm use --install-if-missing 24.21.0`.
+Do not run `npm ci` at the repository root; dependencies reside in `mobile/` and `functions/`.
 
-### Start Expo
+### Running the Local Demo
 
-From `mobile/`:
+Seawolf Rides provides a completely hermetic local environment using Firebase Local Emulators and pre-seeded student accounts (Wolfie, Alex, Maya, Jordan, Chris, and Sam).
 
-```bash
-npm run start
-```
+1. **Start the Firebase Emulators** (terminal 1):
+   ```bash
+   npx firebase-tools emulators:start --config firebase.demo.json --project demo-seawolf-rides --only auth,firestore,functions
+   ```
 
-Open Expo Go on Android and scan the terminal QR code, or scan it with the iOS Camera app. The phone and development computer generally need to be on the same local network. If Expo Go requests authentication, sign in to Expo Go and run `npx expo login` on the development computer using the same Expo account. If local network policy blocks the connection, try:
+2. **Seed Demo Accounts & Rides** (terminal 2):
+   ```bash
+   npm run seed:demo --prefix mobile
+   ```
+   *Default Demo Credentials:* `demo@stonybrook.edu` / `seawolf-demo-2026` (Wolfie).
 
-```bash
-npm run start -- --tunnel
-```
+3. **Start Expo Development Server** (terminal 2):
+   ```bash
+   cd mobile
+   npx expo start --lan
+   ```
+   Open Expo Go on your phone and scan the displayed QR code. (Ensure the phone and PC are connected to the same Wi-Fi network).
 
-The starter application has successfully launched on a physical iPhone using Expo Go.
+## Development & Testing
 
-## Development
-
-After the initial `mobile/npm ci`, common commands can be run from the repository root:
+Common commands can be run from the repository root:
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` | Start the Expo development server |
-| `npm run doctor` | Validate Expo dependency and project compatibility |
-| `npm run lint` | Run Expo's ESLint configuration |
-| `npm run typecheck` | Run TypeScript with `noEmit` |
-| `npm run test` | Run the Node.js automated tests |
-| `npm run test:firebase-auth` | Run registration, verification, sign-in, and password-reset tests in the local Auth emulator |
-| `npm run test:firestore-rules` | Run owner-access Firestore rules tests in the local emulator |
+| `npm run dev` | Start the Expo mobile development server |
+| `npm run lint` | Run ESLint and Expo project checks across `mobile/` |
+| `npm run typecheck` | Run TypeScript verification with `noEmit` |
+| `npm test --prefix mobile` | Run the complete mobile test suite (462 automated unit tests) |
+| `npm test --prefix functions` | Run Firebase Cloud Functions backend tests |
 | `npm run build` | Export a local Android JavaScript bundle as a non-publishing CI check |
+| `npm run seed:demo --prefix mobile` | Reset and reseed emulator accounts, schedules, rides, chats, and amendments |
 
-The corresponding scripts also work from `mobile/` (`npm run start`, `npm run lint`, and so on). The build script is an Expo export check, not an EAS cloud build or signed app-store build.
-
-For daily development:
+### Daily Workflow
 
 ```bash
 nvm use
-git pull
+git pull origin main
 cd mobile
 npm ci
 npm run start
 ```
 
-Run `npm ci` whenever `mobile/package-lock.json` changes. To add an Expo or React Native dependency, use `npx expo install <package>` from `mobile/` so Expo selects an SDK-compatible version. After changing dependencies, run all checks and commit both `mobile/package.json` and `mobile/package-lock.json`. Do not create Yarn or pnpm lockfiles.
+Run `npm test --prefix mobile` and `npm run typecheck --prefix mobile` prior to opening pull requests. CI enforces 100% green checks on all PRs before merging.
 
-### Environment variables
+### Environment Configuration
 
-Firebase Authentication and Firestore require six public client configuration values. From the repository root, create the ignored local file:
-
-```bash
-cp mobile/.env.example mobile/.env
-```
-
-Fill in these values for the development Firebase project:
+For development connecting to hosted Firebase rather than the emulators, copy `mobile/.env.example` to `mobile/.env` and supply the project keys:
 
 ```text
 EXPO_PUBLIC_FIREBASE_API_KEY=
@@ -133,55 +141,40 @@ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 EXPO_PUBLIC_FIREBASE_APP_ID=
 ```
 
-Firebase's `EXPO_PUBLIC_*` values are public client configuration embedded in the application bundle; they are not private server secrets. Do not commit `mobile/.env`. Private API secrets, administrative credentials, and unrestricted server-side keys must remain outside the mobile application and will be designed with the future trusted backend.
+These are public client identifier keys embedded into the Expo bundle. Never place server private secrets into `mobile/.env`.
 
-### Firebase Authentication and persistence
+## Documentation Index
 
-In Firebase Console, initialize Authentication and enable the **Email/Password**
-provider before running the app. New users must register with an
-`@stonybrook.edu` address and follow Firebase's verification email before they can
-enter the application.
+Detailed documentation for each subsystem is maintained in [`docs/`](docs/):
 
-Firebase Auth sessions use device storage and survive normal app relaunches. After
-sign-in, the app loads `users/{uid}` and `users/{uid}/commutes/primary`; onboarding
-and later commute edits write back to those paths. The versioned Firestore rules
-require the matching UID, a verified email claim, and the exact
-`@stonybrook.edu` domain. Run `npm run test:firestore-rules` to verify verified-owner
-access, unverified/outside-domain rejection, cross-user denial, and persistence
-round trips in the local emulator.
+### Core Architecture & Specifications
+- [M1 Proposal & Requirements](docs/requirements.md)
+- [M2 System Architecture & Design](docs/design.md)
+- [Architecture Diagram (Mermaid)](docs/architecture.mmd)
+- [CI/CD & Merge Protections](docs/ci-cd.md)
 
-Saves wait up to ten seconds for server confirmation before showing a recoverable
-"Save still pending" message. Onboarding keeps your answers and enables the button
-again. Retrying the same change waits on the original write; another change is
-blocked until that write succeeds or fails. When confirmation arrives, the active
-session updates even if the wait timed out. Keep the app open and reconnect to
-finish a pending save; unconfirmed writes are not guaranteed to survive a relaunch.
+### Commute & Matching
+- [Commute Calendar Specification](docs/commute-calendar.md)
+- [Canonical M3 Matching Engine](docs/canonical-matching.md)
+- [Drop-off & Arrival Matching](docs/dropoff-arrival.md)
+- [Traffic ETA & Departure Forecasting](docs/traffic-eta.md)
 
-Deploy the versioned rules before testing production writes:
+### Carpools, Chat & Payments
+- [Carpool Requests & Seat Commitments](docs/carpool-requests.md)
+- [In-App Messaging & Real-Time Inbox](docs/local-chat.md)
+- [Chat Timeline & Interactive Cards](docs/chat-timeline.md)
+- [Ride Cancellation & Settlement Flow](docs/ride-cancellation.md)
+- [Fair Gas Cost Sharing & Settlements](docs/gas-shares.md)
 
-```bash
-npx firebase-tools deploy --only firestore:rules,firestore:indexes
-```
-
-## Documentation
-
-- [M1 proposal and requirements](docs/requirements.md)
-- [M2 design](docs/design.md)
-- [Editable architecture diagram](docs/architecture.mmd)
-- [CI/CD and merge protection](docs/ci-cd.md)
-- [Canonical M3 matching API](docs/canonical-matching.md)
+### Trust, Safety & Profiles
+- [Public Profiles & Verification Workflows](docs/profile-workflows.md)
+- [Commuter Blocking & Reporting](docs/blocking-reporting.md)
 
 ## Development Status
 
-The code now includes the M3 single-driver/single-rider inbound matching flow. Home and Map use saved matching setup and the authenticated callable service. Deploy the service, rules and index and complete the two-client manual acceptance check before calling the hosted MVP operational; merging alone does not deploy it.
+Milestone 4 (M4) is **fully implemented and verified**. The platform provides an operational carpool coordination flow including authentication, schedule creation, multi-passenger candidate discovery, bidirectional morning and return rides, carpool proposals with swipeable reviews, in-app messaging, mutual ride amendments, gas cost sharing, turn-by-turn navigation handoff, and trust/safety moderation.
 
-### Current Scope
-
-- **Implemented:** verified Firebase email/password accounts, password reset, persistent device sessions, owner-only profile/commute/matching setup, canonical feasibility/ranking, OSRM adapter, protected real-candidate discovery and matching results.
-- **Development-only:** synthetic multi-car/group/request simulations, clearly labeled and excluded from the normal matching flow.
-- **Later work:** persisted requests and seat reservations, participant messaging/history, return trips, native navigation, payments and live tracking. Static road estimates are not live traffic.
-
-See [M3 matching setup, deployment, limits and acceptance](docs/m3-matching-mvp.md). Automated callable/emulator tests use real saved accounts and mocked road estimates; they do not establish device UI or live routing verification.
+Automated verification includes 462 mobile unit tests, full TypeScript compilation, lint checks, and reproducible local emulator seed scripts.
 
 ## Team
 
