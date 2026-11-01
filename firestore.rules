@@ -78,6 +78,34 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp;
     }
 
+    function validEmergencyContact() {
+      return request.resource.data.keys().hasAll(['schemaVersion', 'name', 'phone', 'relationship', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['schemaVersion', 'name', 'phone', 'relationship', 'updatedAt'])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string
+        && request.resource.data.phone.matches('^[+][0-9]{10,15}$')
+        && request.resource.data.relationship is string && request.resource.data.relationship.size() <= 40
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validSupportReport() {
+      return request.resource.data.keys().hasAll(['schemaVersion', 'reporterId', 'category', 'description', 'appVersion', 'platform', 'status', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['schemaVersion', 'reporterId', 'category', 'description', 'appVersion', 'platform', 'status', 'createdAt'])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.category in ['matching', 'ride_request', 'chat', 'gas_share', 'account_privacy', 'other']
+        && request.resource.data.description is string
+        && request.resource.data.description.size() >= 10 && request.resource.data.description.size() <= 2000
+        && request.resource.data.description.matches('(?s).*\\S.*')
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.size() > 0 && request.resource.data.appVersion.size() <= 40
+        && request.resource.data.platform in ['ios', 'android', 'web']
+        && request.resource.data.status == 'NEW'
+        && request.resource.data.createdAt == request.time;
+    }
+
     function validReport() {
       return request.resource.data.keys().hasAll(['reporterId', 'targetId', 'targetName', 'reason', 'createdAt'])
         && request.resource.data.keys().hasOnly(['reporterId', 'targetId', 'targetName', 'reason', 'details', 'createdAt'])
@@ -306,6 +334,11 @@ service cloud.firestore {
         allow read, delete: if owns(userId);
         allow create, update: if owns(userId) && validBlock(userId, targetId);
       }
+
+      match /safety/{documentId} {
+        allow read, delete: if owns(userId) && documentId == 'emergencyContact';
+        allow create, update: if owns(userId) && documentId == 'emergencyContact' && validEmergencyContact();
+      }
     }
 
     match /publicProfiles/{userId} {
@@ -317,6 +350,11 @@ service cloud.firestore {
     // Reports submitted by verified users for moderation review; clients cannot read or modify submitted reports.
     match /reports/{reportId} {
       allow create: if isVerifiedStonyBrookUser() && validReport();
+      allow read, update, delete: if false;
+    }
+
+    match /supportReports/{reportId} {
+      allow create: if isVerifiedStonyBrookUser() && reportId.matches('^[A-Za-z0-9]{20}$') && validSupportReport();
       allow read, update, delete: if false;
     }
   }

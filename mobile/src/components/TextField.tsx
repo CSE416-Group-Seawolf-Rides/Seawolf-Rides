@@ -19,6 +19,7 @@ export function TextField({
   onBlur,
   onFocus,
   ref,
+  style,
   ...inputProps
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
@@ -47,7 +48,7 @@ export function TextField({
           }}
           placeholderTextColor={colors.textMuted}
           ref={ref}
-          style={styles.input}
+          style={[styles.input, style]}
           {...inputProps}
         />
         {accessory}
