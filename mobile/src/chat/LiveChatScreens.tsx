@@ -180,7 +180,7 @@ export function LiveChatScreen({ chatId }: { chatId: string }) {
         }
         renderMessage={(message) => {
           const entry = byId.get(message.id);
-          return entry?.ride && (entry.type === 'RIDE_REQUEST' || entry.type === 'PRICE_CHANGE') ? (
+          return entry?.ride && (entry.type === 'RIDE_REQUEST' || entry.type === 'PRICE_CHANGE' || entry.type === 'RIDE_AMENDMENT') ? (
             <ChatTimelineCard
               entry={entry}
               uid={user?.id ?? ''}

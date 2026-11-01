@@ -9,7 +9,7 @@ import { formatCents } from '../payments/pricing';
 import { respondToRidePriceChange } from '../payments/paymentsClient';
 import { respondToRideAmendment } from '../rides/rideAmendmentClient';
 import type { PriceChangeDecision } from '../payments/priceChanges';
-import { colors, spacing } from '../theme';
+import { colors, radii, spacing } from '../theme';
 import { chatContext, type ChatMessage } from './chatModel';
 import {
   amendmentStatusLabel,
@@ -116,25 +116,42 @@ export function ChatTimelineCard({
           {(amendment.type === 'TIME' || amendment.type === 'BOTH') &&
             amendment.originalDeparture &&
             amendment.proposedDeparture && (
-              <Text style={styles.amount}>
-                Departure · {rideTime(amendment.originalDeparture)} → {rideTime(amendment.proposedDeparture)}{' '}
-                <Text style={styles.highlight}>({formatTimeDelta(amendment.deltaSeconds ?? 0)})</Text>
-              </Text>
+              <View style={styles.amendmentBlock}>
+                <Text style={styles.amendmentLabel}>
+                  Departure · <Text style={styles.highlight}>{formatTimeDelta(amendment.deltaSeconds ?? 0)}</Text>
+                </Text>
+                <Text style={styles.amount}>
+                  {rideTime(amendment.originalDeparture)} → {rideTime(amendment.proposedDeparture)}
+                </Text>
+              </View>
             )}
           {(amendment.type === 'LOCATION' || amendment.type === 'BOTH') &&
             amendment.originalPickupLabel &&
             amendment.proposedPickupLabel && (
-              <Text style={styles.amount}>
-                Pickup · {amendment.originalPickupLabel} →{' '}
-                <Text style={styles.highlight}>{amendment.proposedPickupLabel}</Text>
-              </Text>
+              <View style={styles.amendmentBlock}>
+                <Text style={styles.amendmentLabel}>Pickup Location</Text>
+                <Text style={styles.amount}>
+                  {amendment.originalPickupLabel} →{' '}
+                  <Text style={styles.highlight}>{amendment.proposedPickupLabel}</Text>
+                </Text>
+              </View>
             )}
-          {amendment.note && <Text style={styles.note}>{`"${amendment.note}"`}</Text>}
+          {amendment.note && (
+            <View style={styles.noteBox}>
+              <Text style={styles.note}>{`"${amendment.note}"`}</Text>
+            </View>
+          )}
           {amendment.status === 'PENDING' && (
             <Text style={styles.detail}>The original trip schedule stays until accepted.</Text>
           )}
+          {amendment.status === 'ACCEPTED' && (
+            <Text style={styles.detail}>Change accepted. New schedule is active.</Text>
+          )}
           {amendment.status === 'DECLINED' && (
             <Text style={styles.detail}>This change was declined. Original schedule retained.</Text>
+          )}
+          {amendment.status === 'CANCELLED' && (
+            <Text style={styles.detail}>This proposal was withdrawn.</Text>
           )}
         </View>
       )}
@@ -228,11 +245,25 @@ export function ChatTimelineCard({
 }
 
 const styles = StyleSheet.create({
-  detailsGroup: { gap: spacing.xs },
+  detailsGroup: { gap: spacing.sm },
+  amendmentBlock: { gap: 2 },
+  amendmentLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   detail: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
   amount: { color: colors.text, fontSize: 15, fontWeight: '700' },
   highlight: { color: colors.accent, fontWeight: '800' },
-  note: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic', marginVertical: 2 },
+  noteBox: {
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: radii.sm,
+    padding: spacing.xs,
+    marginTop: 2,
+  },
+  note: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic', lineHeight: 18 },
   timestamp: { color: colors.textMuted, fontSize: 11 },
   error: { color: colors.error, fontSize: 13 },
 });

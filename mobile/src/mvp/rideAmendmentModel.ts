@@ -86,3 +86,4 @@ export function amendmentSummary(amendment: RideAmendment): string {
   }
   return parts.join(', ');
 }
+

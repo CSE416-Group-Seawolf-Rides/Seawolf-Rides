@@ -136,6 +136,8 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
         // Automatically fetch initial candidates so all top matches appear together
         // rather than the single "best match first" quirk.
         while (combined.nextCursor && combined.matches.length < 5) {
+          // Pause briefly between pages to stay cleanly within the local demo routing cooldown
+          await new Promise((resolve) => setTimeout(resolve, 1200));
           const next = await searchCalendar(date, combined.nextCursor, dir);
           combined = mergeCalendarPages(combined, next);
         }
@@ -500,18 +502,30 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   }}
                 >
                   <Ionicons
-                    name="sunny-outline"
-                    size={16}
+                    name={direction === 'TO_CAMPUS' ? 'sunny' : 'sunny-outline'}
+                    size={18}
                     color={direction === 'TO_CAMPUS' ? colors.accent : colors.textMuted}
                   />
-                  <Text
-                    style={[
-                      styles.directionTabText,
-                      direction === 'TO_CAMPUS' && styles.directionTabTextActive,
-                    ]}
-                  >
-                    To Campus (Morning)
-                  </Text>
+                  <View style={styles.directionTabContent}>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.directionTabTitle,
+                        direction === 'TO_CAMPUS' && styles.directionTabTitleActive,
+                      ]}
+                    >
+                      To Campus
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.directionTabSubtitle,
+                        direction === 'TO_CAMPUS' && styles.directionTabSubtitleActive,
+                      ]}
+                    >
+                      Morning
+                    </Text>
+                  </View>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -523,18 +537,30 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   }}
                 >
                   <Ionicons
-                    name="moon-outline"
-                    size={16}
+                    name={direction === 'FROM_CAMPUS' ? 'moon' : 'moon-outline'}
+                    size={17}
                     color={direction === 'FROM_CAMPUS' ? colors.accent : colors.textMuted}
                   />
-                  <Text
-                    style={[
-                      styles.directionTabText,
-                      direction === 'FROM_CAMPUS' && styles.directionTabTextActive,
-                    ]}
-                  >
-                    Return Home (Evening)
-                  </Text>
+                  <View style={styles.directionTabContent}>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.directionTabTitle,
+                        direction === 'FROM_CAMPUS' && styles.directionTabTitleActive,
+                      ]}
+                    >
+                      Return Home
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.directionTabSubtitle,
+                        direction === 'FROM_CAMPUS' && styles.directionTabSubtitleActive,
+                      ]}
+                    >
+                      Evening
+                    </Text>
+                  </View>
                 </Pressable>
               </View>
               <Text style={styles.searchRole}>
@@ -710,29 +736,47 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     borderRadius: radii.md,
     padding: 3,
+    gap: 4,
   },
   directionTab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
     borderRadius: radii.sm,
   },
   directionTabActive: {
     backgroundColor: colors.surface,
     shadowColor: '#000',
     shadowOpacity: 0.08,
-    shadowRadius: 2,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
     elevation: 2,
   },
-  directionTabText: {
+  directionTabContent: {
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  directionTabTitle: {
     fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+    lineHeight: 16,
+  },
+  directionTabTitleActive: {
+    color: colors.text,
+    fontWeight: '800',
+  },
+  directionTabSubtitle: {
+    fontSize: 11,
     fontWeight: '500',
     color: colors.textMuted,
+    lineHeight: 14,
   },
-  directionTabTextActive: {
+  directionTabSubtitleActive: {
     color: colors.accent,
     fontWeight: '700',
   },
