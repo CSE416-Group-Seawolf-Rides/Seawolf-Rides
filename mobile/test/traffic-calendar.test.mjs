@@ -113,6 +113,20 @@ test('traffic metadata cannot silently become static timing and provider failure
   );
 });
 
+test('traffic arrival seeds keep small provider rounding but reject unrelated timing', async () => {
+  for (const delta of [-60, -2, 2, 60, 61]) {
+    const original = router();
+    const routing = { timeDependent: true, route: async (points, options) => {
+      const result = await original.route(points, options);
+      if (options.arrivalEpochSeconds !== undefined) result.route.estimate.departureEpochSeconds += delta;
+      return result;
+    } };
+    const result = await evaluateCalendarPair(driver, rider, '2026-10-19', routing, now);
+    assert.equal(result.status, delta === 61 ? 'UNKNOWN' : 'FEASIBLE', `arrival seed offset ${delta}s`);
+    if (result.status === 'FEASIBLE') assert.equal(result.plan.departure, localMinuteToEpoch('2026-10-19', 500) + delta);
+  }
+});
+
 test('traffic evidence must confirm the requested leg departure and have a finite computation time', async () => {
   for (const change of [
     (eta) => ({ ...eta, departureEpochSeconds: eta.departureEpochSeconds + 60 }),

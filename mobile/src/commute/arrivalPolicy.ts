@@ -1,11 +1,11 @@
 import { localMinuteToEpoch } from '../mvp/settings';
 
-/** Discovery remains broad; a proposed trip must meet the actual arrival deadline. */
-export const ARRIVAL_FLEX_MINUTES = 30;
+/** Saved arrival is a preference, with 45 minutes of flexibility on either side. */
+export const ARRIVAL_FLEX_MINUTES = 45;
 export const ARRIVAL_FLEX_SECONDS = ARRIVAL_FLEX_MINUTES * 60;
-export const ARRIVAL_EARLY_SECONDS = 20 * 60;
+export const ARRIVAL_EARLY_SECONDS = ARRIVAL_FLEX_SECONDS;
 export const ARRIVAL_BUFFER_SECONDS = 3 * 60;
-/** Legacy persisted-input bound; actual proposed arrivals use the stricter window below. */
+/** Readiness must precede the end of the preferred arrival window. */
 export function latestStartMinute(day: {
   arriveBy: number | null;
   leaveAt: number | null;
@@ -31,7 +31,7 @@ export function preferredArrivalWindow(
     ),
     latest: Math.min(
       localMinuteToEpoch(date, 1439) + 59,
-      target,
+      target + ARRIVAL_FLEX_SECONDS,
       day.leaveAt === null ? Infinity : localMinuteToEpoch(date, day.leaveAt),
     ),
   };

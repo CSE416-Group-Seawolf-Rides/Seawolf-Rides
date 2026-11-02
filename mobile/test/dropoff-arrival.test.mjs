@@ -45,13 +45,13 @@ test('a late usual departure is proposed earlier for review, with pickup/boardin
   assert.equal(result.plan.vehicleCampusArrival, at(537));
   assert.equal(driver.day.startAt, 530);
 });
-test('9 AM is a real deadline; arrival window respects early bounds and deadline is inclusive', async () => {
-  assert.deepEqual(preferredArrivalWindow(date, { arriveBy: 540, leaveAt: null }), { earliest: at(520), latest: at(540) });
-  const atDeadline = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, startAt: 513 } }, date, routing, now);
+test('9 AM is a preference with an inclusive 8:15–9:45 arrival window', async () => {
+  assert.deepEqual(preferredArrivalWindow(date, { arriveBy: 540, leaveAt: null }), { earliest: at(495), latest: at(585) });
+  const atDeadline = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, startAt: 558 } }, date, routing, now);
   assert.equal(atDeadline.status, 'FEASIBLE');
-  assert.equal(atDeadline.plan.vehicleCampusArrival, at(540));
-  assert.equal((await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, startAt: 514 } }, date, routing, now)).status, 'INFEASIBLE');
-  assert.equal((await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 565 } }, date, routing, now)).status, 'INFEASIBLE');
+  assert.equal(atDeadline.plan.vehicleCampusArrival, at(585));
+  assert.equal((await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, startAt: 559 } }, date, routing, now)).status, 'INFEASIBLE');
+  assert.equal((await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 631 } }, date, routing, now)).status, 'INFEASIBLE');
 });
 test('buffered onboarding rounding stays 2–5 minutes early for fractional-minute durations', () => {
   for (const duration of [60,308,1800,1801,2700,3509]) {
@@ -60,10 +60,11 @@ test('buffered onboarding rounding stays 2–5 minutes early for fractional-minu
     assert.ok(early >= 120 && early <= 300, `${duration}: ${early}`);
   }
 });
-test('timing remains primary; preferred drop-off breaks ties before detour and stable identity', () => {
+test('a preferred drop-off does not outweigh a substantial detour; it breaks equal-cost ties', () => {
   const base = { driverId: 'z', riderId: 'r', arrivalDifferenceSeconds: 180, addedDrivingSeconds: 400, dropoffPreferenceMatch: true };
   const alternative = { ...base, driverId: 'a', addedDrivingSeconds: 0, dropoffPreferenceMatch: false };
-  assert.deepEqual([alternative,base].sort(compareCalendarMatches).map((m) => m.driverId), ['z','a']);
+  assert.deepEqual([alternative,base].sort(compareCalendarMatches).map((m) => m.driverId), ['a','z']);
+  assert.ok(compareCalendarMatches(base, { ...alternative, addedDrivingSeconds: 400 }) < 0);
   assert.ok(compareCalendarMatches({ ...alternative, arrivalDifferenceSeconds: 60 }, base) < 0);
   assert.ok(compareCalendarMatches({ ...base, driverId: 'a' }, base) < 0);
 });

@@ -2,6 +2,7 @@ import { evaluatePair } from '../matching/evaluatePair';
 import type { PairEvaluation, StaticRouteEstimate } from '../matching/types';
 import type { CommuteSchedule, Coordinates, DaySchedule, PrivacyArea } from '../commute/commuteModel';
 import type { RoutingAdapter, RoutingResult } from '../routing/types';
+import { TRAFFIC_ARRIVAL_TOLERANCE_SECONDS } from '../routing/types';
 import {
   CAMPUS_POINTS,
   localMinuteToEpoch,
@@ -40,8 +41,12 @@ export interface CalendarMatch {
   area: PrivacyArea;
   plan: Extract<PairEvaluation, { status: 'FEASIBLE' }>['plan'];
   addedDrivingSeconds: number;
-  /** Absolute seconds from the searching user’s three-minute-early arrival target. */
+  /** Absolute seconds from the searching commuter's saved time preference. */
   arrivalDifferenceSeconds: number;
+  /** Signed change from the searching commuter's preferred arrival/departure. */
+  scheduleOffsetSeconds?: number;
+  otherScheduleOffsetSeconds?: number;
+  preferredTimeEpochSeconds?: number;
   eta?: CalendarEta;
   dropoffLabel?: string;
   preferredDropoffLabel?: string;
@@ -56,7 +61,7 @@ export interface CalendarMatch {
   direction?: 'TO_CAMPUS' | 'FROM_CAMPUS';
 }
 export interface CalendarSearchResult {
-  policyVersion: 3;
+  policyVersion: 4;
   searchRevision: string;
   totalCandidatePlans: number;
   checkedCandidatePlans: number;
@@ -76,13 +81,22 @@ export function arrivalTargetsOverlap(a: number | null, b: number | null): boole
     b >= 0 &&
     a < 1440 &&
     b < 1440 &&
-    Math.abs(a - b) <= ARRIVAL_FLEX_MINUTES
+    // Each person has a 45-minute window; their targets can be 90 minutes apart.
+    Math.abs(a - b) <= ARRIVAL_FLEX_MINUTES * 2
   );
+}
+/** Lower is better. Minutes of personal schedule shift count twice; the other
+ * person's shift and added travel count once. Preferred stops break equal costs. */
+export function calendarMatchCost(match: CalendarMatch): number {
+  return 2 * match.arrivalDifferenceSeconds + Math.abs(match.otherScheduleOffsetSeconds ?? 0)
+    + Math.max(0, match.addedDrivingSeconds)
+    + Math.max(0, match.metrics?.riderExtraInVehicleSeconds ?? 0);
 }
 export function compareCalendarMatches(a: CalendarMatch, b: CalendarMatch): number {
   return (
-    a.arrivalDifferenceSeconds - b.arrivalDifferenceSeconds ||
+    calendarMatchCost(a) - calendarMatchCost(b) ||
     Number(a.dropoffPreferenceMatch === false) - Number(b.dropoffPreferenceMatch === false) ||
+    a.arrivalDifferenceSeconds - b.arrivalDifferenceSeconds ||
     a.addedDrivingSeconds - b.addedDrivingSeconds ||
     (a.driverId < b.driverId ? -1 : a.driverId > b.driverId ? 1 : 0) ||
     (a.riderId < b.riderId ? -1 : a.riderId > b.riderId ? 1 : 0)
@@ -126,9 +140,8 @@ function routeLegsEstimate(result: RoutingResult, startLeg: number, endLeg: numb
   const distanceMeters = Math.round(legs.reduce((sum, leg) => sum + leg.distanceMeters, 0));
   return { status: 'AVAILABLE', durationSeconds, distanceMeters };
 }
-/** A proposed trip uses the driver's concrete campus stop. Rider drop-off preference
- * affects ranking, not feasibility. Saved driver departure is a reference for review,
- * not a reservation; rider readiness remains a real bound. */
+/** Arrival preferences are flexible; rider readiness and the local date remain bounds.
+ * Saved driver departure is a reference for review, not a reservation. */
 export async function evaluateCalendarPair(
   driver: CalendarParticipant,
   rider: CalendarParticipant,
@@ -168,11 +181,11 @@ export async function evaluateCalendarPair(
     const earliest = Math.max(now + 1, localMinuteToEpoch(date, 0));
     const driverTarget = localMinuteToEpoch(date, driver.day.leaveAt);
     const riderTarget = localMinuteToEpoch(date, rider.day.leaveAt);
-    const earliestDeparture = Math.max(earliest, Math.min(driverTarget, riderTarget) - ARRIVAL_FLEX_MINUTES * 60);
-    const latestDeparture = Math.min(localMinuteToEpoch(date, 1439) + 59, Math.max(driverTarget, riderTarget) + ARRIVAL_FLEX_MINUTES * 60);
+    const earliestDeparture = Math.max(earliest, Math.max(driverTarget, riderTarget) - ARRIVAL_FLEX_MINUTES * 60);
+    const latestDeparture = Math.min(localMinuteToEpoch(date, 1439) + 59, Math.min(driverTarget, riderTarget) + ARRIVAL_FLEX_MINUTES * 60);
     if (earliestDeparture > latestDeparture)
       return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
-    const departure = Math.max(earliestDeparture, Math.min(driverTarget, latestDeparture));
+    const departure = Math.max(earliestDeparture, Math.min(Math.round((driverTarget + riderTarget) / 2), latestDeparture));
 
     const safeRoute = async (points: Parameters<RoutingAdapter['route']>[0]): Promise<RoutingResult> => {
       try {
@@ -311,7 +324,9 @@ export async function evaluateCalendarPair(
   const arrivalLatest = Math.min(driverDeadline, riderDeadline);
   if (arrivalEarliest > arrivalLatest || riderStart >= riderDeadline)
     return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
-  const desiredArrival = Math.max(arrivalEarliest, arrivalLatest - ARRIVAL_BUFFER_SECONDS);
+  const preferredArrival = Math.round((localMinuteToEpoch(date, driver.day.arriveBy)
+    + localMinuteToEpoch(date, rider.day.arriveBy)) / 2) - ARRIVAL_BUFFER_SECONDS;
+  const desiredArrival = Math.max(arrivalEarliest, Math.min(preferredArrival, arrivalLatest));
   const safeRoute = async (
     points: Parameters<RoutingAdapter['route']>[0],
     options: { departureEpochSeconds?: number; arrivalEpochSeconds?: number } = { departureEpochSeconds: driverStart },
@@ -325,7 +340,7 @@ export async function evaluateCalendarPair(
           (routing.timeDependent &&
           (result.route.estimate?.model !== 'TRAFFIC_FORECAST' ||
             (options.departureEpochSeconds !== undefined && result.route.estimate.departureEpochSeconds !== options.departureEpochSeconds) ||
-            (options.arrivalEpochSeconds !== undefined && (!Number.isSafeInteger(result.route.estimate.departureEpochSeconds) || Math.abs(result.route.estimate.departureEpochSeconds! + result.route.durationSeconds - options.arrivalEpochSeconds) > 1)) ||
+            (options.arrivalEpochSeconds !== undefined && (!Number.isSafeInteger(result.route.estimate.departureEpochSeconds) || Math.abs(result.route.estimate.departureEpochSeconds! + result.route.durationSeconds - options.arrivalEpochSeconds) > TRAFFIC_ARRIVAL_TOLERANCE_SECONDS)) ||
             !Number.isSafeInteger(result.route.estimate.computedAtEpochSeconds))) ||
           result.route.legs.length !== points.length - 1 ||
           result.route.legs.some((leg) => !Number.isFinite(leg.durationSeconds) || leg.durationSeconds < 0 || !Number.isFinite(leg.distanceMeters) || leg.distanceMeters < 0) ||
@@ -365,7 +380,7 @@ export async function evaluateCalendarPair(
     if (seed.status !== 'SUCCESS') return seed.code === 'NO_ROUTE'
       ? { status: 'INFEASIBLE', reasonCodes: ['NO_ROAD_ROUTE'] }
       : { status: 'UNKNOWN', reasonCodes: ['MISSING_TRAVEL_ESTIMATE'] };
-    driverStart = Math.max(seed.route.estimate!.departureEpochSeconds!, riderStart - Math.round(seed.route.legs[0].durationSeconds));
+    driverStart = Math.max(earliest, seed.route.estimate!.departureEpochSeconds!, riderStart - Math.round(seed.route.legs[0].durationSeconds));
     if (driverStart < earliest || driverStart >= arrivalLatest)
       return { status: 'INFEASIBLE', reasonCodes: ['NO_FEASIBLE_DEPARTURE'] };
   }

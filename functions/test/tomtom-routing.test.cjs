@@ -372,3 +372,15 @@ test('shared traffic cache distinguishes arrive-at plans from depart-at plans an
   );
   assert.equal(calls, 3);
 });
+
+test('arrival seeds tolerate provider rounding up to one minute while keeping actual provider timing', () => {
+  const arrival = departure + 3600;
+  for (const delta of [-60, -2, 2, 60]) {
+    const result = parseTomtomRoute(body(900, arrival - 900 + delta), points, undefined, now, arrival);
+    assert.equal(result.status, 'SUCCESS', `provider arrival offset ${delta}s`);
+    assert.equal(result.route.estimate.departureEpochSeconds, arrival - 900 + delta);
+  }
+  for (const delta of [-61, 61, 86400]) {
+    assert.equal(parseTomtomRoute(body(900, arrival - 900 + delta), points, undefined, now, arrival).status, 'FAILURE');
+  }
+});
