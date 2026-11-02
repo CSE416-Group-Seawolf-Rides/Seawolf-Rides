@@ -182,7 +182,7 @@ export function MorningTimingStep({
         return (
           <Card key={day.day}>
             <Text>
-              {weekdays.find((d) => d.value === day.day)?.name} · Arrive by{' '}
+              {weekdays.find((d) => d.value === day.day)?.name} · Preferred arrival{' '}
               {formatTime(day.arriveBy!)}
             </Text>
             {!estimateDays.some((d) => d.day === day.day) && <Text>Choose when you’re ready. The campus drop-off and travel times will be shown with each match.</Text>}

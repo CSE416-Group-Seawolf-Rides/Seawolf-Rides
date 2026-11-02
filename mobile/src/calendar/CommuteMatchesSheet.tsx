@@ -40,6 +40,7 @@ import {
   matchedPeople,
   matchPage,
   matchMapRegion,
+  matchScheduleLabel,
   type MatchPageSize,
 } from './matchPresentation';
 import { colors, radii, spacing } from '../theme';
@@ -318,6 +319,8 @@ export function CommuteMatchesSheet({
               contentContainerStyle={styles.content}
               showsVerticalScrollIndicator={false}
             >
+              <Text style={styles.muted}>Checked matches are ranked by schedule fit and added travel for both commuters.</Text>
+              <Text style={styles.muted}>Times can be up to 45 minutes before or after your preference. Review the proposed trip before requesting.</Text>
               <View style={styles.pageSizes}>
                 <Text style={styles.muted}>View per page</Text>
                 <View style={styles.sizeOptions}>
@@ -402,6 +405,7 @@ export function CommuteMatchesSheet({
                       </Text>
                     )}
                     <MatchTimes match={best} uid={uid} request={active} />
+                    <Text style={styles.muted}>{Math.ceil(Math.max(0, best.addedDrivingSeconds) / 60)} min added driving</Text>
                     {requestActions(best, true)}
                     <AppButton label={chatBusy ? 'Opening chat…' : 'Send chat'} variant="secondary"
                       disabled={busy} onPress={() => void openChat(best)} />
@@ -667,6 +671,7 @@ function MatchTimes({
         </View>
       ))}
     </View>
+    {matchScheduleLabel(match, uid) && <Text style={styles.muted}>{matchScheduleLabel(match, uid)}</Text>}
     {match.dropoffLabel && <Text style={styles.muted}>Drop-off · {request?.status === 'PENDING' || request?.status === 'ACCEPTED' ? request.campusLabel : match.dropoffLabel}
       {match.dropoffPreferenceMatch === false ? ` · Preferred: ${match.preferredDropoffLabel}` : match.preferredDropoffLabel === 'Any' ? ' · Any' : ''}
     </Text>}

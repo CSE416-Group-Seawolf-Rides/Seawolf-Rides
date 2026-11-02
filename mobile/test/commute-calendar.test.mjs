@@ -203,7 +203,7 @@ test('saved morning timing survives persistence and blocks pickups before rider 
   );
   const notReady = await evaluateCalendarPair(
     driver,
-    { ...rider, day: { ...rider.day, startAt: 538 } },
+    { ...rider, day: { ...rider.day, startAt: 584 } },
     date,
     router,
     now,
@@ -223,13 +223,13 @@ test('saved morning timing survives persistence and blocks pickups before rider 
   );
 });
 
-test('preferred arrival target discovery is inclusive at ±30 minutes and rejects ±31 before routing', async () => {
-  for (const target of [510, 570]) {
+test('two 45-minute windows can overlap at target differences up to 90 minutes', async () => {
+  for (const target of [450, 630]) {
     assert.equal(arrivalTargetsOverlap(540, target), true);
   }
-  for (const target of [509, 571, NaN, Infinity, -1, 1440, null]) {
+  for (const target of [449, 631, NaN, Infinity, -1, 1440, null]) {
     assert.equal(arrivalTargetsOverlap(540, target), false);
-    if (target === 509 || target === 571) {
+    if (target === 449 || target === 631) {
       const result = await evaluateCalendarPair(
         driver,
         { ...rider, day: { ...rider.day, arriveBy: target } },
@@ -248,16 +248,16 @@ test('preferred arrival target discovery is inclusive at ±30 minutes and reject
     }
   }
 });
-test('saved departures are reviewable references; proposals arrive within relaxed early window and never late', async () => {
+test('saved departures are references and arrival preferences may shift by 45 minutes either way', async () => {
   for (const startAt of [473, 500, 533, 534]) {
     const result = await evaluateCalendarPair({ ...driver, day: { ...driver.day, startAt } }, rider, date, router, now);
     assert.equal(result.status, 'FEASIBLE');
     assert.equal(result.plan.vehicleCampusArrival, localMinuteToEpoch(date, 537));
     assert.equal(result.plan.departure, localMinuteToEpoch(date, 500));
   }
-  const noSharedWindow = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 565 } }, date, router, now);
+  const noSharedWindow = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, arriveBy: 631 } }, date, router, now);
   assert.equal(noSharedWindow.status, 'INFEASIBLE');
-  const returnBound = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, leaveAt: 515 } }, date, router, now);
+  const returnBound = await evaluateCalendarPair(driver, { ...rider, day: { ...rider.day, leaveAt: 494 } }, date, router, now);
   assert.equal(returnBound.status, 'INFEASIBLE');
 });
 test('invalid saved arrival/start times and nonfinite current times remain UNKNOWN', async () => {
@@ -292,7 +292,7 @@ test('invalid saved arrival/start times and nonfinite current times remain UNKNO
     'UNKNOWN',
   );
 });
-test('pages rank actual arrival first, detour second, stable identities last and refuse stale lists', () => {
+test('pages balance schedule shift against added travel and preserve ordering across pagination', () => {
   const make = (driverId, arrivalDifferenceSeconds, addedDrivingSeconds) => ({
     driverId,
     riderId: 'r',
@@ -311,10 +311,10 @@ test('pages rank actual arrival first, detour second, stable identities last and
       .reverse()
       .sort(compareCalendarMatches)
       .map((m) => m.driverId),
-    ['z', 'c', 'a', 'b', 'd'],
+    ['c', 'a', 'b', 'd', 'z'],
   );
   const first = {
-    policyVersion: 3,
+    policyVersion: 4,
     searchRevision: 'same',
     totalCandidatePlans: 5,
     checkedCandidatePlans: 2,
@@ -336,7 +336,7 @@ test('pages rank actual arrival first, detour second, stable identities last and
   const result = mergeCalendarPages(first, next);
   assert.deepEqual(
     result.matches.map((m) => m.driverId),
-    ['z', 'c', 'a', 'b', 'd'],
+    ['c', 'a', 'b', 'd', 'z'],
   );
   assert.equal(result.unknownCount, 3);
   assert.equal(result.incompatibleCount, 3);

@@ -321,7 +321,7 @@ export function describeLeg(minutes: number | null, leg: TripLeg): string {
     return leg === 'arriveBy' ? 'No ride there' : 'No ride back';
   }
   return leg === 'arriveBy'
-    ? `Arrive by ${formatTime(minutes)}`
+    ? `Preferred arrival ${formatTime(minutes)}`
     : `Leave at ${formatTime(minutes)}`;
 }
 

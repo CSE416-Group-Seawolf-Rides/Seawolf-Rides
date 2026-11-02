@@ -155,7 +155,7 @@ service cloud.firestore {
         && validLocalTime(d.arriveBy) && validLocalTime(d.leaveAt)
         && (d.arriveBy != null || d.leaveAt != null)
         && (!d.keys().hasAny(['startAt']) || (validLocalTime(d.startAt)
-          && (d.startAt == null || d.arriveBy == null || ((d.startAt < d.arriveBy + 30) && (d.leaveAt == null || d.startAt < d.leaveAt)))));
+          && (d.startAt == null || d.arriveBy == null || ((d.startAt < d.arriveBy + 45) && (d.leaveAt == null || d.startAt < d.leaveAt)))));
     }
 
     function validCommute(userId) {

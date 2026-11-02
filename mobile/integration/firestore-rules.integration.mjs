@@ -147,9 +147,9 @@ test('saved morning times are validated while legacy commutes remain readable', 
   await assertSucceeds(setDoc(ref, withStart(450)));
   assert.equal((await getDoc(ref)).data().days[0].startAt, 450);
   await assertSucceeds(setDoc(ref, withStart(540)));
-  await assertSucceeds(setDoc(ref, withStart(569)));
+  await assertSucceeds(setDoc(ref, withStart(584)));
   await assertFails(setDoc(ref, { ...withStart(550), days: [{ ...commute.days[0], startAt: 550, leaveAt: 545 }] }));
-  for (const invalid of [-1, 1440, 450.5, Infinity, NaN, 570, 600, '450']) {
+  for (const invalid of [-1, 1440, 450.5, Infinity, NaN, 585, 600, '450']) {
     await assertFails(setDoc(ref, withStart(invalid)));
   }
 });

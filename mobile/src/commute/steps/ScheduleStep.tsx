@@ -46,7 +46,7 @@ const legCopy: Record<TripLeg, { label: string; none: string; add: string; defau
     default: DEFAULT_ARRIVE_BY,
   },
   leaveAt: {
-    label: 'Leave campus at',
+    label: 'Leave campus around',
     none: 'I don’t need a ride back',
     add: 'I need a ride back',
     default: DEFAULT_LEAVE_AT,

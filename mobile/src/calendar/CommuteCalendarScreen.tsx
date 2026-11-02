@@ -332,7 +332,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     {nextScheduled.day.startAt != null
                       ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
                       : ''}
-                    Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New York time
+                    Preferred arrival {formatTime(nextScheduled.day.arriveBy!)} · New York time
                   </Text>
                   <Text style={styles.nextDetail}>
                     {nextScheduled.day.mode === 'drive'
@@ -610,6 +610,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                       </Text>
                     )
                   )}
+                  {day && <Text style={styles.muted}>Matches may be up to 45 minutes early or late. Review the proposed times before sending a request.</Text>}
                   {pendingForDay.length > 0 && (
                     <Text style={styles.muted}>
                       {pendingForDay.length} pending request
