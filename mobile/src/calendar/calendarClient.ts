@@ -55,8 +55,8 @@ export async function searchCalendar(
     try {
       const response = await callable({ localDate, direction, ...(cursor ? { cursor } : {}) });
       const result = response.data;
-      if (result.policyVersion !== 3)
-        throw new Error('Restart your local backend to load buffered arrivals and drop-off preferences, then search again.');
+      if (result.policyVersion !== 4)
+        throw new Error('Restart your local backend to load the 45-minute matching window and updated ranking, then search again.');
       return result;
     } catch (error: any) {
       const isBusy =

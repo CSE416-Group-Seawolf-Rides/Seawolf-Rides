@@ -25,7 +25,6 @@ import {
 import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
 import type { RoutingAdapter } from '../../mobile/src/routing/types';
 import { eligible, withMatchingRouting, trafficRoutingEnabled } from './matchingRuntime';
-import { ARRIVAL_BUFFER_SECONDS } from '../../mobile/src/commute/arrivalPolicy';
 import { DemoBusyError, DEMO_CANDIDATE_LIMIT } from './demoRouting';
 
 const commitmentId = (uid: string, date: string, direction: 'TO_CAMPUS' | 'FROM_CAMPUS' = 'TO_CAMPUS') =>
@@ -366,7 +365,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
     const searchRevision = createHash('sha256')
       .update(
         JSON.stringify([
-          'buffered-arrival-dropoff-v3', date, direction, trafficRoutingEnabled() ? 'tomtom-v1' : 'osrm',
+          'flex45-balanced-ranking-v4', date, direction, trafficRoutingEnabled() ? 'tomtom-v1' : 'osrm',
           own.participant.revision,
           proposals.map((p) => [
             p.driver.uid,
@@ -414,7 +413,7 @@ export const findCommuteMatches = onCall(options, async (call) => {
     const page = proposals.slice(offset, offset + pageLimit);
     const checked = offset + page.length;
     const result: CalendarSearchResult = {
-      policyVersion: 3,
+      policyVersion: 4,
       searchRevision,
       totalCandidatePlans: proposals.length,
       checkedCandidatePlans: checked,
@@ -451,9 +450,15 @@ export const findCommuteMatches = onCall(options, async (call) => {
             continue;
           }
           const ownArrival =
-            driver.uid === uid
+            direction === 'FROM_CAMPUS' ? evaluation.plan.departure : driver.uid === uid
               ? evaluation.plan.vehicleCampusArrival
               : evaluation.plan.riderDestinationArrival;
+          const ownPreferred = localMinuteToEpoch(date, direction === 'FROM_CAMPUS'
+            ? own.participant.day.leaveAt! : own.participant.day.arriveBy!);
+          const otherArrival = direction === 'FROM_CAMPUS' ? evaluation.plan.departure : driver.uid === uid
+            ? evaluation.plan.riderDestinationArrival : evaluation.plan.vehicleCampusArrival;
+          const otherPreferred = localMinuteToEpoch(date, direction === 'FROM_CAMPUS'
+            ? other.day.leaveAt! : other.day.arriveBy!);
           result.matches.push({
             eta: evaluation.eta,
             dropoffLabel: direction === 'FROM_CAMPUS' ? rider.commute.startArea.label : CAMPUS_POINTS.find((point) => point.id === driver.commute.campusLot)?.label,
@@ -472,13 +477,10 @@ export const findCommuteMatches = onCall(options, async (call) => {
             area: other.commute.startArea,
             plan: evaluation.plan,
             addedDrivingSeconds: evaluation.metrics.driverExtraDurationSeconds,
-            arrivalDifferenceSeconds: Math.abs(
-              ownArrival -
-                (localMinuteToEpoch(
-                  date,
-                  direction === 'FROM_CAMPUS' ? own.participant.day.leaveAt! : own.participant.day.arriveBy!,
-                ) - (direction === 'FROM_CAMPUS' ? 0 : ARRIVAL_BUFFER_SECONDS)),
-            ),
+            arrivalDifferenceSeconds: Math.abs(ownArrival - ownPreferred),
+            scheduleOffsetSeconds: ownArrival - ownPreferred,
+            otherScheduleOffsetSeconds: otherArrival - otherPreferred,
+            preferredTimeEpochSeconds: ownPreferred,
             metrics: evaluation.metrics,
             price: await priceFor(driver.uid, rider.uid, evaluation.metrics),
             seatsRemaining: driver.seatsRemaining !== undefined ? driver.seatsRemaining : (driver.commute.seats ?? 1),

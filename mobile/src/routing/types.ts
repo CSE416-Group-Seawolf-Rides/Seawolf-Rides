@@ -3,6 +3,9 @@ export interface RouteCoordinate {
   longitude: number;
 }
 
+/** Arrival-based provider calculations may differ slightly from the requested seed. */
+export const TRAFFIC_ARRIVAL_TOLERANCE_SECONDS = 60;
+
 export interface RoutingProviderIdentity {
   id: 'osrm' | 'tomtom';
   name: string;

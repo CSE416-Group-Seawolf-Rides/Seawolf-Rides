@@ -332,7 +332,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     {nextScheduled.day.startAt != null
                       ? `${nextScheduled.day.mode === 'drive' ? 'Leave at' : 'Ready from'} ${formatTime(nextScheduled.day.startAt)} · `
                       : ''}
-                    Arrive by {formatTime(nextScheduled.day.arriveBy!)} · New York time
+                    Preferred arrival {formatTime(nextScheduled.day.arriveBy!)} · New York time
                   </Text>
                   <Text style={styles.nextDetail}>
                     {nextScheduled.day.mode === 'drive'
@@ -363,13 +363,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                     }}
                   >
                     <Text style={[styles.calendarText, styles.nextDetail]}>
-                      {busy
-                        ? 'Finding matches…'
-                        : nextScheduled.day.mode === 'drive'
-                          ? 'Find passengers'
-                          : nextScheduled.day.mode === 'ride'
-                            ? 'Find drivers'
-                            : 'Find drivers or passengers'}
+                      {busy ? 'Finding matches…' : 'Find matches'}
                     </Text>
                     <Ionicons name="arrow-forward" size={16} color={colors.accentSoft} />
                   </Pressable>
@@ -473,11 +467,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
             <Text style={styles.heading}>
               {accepted
                 ? `Your selected ${direction === 'FROM_CAMPUS' ? 'return ' : ''}trip`
-                : day?.mode === 'drive'
-                  ? `Find ${direction === 'FROM_CAMPUS' ? 'return ' : ''}passengers`
-                  : day?.mode === 'either'
-                    ? `Find ${direction === 'FROM_CAMPUS' ? 'return ' : ''}drivers and passengers`
-                    : `Find a ${direction === 'FROM_CAMPUS' ? 'return ' : ''}driver`}
+                : 'Find commuters'}
             </Text>
             <Card style={styles.searchCard}>
               <View style={styles.row}>
@@ -598,7 +588,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                   />
                   {isDriver && seatsRemaining > 0 && (
                     <AppButton
-                      label={busy ? 'Finding passengers…' : 'Find more passengers'}
+                      label={busy ? 'Finding matches…' : 'Find matches'}
                       variant="secondary"
                       disabled={busy || !withinHorizon || !overrides.loaded || !requests.loaded}
                       onPress={() => void search()}
@@ -620,6 +610,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                       </Text>
                     )
                   )}
+                  {day && <Text style={styles.muted}>Matches may be up to 45 minutes early or late. Review the proposed times before sending a request.</Text>}
                   {pendingForDay.length > 0 && (
                     <Text style={styles.muted}>
                       {pendingForDay.length} pending request
@@ -667,15 +658,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
                         <Text style={styles.muted}>Search dates within the next 30 days.</Text>
                       )}
                       <AppButton
-                        label={
-                          busy
-                            ? 'Finding matches…'
-                            : day.mode === 'drive'
-                              ? `Find passengers (${direction === 'FROM_CAMPUS' ? 'return' : 'morning'})`
-                              : day.mode === 'either'
-                                ? `Find matches (${direction === 'FROM_CAMPUS' ? 'return' : 'morning'})`
-                                : `Find drivers (${direction === 'FROM_CAMPUS' ? 'return' : 'morning'})`
-                        }
+                        label={busy ? 'Finding matches…' : 'Find matches'}
                         disabled={busy || !withinHorizon || !overrides.loaded || !requests.loaded}
                         onPress={() => void search()}
                       />

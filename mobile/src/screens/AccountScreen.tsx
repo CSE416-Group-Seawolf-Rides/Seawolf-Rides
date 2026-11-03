@@ -156,7 +156,7 @@ export function AccountScreen({
           label="How your location is shared"
           onPress={() => setSheet('privacy')}
         />
-        <SettingsRow icon="call-outline" label="Emergency contact" soon />
+        <SettingsRow icon="call-outline" label="Emergency contact" onPress={() => router.push('/account/emergency-contact')} />
         <SettingsRow
           icon="ban-outline"
           label="Blocked people"
@@ -166,9 +166,9 @@ export function AccountScreen({
       </SettingsGroup>
 
       <SettingsGroup title="Help">
-        <SettingsRow icon="help-circle-outline" label="Help center" soon />
-        <SettingsRow icon="flag-outline" label="Report a problem" soon />
-        <SettingsRow icon="document-text-outline" label="Terms & privacy policy" last soon />
+        <SettingsRow icon="help-circle-outline" label="Help center" onPress={() => router.push('/account/help')} />
+        <SettingsRow icon="flag-outline" label="Report a problem" onPress={() => router.push('/account/report-problem')} />
+        <SettingsRow icon="document-text-outline" label="Terms & privacy policy" last onPress={() => router.push('/account/legal')} />
       </SettingsGroup>
 
       <SettingsAction destructive label="Sign out" onPress={() => setSheet('signOut')} />

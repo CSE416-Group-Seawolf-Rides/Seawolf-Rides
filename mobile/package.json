@@ -47,7 +47,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import ./scripts/node-test/register-ts-resolver.mjs --test",
     "test:firebase-auth": "npx --yes firebase-tools@15.33.0 emulators:exec --config ../firebase.json --only auth --project demo-seawolf-rides \"node --test integration/firebase-auth.integration.mjs\"",
-    "test:firestore-rules": "npx --yes firebase-tools@15.33.0 emulators:exec --config ../firebase.json --only firestore --project demo-seawolf-rides \"node --import ./scripts/node-test/register-ts-resolver.mjs --test integration/firestore-rules.integration.mjs\"",
+    "test:firestore-rules": "npx --yes firebase-tools@15.33.0 emulators:exec --config ../firebase.json --only firestore --project demo-seawolf-rides \"node --import ./scripts/node-test/register-ts-resolver.mjs --test --test-concurrency=1 integration/firestore-rules.integration.mjs integration/account-support.integration.mjs\"",
     "build": "expo export --platform android --output-dir dist",
     "test:matching": "node scripts/run-matching-emulators.mjs",
     "seed:demo": "node --import ./scripts/node-test/register-ts-resolver.mjs scripts/seed-demo-data.mjs",

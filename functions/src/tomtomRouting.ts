@@ -5,7 +5,7 @@ import type {
   RoutingFailureCode,
   RoutingResult,
 } from '../../mobile/src/routing/types';
-import { isValidRouteCoordinate } from '../../mobile/src/routing/types';
+import { isValidRouteCoordinate, TRAFFIC_ARRIVAL_TOLERANCE_SECONDS } from '../../mobile/src/routing/types';
 const fail = (
   code: RoutingFailureCode,
   message: string,
@@ -63,7 +63,7 @@ export function parseTomtomRoute(
   if (
     !Number.isFinite(providerDeparture) ||
     (departure !== undefined && Math.abs(providerDeparture - departure) > 1) ||
-    (arrival !== undefined && Math.abs(providerArrival - arrival) > 1) ||
+    (arrival !== undefined && Math.abs(providerArrival - arrival) > TRAFFIC_ARRIVAL_TOLERANCE_SECONDS) ||
     providerDeparture < now ||
     !Number.isFinite(providerArrival) ||
     Math.abs(providerArrival - providerDeparture - raw.summary.travelTimeInSeconds) > 2 ||

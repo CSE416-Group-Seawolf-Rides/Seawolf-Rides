@@ -215,6 +215,12 @@ test(
       await riderDoc.update({
         days: savedDays.map((d) => ({ ...d, startAt: 538 })),
       });
+      const laterPickup = await action(rider, 'findCommuteMatches', { localDate: date });
+      assert.equal(laterPickup.matches.length, 1, 'a later pickup can use the 45-minute arrival flexibility');
+      assert.ok(laterPickup.matches[0].plan.pickup >= localMinuteToEpoch(date, 538));
+      assert.ok(laterPickup.matches[0].scheduleOffsetSeconds > 0);
+      assert.ok(laterPickup.matches[0].scheduleOffsetSeconds <= 45 * 60);
+      await riderDoc.update({ days: savedDays.map((d) => ({ ...d, startAt: 584 })) });
       const tooEarly = await action(rider, 'findCommuteMatches', {
         localDate: date,
       });
@@ -448,7 +454,7 @@ test(
         ['paging-a', 'driver', 480, 540],
         ['paging-b', 'driver', 503, 540],
         ['paging-c', 'driver', 505, 544],
-        ['paging-far', 'driver', 503, 571],
+        ['paging-far', 'driver', 503, 631],
       ]) {
         const account = id === pageRider.uid ? pageRider : await client(id);
         if (role === 'driver') pageDrivers.push(account);
@@ -482,11 +488,11 @@ test(
       const first = await action(pageRider, 'findCommuteMatches', {
         localDate: pageDate,
       });
-      assert.equal(first.policyVersion, 3);
+      assert.equal(first.policyVersion, 4);
       assert.equal(
         first.totalCandidatePlans,
         3,
-        'target more than 30 minutes away is excluded before routing',
+        'targets more than 90 minutes apart have no overlapping 45-minute windows',
       );
       assert.equal(first.checkedCandidatePlans, 2);
       assert.equal(first.incomplete, true);
@@ -509,11 +515,11 @@ test(
       const all = mergeCalendarPages(first, second);
       assert.deepEqual(
         all.matches.map((m) => m.driverId),
-        ['paging-a', 'paging-b', 'paging-c'],
+        ['paging-c', 'paging-a', 'paging-b'],
       );
       assert.deepEqual(
         all.matches.map((m) => m.arrivalDifferenceSeconds),
-        [0, 0, 0],
+        [60, 180, 180],
       );
       for (const match of all.matches) {
         assert.equal(match.plan.pickup - match.plan.departure, 600);
@@ -532,7 +538,7 @@ test(
       assert.equal(driving.matches[0].riderId, pageRider.uid);
       assert.equal(driving.matches[0].name, 'paging-rider');
       assert.equal(driving.matches[0].role, 'rider');
-      assert.equal(driving.matches[0].arrivalDifferenceSeconds, 0);
+      assert.equal(driving.matches[0].arrivalDifferenceSeconds, 180);
       await assert.rejects(
         action(pageRider, 'findCommuteMatches', {
           localDate: pageDate,

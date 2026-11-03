@@ -9,6 +9,16 @@ export interface MatchedPerson {
   area: PrivacyArea;
   options: CalendarMatch[];
 }
+
+export function matchScheduleLabel(match: CalendarMatch, uid: string, plan = match.plan): string | null {
+  if (match.preferredTimeEpochSeconds === undefined) return null;
+  const returning = (match.direction ?? plan.occurrence.direction) === 'FROM_CAMPUS';
+  const actual = returning ? plan.departure : match.driverId === uid ? plan.vehicleCampusArrival : plan.riderDestinationArrival;
+  const offset = actual - match.preferredTimeEpochSeconds;
+  const action = returning ? 'Departs' : 'Arrives';
+  if (Math.abs(offset) < 30) return `${action} near your preferred time`;
+  return `${action} ${Math.max(1, Math.round(Math.abs(offset) / 60))} min ${offset < 0 ? 'before' : 'after'} your preferred time`;
+}
 /** Either/Either arrangements remain selectable, but a person gets only one card. */
 export function matchedPeople(matches: CalendarMatch[], uid: string): MatchedPerson[] {
   const people = new Map<string, MatchedPerson>();
