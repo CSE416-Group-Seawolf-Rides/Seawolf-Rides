@@ -34,7 +34,9 @@
           "locationWhenInUsePermission": "Seawolf Rides uses your location while the app is open to select a route start and provide navigation. Your exact location is not saved as your home location."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-dev-client",
+      "./plugins/withAndroidAuto"
     ]
   }
 }
