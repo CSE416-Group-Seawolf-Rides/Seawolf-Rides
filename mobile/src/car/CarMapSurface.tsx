@@ -1,5 +1,6 @@
 // React component rendered by Android Auto onto the navigation map surface.
-// It is drawn with react-native-svg (no map-tile provider or API key needed):
+// It is drawn with react-native-svg (no map-tile provider or API key needed; dev builds
+// additionally paint OSM raster tiles underneath, see DevTileLayer):
 // a route line plus the live position, north-up. In PREVIEW it fits the whole
 // route; while navigating it follows the car.
 import { useState, useSyncExternalStore } from 'react';
@@ -7,6 +8,7 @@ import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 
 import { carNavigation } from './carNavigationController';
+import { DEV_TILES_ENABLED, DevTileLayer } from './DevTileLayer';
 import type { RouteCoordinate } from '../routing/types';
 
 const BACKGROUND = '#10151c';
@@ -79,8 +81,10 @@ export function CarMapSurface() {
 
   return (
     <View onLayout={onLayout} style={styles.fill}>
+      {DEV_TILES_ENABLED && view && size.width > 0 && <DevTileLayer height={size.height} view={view} width={size.width} />}
       {view && size.width > 0 ? (
-        <Svg height={size.height} width={size.width}>
+        <Svg height={size.height} style={StyleSheet.absoluteFill} width={size.width}>
+          {DEV_TILES_ENABLED && route.length > 1 && <Polyline fill="none" points={toPoints(view, size.width, size.height, route)} stroke="#ffffff" strokeLinecap="round" strokeLinejoin="round" strokeWidth={13} />}
           {split > 1 && <Polyline fill="none" points={toPoints(view, size.width, size.height, route.slice(0, split))} stroke={DONE} strokeLinecap="round" strokeLinejoin="round" strokeWidth={8} />}
           {route.length > 1 && <Polyline fill="none" points={toPoints(view, size.width, size.height, route.slice(Math.max(0, split - 1)))} stroke={ROUTE} strokeLinecap="round" strokeLinejoin="round" strokeWidth={8} />}
           {position && (() => {
