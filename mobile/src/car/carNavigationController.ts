@@ -22,7 +22,7 @@ import {
 import { LatestRouteRequest } from '../routing/latestRouteRequest';
 import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
 import type { RoadRoute, RouteCoordinate, RoutingAdapter, RoutingResult } from '../routing/types';
-import { createDevMockRoutingAdapter } from './devMockRoute';
+import { RECORDED_ROUTE_BASE_URL, RECORDED_ROUTE_TIME_WARP, createDevMockRoutingAdapter } from './devMockRoute';
 
 export interface CarDestination {
   id: string;
@@ -101,6 +101,8 @@ class CarNavigationController {
   private watcher = new ResourceSlot<Location.LocationSubscription>();
   private watcherGeneration = 0;
   private rerouteInFlight = false;
+  /** Dev-only clock warp for the recorded demo route (see devMockRoute.ts); null = real time. */
+  private timeWarp: { baseMs: number; factor: number } | null = null;
   /** Bumped on every plan/end so late async results from an older request are dropped. */
   private session = 0;
 
@@ -167,6 +169,8 @@ class CarNavigationController {
   async start(): Promise<void> {
     if (this.snapshot.status !== 'PREVIEW' || !this.snapshot.prepared) return;
     const session = this.session;
+    const recorded = __DEV__ && this.snapshot.route?.provider.baseUrl === RECORDED_ROUTE_BASE_URL;
+    this.timeWarp = recorded && RECORDED_ROUTE_TIME_WARP > 1 ? { baseMs: Date.now(), factor: RECORDED_ROUTE_TIME_WARP } : null;
     this.set({ status: 'ACTIVE' });
     await this.startWatching(session);
   }
@@ -177,6 +181,7 @@ class CarNavigationController {
     this.latestRoute.cancel();
     this.stopWatching();
     this.rerouteInFlight = false;
+    this.timeWarp = null;
     this.set({ ...IDLE_SNAPSHOT });
   }
 
@@ -208,7 +213,9 @@ class CarNavigationController {
     const { prepared, progress, status } = this.snapshot;
     if (session !== this.session || !prepared || !progress) return;
     if (status !== 'ACTIVE' && status !== 'REROUTING') return;
-    const next = updateNavigationProgress(prepared, progress, fix, Date.now());
+    const warp = this.timeWarp;
+    const clock = (ms: number) => (warp ? warp.baseMs + (ms - warp.baseMs) * warp.factor : ms);
+    const next = updateNavigationProgress(prepared, progress, { ...fix, timestampEpochMs: clock(fix.timestampEpochMs) }, clock(Date.now()));
     if (next.arrived) {
       this.stopWatching();
       this.set({ status: 'ARRIVED', progress: next, fix });

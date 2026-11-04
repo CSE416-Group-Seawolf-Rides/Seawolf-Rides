@@ -1,9 +1,20 @@
 // DEV-ONLY mock routing for the car display.
 //
+// Two sources, both offline:
+//  1. A recorded real OSRM route (Queens -> West Side lot, see devFixtures/queensToCampus.ts),
+//     replayed through the app's own OSRM parser when the start is near the Queens origin.
+//  2. Otherwise a synthetic multi-leg route.
+//
 // Used by carNavigationController when __DEV__ is true and EXPO_PUBLIC_OSRM_BASE_URL is
 // unset (no routing server available). It never touches the phone's routing or the OSRM
 // public-demo guard. The route is a believable three-leg path (two turns) between the
 // fix and the destination, with typed maneuvers, distance and ETA — not real road data.
+import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
+import {
+  QUEENS_FIXTURE_DESTINATION,
+  QUEENS_ORIGIN,
+  queensToCampusOsrmResponse,
+} from './devFixtures/queensToCampus';
 import type {
   RoadRoute,
   RouteCoordinate,
@@ -146,11 +157,58 @@ function buildRoute(origin: RouteCoordinate, destination: RouteCoordinate): Road
   };
 }
 
+/** Provider baseUrl that marks a route as the recorded Queens fixture. */
+export const RECORDED_ROUTE_BASE_URL = 'dev-fixture://queens-to-campus';
+/**
+ * The route is 75 km; the shared progress tracker rejects fixes implying more than ~70 m/s,
+ * so replaying it in minutes needs a clock warp. Dev only; the car controller applies it to
+ * fix timestamps and "now" for the recorded route (scripts/car-demo.mjs assumes the default).
+ */
+export const RECORDED_ROUTE_TIME_WARP = Number(process.env.EXPO_PUBLIC_CAR_DEV_TIME_WARP ?? 5);
+
+/** Start within this distance of the Queens origin selects the recorded route. */
+const QUEENS_START_RADIUS_METERS = 5_000;
+const FIXTURE_DESTINATION_RADIUS_METERS = 500;
+
+/**
+ * The real OSRM adapter fed from the recorded response instead of the network. Supplying
+ * `fetchImplementation` means no request is ever made; the guard for live public-demo
+ * calls is neither involved nor modified.
+ */
+const fixtureAdapter = createOsrmRoutingAdapter({
+  baseUrl: 'https://recorded-fixture.invalid',
+  fetchImplementation: (async () => ({
+    ok: true,
+    status: 200,
+    json: async () => queensToCampusOsrmResponse,
+  })) as unknown as typeof fetch,
+});
+
+async function recordedQueensRoute(coordinates: readonly RouteCoordinate[]): Promise<RoutingResult | null> {
+  const start = coordinates[0];
+  const end = coordinates[coordinates.length - 1];
+  if (coordinates.length !== 2) return null;
+  if (haversine(start, QUEENS_ORIGIN) > QUEENS_START_RADIUS_METERS) return null;
+  if (haversine(end, QUEENS_FIXTURE_DESTINATION) > FIXTURE_DESTINATION_RADIUS_METERS) return null;
+  // Parse with the captured request's own endpoints so waypoint validation lines up.
+  const result = await fixtureAdapter.route([QUEENS_ORIGIN, QUEENS_FIXTURE_DESTINATION]);
+  if (result.status !== 'SUCCESS') return null;
+  return {
+    status: 'SUCCESS',
+    route: { ...result.route, provider: { id: 'osrm', name: 'OSRM (recorded fixture)', baseUrl: RECORDED_ROUTE_BASE_URL } },
+  };
+}
+
 export function createDevMockRoutingAdapter(): RoutingAdapter {
   return {
     async route(coordinates): Promise<RoutingResult> {
       if (coordinates.length < 2) {
         return { status: 'FAILURE', code: 'INSUFFICIENT_WAYPOINTS', message: 'Two waypoints required.', retryable: false };
+      }
+      const recorded = await recordedQueensRoute(coordinates);
+      if (recorded) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        return recorded;
       }
       // Small delay so the "loading" route-preview state is visible, like a real request.
       await new Promise((resolve) => setTimeout(resolve, 400));

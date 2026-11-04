@@ -55,6 +55,7 @@
     "build": "expo export --platform android --output-dir dist",
     "test:matching": "node scripts/run-matching-emulators.mjs",
     "seed:demo": "node --import ./scripts/node-test/register-ts-resolver.mjs scripts/seed-demo-data.mjs",
+    "car:demo": "node scripts/car-demo.mjs",
     "test:ride-presentation": "npx --yes firebase-tools@15.33.0 emulators:exec --config ../firebase.json --only auth,firestore --project demo-seawolf-rides \"node --import ./scripts/node-test/register-ts-resolver.mjs --test integration/ride-presentation.integration.mjs\""
   },
   "private": true

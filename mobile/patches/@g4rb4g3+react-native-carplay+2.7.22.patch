@@ -206,6 +206,18 @@ index 8c8342e..98ba77d 100644
        }
      }
      props.getMap("image")?.let {
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt
+index f99af7d..ae5248a 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt
+@@ -48,6 +48,7 @@ class CarScreen(
+ 
+         if (event == Lifecycle.Event.ON_DESTROY && virtualRenderer != null) {
+           Log.d(TAG, "onStateChanged: got $event, removing virtual renderer")
++          virtualRenderer?.release()
+           virtualRenderer = null
+         }
+       }
 diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/ReactContextResolver.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/ReactContextResolver.kt
 index 35737a5..bf57413 100644
 --- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/ReactContextResolver.kt
@@ -253,10 +265,18 @@ index 35737a5..bf57413 100644
    }
  }
 diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt
-index 20c853b..d9dbead 100644
+index 20c853b..1f83c4a 100644
 --- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt
 +++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt
-@@ -24,7 +24,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
+@@ -6,6 +6,7 @@ import android.graphics.Color
+ import android.graphics.Rect
+ import android.graphics.Typeface
+ import android.hardware.display.DisplayManager
++import android.hardware.display.VirtualDisplay
+ import android.os.Bundle
+ import android.util.Log
+ import android.view.Display
+@@ -24,7 +25,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
  import androidx.lifecycle.Lifecycle
  import androidx.lifecycle.LifecycleOwner
  import com.facebook.react.ReactApplication
@@ -265,17 +285,19 @@ index 20c853b..d9dbead 100644
  import com.facebook.react.uimanager.DisplayMetricsHolder
  import org.birkir.carplay.BuildConfig
  
-@@ -39,7 +39,8 @@ class VirtualRenderer(
+@@ -39,7 +40,10 @@ class VirtualRenderer(
    private val sessionLifecycle: Lifecycle
  ) {
  
 -  private var rootView: ReactRootView? = null
 +  private var rootView: ViewGroup? = null
 +  private var surface: ReactSurface? = null
++  private var virtualDisplay: VirtualDisplay? = null
++  private var presentation: MapPresentation? = null
    private var emitter: EventEmitter
  
    /**
-@@ -51,7 +52,8 @@ class VirtualRenderer(
+@@ -51,7 +55,8 @@ class VirtualRenderer(
  
    init {
      val reactContext =
@@ -285,7 +307,7 @@ index 20c853b..d9dbead 100644
      emitter = EventEmitter(reactContext = reactContext, templateId = moduleName)
  
      val areaDebouncer = Debouncer(200)
-@@ -59,7 +61,9 @@ class VirtualRenderer(
+@@ -59,7 +64,9 @@ class VirtualRenderer(
      sessionLifecycle.addObserver(object : DefaultLifecycleObserver {
        override fun onDestroy(owner: LifecycleOwner) {
          (rootView?.parent as? ViewGroup)?.removeView(rootView)
@@ -296,7 +318,54 @@ index 20c853b..d9dbead 100644
          rootView = null
          sessionLifecycle.removeObserver(this)
        }
-@@ -186,8 +190,9 @@ class VirtualRenderer(
+@@ -164,6 +171,8 @@ class VirtualRenderer(
+ 
+   private fun renderPresentation(container: SurfaceContainer, scale: Float) {
+     val name = if (isCluster) "AndroidAutoClusterMapTemplate" else "AndroidAutoMapTemplate"
++    // A previous presentation on this renderer must not keep drawing into the host surface.
++    releaseDisplay()
+     val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+     val display = manager.createVirtualDisplay(
+       name,
+@@ -173,8 +182,35 @@ class VirtualRenderer(
+       container.surface,
+       DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
+     )
+-    val presentation = MapPresentation(context, display.display, moduleName, container, scale)
+-    presentation.show()
++    virtualDisplay = display
++    val newPresentation = MapPresentation(context, display.display, moduleName, container, scale)
++    presentation = newPresentation
++    newPresentation.show()
++  }
++
++  private fun releaseDisplay() {
++    try {
++      presentation?.dismiss()
++    } catch (e: Exception) {
++      Log.w(TAG, "failed to dismiss presentation", e)
++    }
++    presentation = null
++    virtualDisplay?.release()
++    virtualDisplay = null
++  }
++
++  /**
++   * Tears down everything this renderer put on the host surface. Without this, a screen that
++   * is replaced (e.g. route preview -> navigation) leaves its presentation drawing on the same
++   * surface as the new screen's, so the new content never becomes visible.
++   */
++  fun release() {
++    (rootView?.parent as? ViewGroup)?.removeView(rootView)
++    surface?.stop()
++    surface?.detach()
++    surface = null
++    rootView = null
++    releaseDisplay()
+   }
+ 
+   inner class MapPresentation(
+@@ -186,8 +222,9 @@ class VirtualRenderer(
    ) : Presentation(context, display) {
      override fun onCreate(savedInstanceState: Bundle?) {
        super.onCreate(savedInstanceState)
@@ -308,7 +377,7 @@ index 20c853b..d9dbead 100644
  
  
        var splashView: ViewGroup? = null
-@@ -206,7 +211,9 @@ class VirtualRenderer(
+@@ -206,7 +243,9 @@ class VirtualRenderer(
            })
          }
  
@@ -319,7 +388,7 @@ index 20c853b..d9dbead 100644
            layoutParams = FrameLayout.LayoutParams(
              (surfaceContainer.width / reactNativeScale).toInt(), (surfaceContainer.height / reactNativeScale).toInt()
            )
-@@ -216,8 +223,7 @@ class VirtualRenderer(
+@@ -216,8 +255,7 @@ class VirtualRenderer(
            pivotY = 0f
            setBackgroundColor(Color.DKGRAY)
  
