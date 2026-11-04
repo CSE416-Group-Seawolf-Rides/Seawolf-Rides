@@ -108,7 +108,6 @@ async function showRoutePreview(destination: CarDestination): Promise<void> {
   const preview = new RoutePreviewNavigationTemplate({
     ...baseConfig,
     loading: true,
-    mapButtons: [],
   });
   CarPlay.pushTemplate(preview);
   await carNavigation.plan(destination);
@@ -138,7 +137,6 @@ async function showRoutePreview(destination: CarDestination): Promise<void> {
     }],
     onItemSelect: async () => undefined,
     navigateAction: { title: 'Start', onPress: () => { void startNavigation(); } },
-    mapButtons: [],
   } as Parameters<typeof preview.updateTemplate>[0]);
 }
 
@@ -177,7 +175,6 @@ async function startNavigation(): Promise<void> {
   const baseConfig: NavigationTemplateConfig = {
     component: CarMapSurface,
     actions: [{ title: 'Stop', onPress: stop }],
-    mapButtons: [],
     onDidCancelNavigation: stop,
     onAutoDriveEnabled: () => undefined,
   };

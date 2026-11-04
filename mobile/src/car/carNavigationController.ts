@@ -21,7 +21,8 @@ import {
 } from '../navigation/basicNavigationProgress';
 import { LatestRouteRequest } from '../routing/latestRouteRequest';
 import { createOsrmRoutingAdapter } from '../routing/osrmAdapter';
-import type { RoadRoute, RouteCoordinate, RoutingResult } from '../routing/types';
+import type { RoadRoute, RouteCoordinate, RoutingAdapter, RoutingResult } from '../routing/types';
+import { createDevMockRoutingAdapter } from './devMockRoute';
 
 export interface CarDestination {
   id: string;
@@ -82,10 +83,20 @@ function toFix(location: Location.LocationObject): NavigationFix {
   };
 }
 
+/**
+ * Dev builds without a configured routing server fall back to a mock route so the car
+ * flow can be exercised. Production builds (and any build with EXPO_PUBLIC_OSRM_BASE_URL
+ * set) always use the real OSRM adapter, guard included.
+ */
+function createCarRoutingAdapter(): RoutingAdapter {
+  if (__DEV__ && !process.env.EXPO_PUBLIC_OSRM_BASE_URL) return createDevMockRoutingAdapter();
+  return createOsrmRoutingAdapter();
+}
+
 class CarNavigationController {
   private snapshot: CarNavSnapshot = IDLE_SNAPSHOT;
   private listeners = new Set<() => void>();
-  private adapter = createOsrmRoutingAdapter();
+  private adapter = createCarRoutingAdapter();
   private latestRoute = new LatestRouteRequest();
   private watcher = new ResourceSlot<Location.LocationSubscription>();
   private watcherGeneration = 0;
