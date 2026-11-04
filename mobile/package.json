@@ -1,7 +1,7 @@
 {
   "name": "mobile",
   "version": "0.1.0",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "engines": {
     "node": "24.21.0"
   },

@@ -15,9 +15,10 @@
 //   - a CarAppActivity entry with the distractionOptimized meta-data
 //   - the com.android.automotive meta-data pointing at automotive_app_desc
 //   - non-required automotive uses-feature entries, so phones still install it
-// CarAppActivity is gated by a boolean resource that is only true under the
-// `-car` UI-mode qualifier, so on a phone it stays disabled and adds no
-// launcher icon.
+// CarAppActivity is gated by a boolean resource (false by default, so a phone gets
+// no extra launcher icon). The `-car` qualifier does NOT reliably match on AAOS
+// images (they do not report UI_MODE_TYPE_CAR), so MainApplication also enables the
+// component at runtime when FEATURE_AUTOMOTIVE is present.
 const fs = require('fs');
 const path = require('path');
 const {
@@ -25,6 +26,7 @@ const {
   withAndroidManifest,
   withAppBuildGradle,
   withDangerousMod,
+  withMainApplication,
 } = require('expo/config-plugins');
 
 // Must match the androidx.car.app:app version the library pulls in.
@@ -137,6 +139,35 @@ function withAutomotiveDependency(config) {
   });
 }
 
+const ENABLE_MARKER = 'enableCarAppActivityOnAutomotive';
+const ENABLE_CALL = `    ${ENABLE_MARKER}()`;
+const ENABLE_FUN = `
+  private fun ${ENABLE_MARKER}() {
+    if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_AUTOMOTIVE)) return
+    packageManager.setComponentEnabledSetting(
+      android.content.ComponentName(this, "androidx.car.app.activity.CarAppActivity"),
+      android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+      android.content.pm.PackageManager.DONT_KILL_APP
+    )
+  }
+`;
+
+function withCarActivityEnabler(config) {
+  return withMainApplication(config, (mod) => {
+    let src = mod.modResults.contents;
+    if (!src.includes(ENABLE_MARKER)) {
+      const nl = src.includes('\r\n') ? '\r\n' : '\n';
+      src = src.replace('super.onCreate()', `super.onCreate()${nl}${ENABLE_CALL}`);
+      src = src.replace(
+        '  override fun onConfigurationChanged',
+        `${ENABLE_FUN.trimStart()}${nl}  override fun onConfigurationChanged`,
+      );
+      mod.modResults.contents = src;
+    }
+    return mod;
+  });
+}
+
 module.exports = function withAndroidAuto(config) {
-  return withAutomotiveDependency(withAutomotiveDesc(withCarManifest(config)));
+  return withCarActivityEnabler(withAutomotiveDependency(withAutomotiveDesc(withCarManifest(config))));
 };
