@@ -48,12 +48,14 @@ index 1d77c95..915c090 100644
      if (sessionInfo.displayType == SessionInfo.DISPLAY_TYPE_CLUSTER) {
        return session
 diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt
-index 034323b..f6a5a94 100644
+index 034323b..155af0e 100644
 --- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt
 +++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt
-@@ -13,13 +13,12 @@ import androidx.car.app.Session
+@@ -12,14 +12,14 @@ import androidx.car.app.Screen
+ import androidx.car.app.Session
  import androidx.car.app.SessionInfo
  import androidx.lifecycle.DefaultLifecycleObserver
++import androidx.lifecycle.Lifecycle
  import androidx.lifecycle.LifecycleOwner
 -import com.facebook.react.ReactInstanceManager
 +import com.facebook.react.ReactHost
@@ -66,7 +68,7 @@ index 034323b..f6a5a94 100644
  import kotlinx.coroutines.CoroutineScope
  import kotlinx.coroutines.Dispatchers
  import kotlinx.coroutines.launch
-@@ -33,7 +32,7 @@ import java.util.UUID
+@@ -33,7 +33,7 @@ import java.util.UUID
  import java.util.WeakHashMap
  
  class CarPlaySession(
@@ -75,16 +77,17 @@ index 034323b..f6a5a94 100644
    private val sessionInfo: SessionInfo
  ) : Session(), DefaultLifecycleObserver, LifecycleEventListener {
    private lateinit var screen: CarScreen
-@@ -69,7 +68,7 @@ class CarPlaySession(
+@@ -69,7 +69,8 @@ class CarPlaySession(
      }
  
      CoroutineScope(Dispatchers.Main).launch {
 -      this@CarPlaySession.reactContext = ReactContextResolver.getReactContext(reactInstanceManager)
 +      this@CarPlaySession.reactContext = ReactContextResolver.getReactContext(reactHost)
++      keepReactResumed()
        this@CarPlaySession.eventEmitter = EventEmitter(reactContext)
        reactContext.addLifecycleEventListener(this@CarPlaySession)
  
-@@ -109,7 +108,7 @@ class CarPlaySession(
+@@ -109,7 +110,7 @@ class CarPlaySession(
      try {
        val catalystInstance = reactContext.catalystInstance
        val jsAppModuleName = if (isCluster) "AndroidAutoCluster" else "AndroidAuto"
@@ -93,6 +96,31 @@ index 034323b..f6a5a94 100644
  
        val appParams = WritableNativeMap().apply {
          putInt("rootTag", rootTag)
+@@ -185,6 +186,24 @@ class CarPlaySession(
+   }
+ 
+   override fun onHostPause() {
++    keepReactResumed()
++  }
++
++  /**
++   * Fabric only dispatches JS-originated UI mounts while the React host is resumed. On
++   * Android Automotive the car activity takes the foreground and pauses the phone
++   * MainActivity, which pauses React: the map surface would then show its first frame
++   * forever. While this session is alive the host is resumed again (posted, so it runs
++   * after the pause that triggered it has completed).
++   */
++  private fun keepReactResumed() {
++    android.os.Handler(android.os.Looper.getMainLooper()).post {
++      if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@post
++      if (!this::reactContext.isInitialized) return@post
++      if (reactContext.lifecycleState != com.facebook.react.common.LifecycleState.RESUMED) {
++        reactHost.onHostResume(null)
++      }
++    }
+   }
+ 
+   override fun onHostResume() {
 diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/BitmapCache.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/BitmapCache.kt
 index c045229..d3fe658 100644
 --- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/BitmapCache.kt
