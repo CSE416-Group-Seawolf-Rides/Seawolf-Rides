@@ -1,0 +1,428 @@
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlayService.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlayService.kt
+index 1d77c95..915c090 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlayService.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlayService.kt
+@@ -24,7 +24,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
+ import androidx.lifecycle.LifecycleOwner
+ import androidx.lifecycle.Observer
+ import com.facebook.react.ReactApplication
+-import com.facebook.react.ReactInstanceManager
++import com.facebook.react.ReactHost
+ import com.facebook.react.bridge.LifecycleEventListener
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+@@ -35,7 +35,7 @@ import org.birkir.carplay.utils.EventEmitter
+ import org.birkir.carplay.utils.ReactContextResolver
+ 
+ class CarPlayService : CarAppService(), LifecycleEventListener {
+-  private lateinit var reactInstanceManager: ReactInstanceManager
++  private lateinit var reactHost: ReactHost
+   private lateinit var emitter: EventEmitter
+   private lateinit var notificationManager: NotificationManager
+   private var mServiceBound = false
+@@ -98,7 +98,7 @@ class CarPlayService : CarAppService(), LifecycleEventListener {
+   override fun onCreate() {
+     Log.d(TAG, "CarPlayService onCreate")
+     super.onCreate()
+-    reactInstanceManager = (application as ReactApplication).reactNativeHost.reactInstanceManager
++    reactHost = (application as ReactApplication).reactHost ?: throw IllegalStateException("ReactHost unavailable")
+ 
+     notificationManager = this.getSystemService(NotificationManager::class.java)
+ 
+@@ -113,7 +113,7 @@ class CarPlayService : CarAppService(), LifecycleEventListener {
+     CarPlayModule.notifier.observeForever(notificationObserver)
+ 
+     CoroutineScope(Dispatchers.Main).launch {
+-      val reactContext = ReactContextResolver.getReactContext(reactInstanceManager)
++      val reactContext = ReactContextResolver.getReactContext(reactHost)
+       emitter = EventEmitter(reactContext)
+       reactContext.addLifecycleEventListener(this@CarPlayService)
+     }
+@@ -135,7 +135,7 @@ class CarPlayService : CarAppService(), LifecycleEventListener {
+       "onCreateSession: sessionId = ${sessionInfo.sessionId}, display = ${sessionInfo.displayType}"
+     )
+ 
+-    val session = CarPlaySession(reactInstanceManager, sessionInfo)
++    val session = CarPlaySession(reactHost, sessionInfo)
+ 
+     if (sessionInfo.displayType == SessionInfo.DISPLAY_TYPE_CLUSTER) {
+       return session
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt
+index 034323b..155af0e 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/CarPlaySession.kt
+@@ -12,14 +12,14 @@ import androidx.car.app.Screen
+ import androidx.car.app.Session
+ import androidx.car.app.SessionInfo
+ import androidx.lifecycle.DefaultLifecycleObserver
++import androidx.lifecycle.Lifecycle
+ import androidx.lifecycle.LifecycleOwner
+-import com.facebook.react.ReactInstanceManager
++import com.facebook.react.ReactHost
+ import com.facebook.react.bridge.Arguments
+ import com.facebook.react.bridge.LifecycleEventListener
+ import com.facebook.react.bridge.ReactContext
+ import com.facebook.react.bridge.WritableNativeMap
+ import com.facebook.react.modules.appregistry.AppRegistry
+-import com.facebook.react.uimanager.ReactRootViewTagGenerator
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.launch
+@@ -33,7 +33,7 @@ import java.util.UUID
+ import java.util.WeakHashMap
+ 
+ class CarPlaySession(
+-  private val reactInstanceManager: ReactInstanceManager,
++  private val reactHost: ReactHost,
+   private val sessionInfo: SessionInfo
+ ) : Session(), DefaultLifecycleObserver, LifecycleEventListener {
+   private lateinit var screen: CarScreen
+@@ -69,7 +69,8 @@ class CarPlaySession(
+     }
+ 
+     CoroutineScope(Dispatchers.Main).launch {
+-      this@CarPlaySession.reactContext = ReactContextResolver.getReactContext(reactInstanceManager)
++      this@CarPlaySession.reactContext = ReactContextResolver.getReactContext(reactHost)
++      keepReactResumed()
+       this@CarPlaySession.eventEmitter = EventEmitter(reactContext)
+       reactContext.addLifecycleEventListener(this@CarPlaySession)
+ 
+@@ -109,7 +110,7 @@ class CarPlaySession(
+     try {
+       val catalystInstance = reactContext.catalystInstance
+       val jsAppModuleName = if (isCluster) "AndroidAutoCluster" else "AndroidAuto"
+-      val rootTag = ReactRootViewTagGenerator.getNextRootViewTag()
++      val rootTag = Class.forName("com.facebook.react.uimanager.ReactRootViewTagGenerator").getMethod("getNextRootViewTag").invoke(null) as Int
+ 
+       val appParams = WritableNativeMap().apply {
+         putInt("rootTag", rootTag)
+@@ -185,6 +186,24 @@ class CarPlaySession(
+   }
+ 
+   override fun onHostPause() {
++    keepReactResumed()
++  }
++
++  /**
++   * Fabric only dispatches JS-originated UI mounts while the React host is resumed. On
++   * Android Automotive the car activity takes the foreground and pauses the phone
++   * MainActivity, which pauses React: the map surface would then show its first frame
++   * forever. While this session is alive the host is resumed again (posted, so it runs
++   * after the pause that triggered it has completed).
++   */
++  private fun keepReactResumed() {
++    android.os.Handler(android.os.Looper.getMainLooper()).post {
++      if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@post
++      if (!this::reactContext.isInitialized) return@post
++      if (reactContext.lifecycleState != com.facebook.react.common.LifecycleState.RESUMED) {
++        reactHost.onHostResume(null)
++      }
++    }
+   }
+ 
+   override fun onHostResume() {
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/BitmapCache.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/BitmapCache.kt
+index c045229..d3fe658 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/BitmapCache.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/BitmapCache.kt
+@@ -51,7 +51,7 @@ object BitmapCache {
+         val dataSource = Fresco.getImagePipeline().fetchDecodedImage(imageRequest, context)
+         val result =
+             DataSources.waitForFinalResult(dataSource) as CloseableReference<CloseableBitmap>
+-        val bitmap = result.get().underlyingBitmap.copy(Bitmap.Config.ARGB_8888, false)
++        val bitmap = result.get()!!.underlyingBitmap!!.copy(Bitmap.Config.ARGB_8888, false)
+ 
+         CloseableReference.closeSafely(result)
+         dataSource.close()
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/Parser.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/Parser.kt
+index f326cee..6d307af 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/Parser.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/Parser.kt
+@@ -242,7 +242,7 @@ class Parser(
+         return SpannableString(cue.asString())
+       }
+       if (cue.type == ReadableType.Map) {
+-        val cueMap = cue.asMap()
++        val cueMap = cue.asMap()!!
+         val text = cueMap.getString("text")
+         val image = parseCarIcon(cueMap.getMap("image")!!, context)
+         val alignment = cueMap.getInt("alignment")
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTGridTemplate.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTGridTemplate.kt
+index 3397d6a..4d664d1 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTGridTemplate.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTGridTemplate.kt
+@@ -16,7 +16,7 @@ class RCTGridTemplate(
+       setLoading(props.isLoading())
+       props.getString("title")?.let { setTitle(it) }
+       props.getMap("headerAction")?.let { setHeaderAction(Parser.parseAction(it, context, eventEmitter)) }
+-      props.getArray("actions")?.let { setActionStrip(parseActionStrip(it)) }
++      props.getArray("actions")?.let { parseActionStrip(it)?.let { strip -> setActionStrip(strip) } }
+       this.setSingleList(
+         parseItemList(props.getArray("buttons"), ItemListType.Grid, isMapWithContentTemplate)
+       )
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTListTemplate.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTListTemplate.kt
+index ad00530..865b83a 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTListTemplate.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTListTemplate.kt
+@@ -17,9 +17,7 @@ class RCTListTemplate(
+ 
+       // Actions
+       props.getArray("actions")?.let {
+-        setActionStrip(
+-          parseActionStrip(it)
+-        )
++        parseActionStrip(it)?.let { strip -> setActionStrip(strip) }
+       }
+ 
+       // Header Action
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTPaneTemplate.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTPaneTemplate.kt
+index 9ac39fc..b70f022 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTPaneTemplate.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTPaneTemplate.kt
+@@ -13,7 +13,7 @@ class RCTPaneTemplate(
+   override fun parse(props: ReadableMap): PaneTemplate {
+     val pane = parsePane(props.getMap("pane")!!)
+     return PaneTemplate.Builder(pane).apply {
+-      props.getArray("actions")?.let { setActionStrip(parseActionStrip(it)) }
++      props.getArray("actions")?.let { parseActionStrip(it)?.let { strip -> setActionStrip(strip) } }
+       setHeader(Header.Builder().apply {
+         props.getString("title")?.let { setTitle(it) }
+         props.getMap("headerAction")?.let { setStartHeaderAction(Parser.parseAction(it, context, eventEmitter)) }
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTSearchTemplate.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTSearchTemplate.kt
+index b6d4ba7..dc718d7 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTSearchTemplate.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTSearchTemplate.kt
+@@ -21,7 +21,7 @@ class RCTSearchTemplate(
+         eventEmitter.searchButtonPressed(searchText)
+       }
+     }).apply {
+-      props.getArray("actions")?.let { setActionStrip(parseActionStrip(it)) }
++      props.getArray("actions")?.let { parseActionStrip(it)?.let { strip -> setActionStrip(strip) } }
+       props.getMap("headerAction")?.let { setHeaderAction(Parser.parseAction(it, context, eventEmitter)) }
+       props.getString("initialSearchText")?.let {
+         setInitialSearchText(it)
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTTemplate.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTTemplate.kt
+index 8c8342e..98ba77d 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTTemplate.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/parser/RCTTemplate.kt
+@@ -48,7 +48,9 @@ abstract class RCTTemplate(
+   protected val eventEmitter: EventEmitter
+     get() = carScreenContext.eventEmitter
+ 
+-  protected fun parseActionStrip(actions: ReadableArray): ActionStrip {
++  /** Returns null for an empty list: ActionStrip.Builder.build() throws without at least one action. */
++  protected fun parseActionStrip(actions: ReadableArray): ActionStrip? {
++    if (actions.size() == 0) return null
+     val builder = ActionStrip.Builder()
+     for (i in 0 until actions.size()) {
+       val actionMap = actions.getMap(i)
+@@ -187,7 +189,7 @@ abstract class RCTTemplate(
+           }
+         }
+         if (titleVariants.size() > 1) {
+-          setText(titleVariants.getString(1))
++          setText(titleVariants.getString(1)!!)
+         }
+       }
+       item.getMap("image")?.let { setImage(Parser.parseCarIcon(it, context)) }
+@@ -236,7 +238,7 @@ abstract class RCTTemplate(
+     )
+     props.getArray("texts")?.let {
+       for (i in 0 until it.size()) {
+-        builder.addText(it.getString(i))
++        builder.addText(it.getString(i)!!)
+       }
+     }
+     props.getMap("image")?.let {
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt
+index f99af7d..ae5248a 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/screens/CarScreen.kt
+@@ -48,6 +48,7 @@ class CarScreen(
+ 
+         if (event == Lifecycle.Event.ON_DESTROY && virtualRenderer != null) {
+           Log.d(TAG, "onStateChanged: got $event, removing virtual renderer")
++          virtualRenderer?.release()
+           virtualRenderer = null
+         }
+       }
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/ReactContextResolver.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/ReactContextResolver.kt
+index 35737a5..bf57413 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/ReactContextResolver.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/ReactContextResolver.kt
+@@ -1,31 +1,33 @@
+ package org.birkir.carplay.utils
+ 
+-import com.facebook.react.ReactInstanceManager
++import com.facebook.react.ReactHost
+ import com.facebook.react.bridge.ReactContext
++import com.facebook.react.ReactInstanceEventListener
+ import kotlinx.coroutines.suspendCancellableCoroutine
+ import kotlin.coroutines.resume
+ 
+ object ReactContextResolver {
+-  suspend fun getReactContext(reactInstanceManager: ReactInstanceManager): ReactContext {
++  suspend fun getReactContext(reactHost: ReactHost): ReactContext {
+     return suspendCancellableCoroutine { continuation ->
+-      reactInstanceManager.currentReactContext?.let {
++      reactHost.currentReactContext?.let {
+         continuation.resume(it)
+         return@suspendCancellableCoroutine
+       }
+ 
+-      val listener = object : ReactInstanceManager.ReactInstanceEventListener {
++      val listener = object : ReactInstanceEventListener {
+         override fun onReactContextInitialized(context: ReactContext) {
+-          reactInstanceManager.removeReactInstanceEventListener(this)
++          reactHost.removeReactInstanceEventListener(this)
+           continuation.resume(context)
+         }
+       }
+-      reactInstanceManager.addReactInstanceEventListener(listener)
++      reactHost.addReactInstanceEventListener(listener)
+ 
+       continuation.invokeOnCancellation {
+-        reactInstanceManager.removeReactInstanceEventListener(listener)
++        reactHost.removeReactInstanceEventListener(listener)
+       }
+ 
+-      reactInstanceManager.createReactContextInBackground()
++      // Bridgeless: start() initialises the ReactInstance (no-op if already started).
++      reactHost.start()
+     }
+   }
+ }
+diff --git a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt
+index 20c853b..1f83c4a 100644
+--- a/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt
++++ b/node_modules/@g4rb4g3/react-native-carplay/android/src/main/java/org/birkir/carplay/utils/VirtualRenderer.kt
+@@ -6,6 +6,7 @@ import android.graphics.Color
+ import android.graphics.Rect
+ import android.graphics.Typeface
+ import android.hardware.display.DisplayManager
++import android.hardware.display.VirtualDisplay
+ import android.os.Bundle
+ import android.util.Log
+ import android.view.Display
+@@ -24,7 +25,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
+ import androidx.lifecycle.Lifecycle
+ import androidx.lifecycle.LifecycleOwner
+ import com.facebook.react.ReactApplication
+-import com.facebook.react.ReactRootView
++import com.facebook.react.interfaces.fabric.ReactSurface
+ import com.facebook.react.uimanager.DisplayMetricsHolder
+ import org.birkir.carplay.BuildConfig
+ 
+@@ -39,7 +40,10 @@ class VirtualRenderer(
+   private val sessionLifecycle: Lifecycle
+ ) {
+ 
+-  private var rootView: ReactRootView? = null
++  private var rootView: ViewGroup? = null
++  private var surface: ReactSurface? = null
++  private var virtualDisplay: VirtualDisplay? = null
++  private var presentation: MapPresentation? = null
+   private var emitter: EventEmitter
+ 
+   /**
+@@ -51,7 +55,8 @@ class VirtualRenderer(
+ 
+   init {
+     val reactContext =
+-      (context.applicationContext as ReactApplication).reactNativeHost.reactInstanceManager.currentReactContext
++      (context.applicationContext as ReactApplication).reactHost?.currentReactContext
++        ?: throw IllegalStateException("React context not ready")
+     emitter = EventEmitter(reactContext = reactContext, templateId = moduleName)
+ 
+     val areaDebouncer = Debouncer(200)
+@@ -59,7 +64,9 @@ class VirtualRenderer(
+     sessionLifecycle.addObserver(object : DefaultLifecycleObserver {
+       override fun onDestroy(owner: LifecycleOwner) {
+         (rootView?.parent as? ViewGroup)?.removeView(rootView)
+-        rootView?.unmountReactApplication()
++        surface?.stop()
++        surface?.detach()
++        surface = null
+         rootView = null
+         sessionLifecycle.removeObserver(this)
+       }
+@@ -164,6 +171,8 @@ class VirtualRenderer(
+ 
+   private fun renderPresentation(container: SurfaceContainer, scale: Float) {
+     val name = if (isCluster) "AndroidAutoClusterMapTemplate" else "AndroidAutoMapTemplate"
++    // A previous presentation on this renderer must not keep drawing into the host surface.
++    releaseDisplay()
+     val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+     val display = manager.createVirtualDisplay(
+       name,
+@@ -173,8 +182,35 @@ class VirtualRenderer(
+       container.surface,
+       DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
+     )
+-    val presentation = MapPresentation(context, display.display, moduleName, container, scale)
+-    presentation.show()
++    virtualDisplay = display
++    val newPresentation = MapPresentation(context, display.display, moduleName, container, scale)
++    presentation = newPresentation
++    newPresentation.show()
++  }
++
++  private fun releaseDisplay() {
++    try {
++      presentation?.dismiss()
++    } catch (e: Exception) {
++      Log.w(TAG, "failed to dismiss presentation", e)
++    }
++    presentation = null
++    virtualDisplay?.release()
++    virtualDisplay = null
++  }
++
++  /**
++   * Tears down everything this renderer put on the host surface. Without this, a screen that
++   * is replaced (e.g. route preview -> navigation) leaves its presentation drawing on the same
++   * surface as the new screen's, so the new content never becomes visible.
++   */
++  fun release() {
++    (rootView?.parent as? ViewGroup)?.removeView(rootView)
++    surface?.stop()
++    surface?.detach()
++    surface = null
++    rootView = null
++    releaseDisplay()
+   }
+ 
+   inner class MapPresentation(
+@@ -186,8 +222,9 @@ class VirtualRenderer(
+   ) : Presentation(context, display) {
+     override fun onCreate(savedInstanceState: Bundle?) {
+       super.onCreate(savedInstanceState)
+-      val instanceManager =
+-        (context.applicationContext as ReactApplication).reactNativeHost.reactInstanceManager
++      val reactHost =
++        (context.applicationContext as ReactApplication).reactHost
++          ?: throw IllegalStateException("ReactHost unavailable")
+ 
+ 
+       var splashView: ViewGroup? = null
+@@ -206,7 +243,9 @@ class VirtualRenderer(
+           })
+         }
+ 
+-        rootView = ReactRootView(context.applicationContext).apply {
++        val newSurface = reactHost.createSurface(context.applicationContext, moduleName, initialProperties)
++        surface = newSurface
++        rootView = newSurface.view?.apply {
+           layoutParams = FrameLayout.LayoutParams(
+             (surfaceContainer.width / reactNativeScale).toInt(), (surfaceContainer.height / reactNativeScale).toInt()
+           )
+@@ -216,8 +255,7 @@ class VirtualRenderer(
+           pivotY = 0f
+           setBackgroundColor(Color.DKGRAY)
+ 
+-          startReactApplication(instanceManager, moduleName, initialProperties)
+-          runApplication()
++          newSurface.start()
+ 
+           splashView?.let {
+             var splashWillDisappear = false

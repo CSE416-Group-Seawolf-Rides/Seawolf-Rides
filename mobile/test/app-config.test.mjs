@@ -17,10 +17,12 @@ test('Expo configuration identifies the Seawolf Rides mobile app', async () => {
   assert.equal(expo.orientation, 'portrait');
 });
 
-test('the app boots through Expo Router with a root layout', async () => {
+test('the app boots through the custom entry, which loads Expo Router, with a root layout', async () => {
   const packageJson = await readJson('package.json');
 
-  assert.equal(packageJson.main, 'expo-router/entry');
+  assert.equal(packageJson.main, 'index.js');
+  const entry = await readFile(new URL('index.js', projectUrl), 'utf8');
+  assert.match(entry, /import\s+['"]expo-router\/entry['"]/);
   await access(new URL('src/app/_layout.tsx', projectUrl));
 });
 
