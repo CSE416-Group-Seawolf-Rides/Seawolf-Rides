@@ -19,14 +19,15 @@ The Milestone 4 implementation delivers the complete carpool lifecycle:
 - **In-App Messaging & Interactive Trip Cards**: Real-time Firestore chat threads per carpool match with live message delivery, message sequence tracking, and interactive modal cards to review gas share and accept/cancel proposals directly in conversation.
 - **Fair Gas Cost Sharing**: Standard non-commercial gas share calculations powered by weekly Long Island fuel prices, driver price adjustments (-50% to +50%), and peer settlement tracking (Venmo, PayPal, Zelle, Cash) with receipt confirmation.
 - **Turn-by-Turn Routing & Directions Handoff**: Multi-point road route previews via OSRM (and traffic-forecasted ETAs via TomTom) with accurate waypoint ordering and one-tap handoff to Apple Maps and Google Maps.
-- **Trust & Safety Controls**: Commuter blocking (instantly hiding mutual search results and locking chat threads) and moderation reporting.
+- **In-Car Navigation (Apple CarPlay & Android Auto)**: Native in-car display integration featuring custom moving-map surfaces, turn-by-turn maneuvers, and simulated GPS route progression.
+- **Trust, Privacy & Account Safety**: Commuter blocking, moderation reporting, designated emergency contacts with native dial/SMS actions, and structured problem report triage (`supportReports`).
 
 ## Technology Stack
 
 - **Mobile Client**: React Native 0.88, Expo SDK 58, React 19, TypeScript 5.9, Expo Router v4.
 - **Backend & Cloud Services**: Firebase Cloud Functions (Node.js 24 runtime), Cloud Firestore, Firebase Authentication.
 - **Routing & Maps**: Open Source Routing Machine (OSRM) for fast offline/local road geometry and distance metrics; TomTom Routing API for traffic-aware departure forecasting; `react-native-maps` for interactive native mapping.
-- **Tooling & CI**: Node.js 24 and npm, parallel GitHub Actions CI workflow (lint, TypeScript type-check, 462 automated unit tests, and Expo bundle export).
+- **Tooling & CI**: Node.js 24 and npm, parallel GitHub Actions CI workflow (lint, TypeScript type-check, 479 automated mobile unit tests, 26 backend callable tests, and Expo bundle export).
 
 ## Repository Structure
 
@@ -49,7 +50,7 @@ The Milestone 4 implementation delivers the complete carpool lifecycle:
 │   ├── scripts/               # Demo seed scripts, test helpers, local runner
 │   ├── src/app/               # Expo Router file-based screens: (auth), (tabs) Home, Rides, Map, Inbox, Account
 │   ├── src/                   # Commute calendar, matching, chat, payments, safety, navigation
-│   └── test/                  # Node.js automated unit test suite (462 tests)
+│   └── test/                  # Node.js automated unit test suite (479 tests)
 └── docs/                      # Architectural, requirement, and operational documentation
 ```
 
@@ -111,10 +112,11 @@ Common commands can be run from the repository root:
 | `npm run dev` | Start the Expo mobile development server |
 | `npm run lint` | Run ESLint and Expo project checks across `mobile/` |
 | `npm run typecheck` | Run TypeScript verification with `noEmit` |
-| `npm test --prefix mobile` | Run the complete mobile test suite (462 automated unit tests) |
-| `npm test --prefix functions` | Run Firebase Cloud Functions backend tests |
+| `npm test --prefix mobile` | Run the complete mobile test suite (479 automated unit tests) |
+| `npm test --prefix functions` | Run Firebase Cloud Functions backend tests (26 automated tests) |
 | `npm run build` | Export a local Android JavaScript bundle as a non-publishing CI check |
 | `npm run seed:demo --prefix mobile` | Reset and reseed emulator accounts, schedules, rides, chats, and amendments |
+| `npm run car:demo --prefix mobile` | Run the GPS route playback simulation for Android Auto / CarPlay |
 
 ### Daily Workflow
 
@@ -169,12 +171,19 @@ Detailed documentation for each subsystem is maintained in [`docs/`](docs/):
 ### Trust, Safety & Profiles
 - [Public Profiles & Verification Workflows](docs/profile-workflows.md)
 - [Commuter Blocking & Reporting](docs/blocking-reporting.md)
+- [Account Safety & Support Specification](docs/account-support.md)
+- [Flexible Commute Matching Specification](docs/flexible-matching.md)
+
+### Milestone 5 Integration & Verification
+- [Requirements Traceability Matrix (RTM)](docs/test-matrix.md)
+- [Defect & Resolution Log](docs/bug-log.md)
+- [Evaluator & Grader Walkthrough Guide](docs/m5-evaluation-guide.md)
 
 ## Development Status
 
-Milestone 4 (M4) is **fully implemented and verified**. The platform provides an operational carpool coordination flow including authentication, schedule creation, multi-passenger candidate discovery, bidirectional morning and return rides, carpool proposals with swipeable reviews, in-app messaging, mutual ride amendments, gas cost sharing, turn-by-turn navigation handoff, and trust/safety moderation.
+Milestone 5 (M5) System Integration & Testing is **in progress and verified**. All core carpool workflows—from authentication and bidirectional schedule matching to real-time chat, mutual trip amendments, gas cost sharing, turn-by-turn road routes, in-car navigation, and account safety controls—are operational and rigorously tested.
 
-Automated verification includes 462 mobile unit tests, full TypeScript compilation, lint checks, and reproducible local emulator seed scripts.
+Automated verification includes **505 automated tests** (479 mobile unit tests + 26 backend callable tests), 100% TypeScript compilation with `noEmit`, linting conformance, and reproducible local emulator seed scripts.
 
 ## Team
 

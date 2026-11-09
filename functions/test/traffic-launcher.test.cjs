@@ -44,11 +44,17 @@ test('traffic launcher requires a private key, preserves existing environment, b
     assert.notEqual(run('fake_backend_only_key').status, 0);
     assert.equal(readFileSync(file, 'utf8'), 'KEEP_MY_LOCAL_CONFIG=true\n');
     rmSync(file);
-    writeFileSync(join(dir, 'bin/npm'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
-    writeFileSync(join(dir, 'bin/npx'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    const writeMock = (name, code) => {
+      writeFileSync(join(dir, `bin/${name}`), `#!/bin/sh\nexit ${code}\n`, { mode: 0o755 });
+      if (process.platform === 'win32') {
+        writeFileSync(join(dir, `bin/${name}.cmd`), `@exit /b ${code}\r\n`);
+      }
+    };
+    writeMock('npm', 1);
+    writeMock('npx', 0);
     assert.notEqual(run('fake_backend_only_key').status, 0);
     assert.equal(existsSync(file), false);
-    writeFileSync(join(dir, 'bin/npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeMock('npm', 0);
     assert.equal(run('fake_backend_only_key').status, 0);
     assert.equal(existsSync(file), false);
   } finally {

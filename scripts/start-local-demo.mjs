@@ -41,6 +41,7 @@ try {
   const build = spawnSync('npm', ['run', 'build', '--prefix', 'functions'], {
     cwd: root,
     stdio: 'inherit',
+    shell: process.platform === 'win32',
   });
   if (build.error) throw build.error;
   if (build.status !== 0)
@@ -61,13 +62,20 @@ try {
   const child = spawn('npx', args, {
     cwd: root,
     stdio: 'inherit',
-    detached: true,
+    detached: process.platform !== 'win32',
+    shell: process.platform === 'win32',
   });
   let stopping = false;
   const stop = (signal) => {
     if (!stopping) {
       stopping = true;
-      process.kill(-child.pid, signal);
+      if (child.pid) {
+        if (process.platform === 'win32') {
+          child.kill(signal);
+        } else {
+          process.kill(-child.pid, signal);
+        }
+      }
     }
   };
   const interrupt = () => stop('SIGINT');
