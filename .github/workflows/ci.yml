@@ -40,8 +40,10 @@ jobs:
       - name: Run static analysis
         run: npm run lint
 
-      - name: Check Expo project health
-        run: npm run doctor
+      # expo-doctor compares against Expo's latest patch releases, which it looks up online, so a new
+      # Expo release can fail it with no change in this repo. Report it as a warning instead.
+      - name: Check Expo project health (advisory)
+        run: npm run doctor || echo "::warning title=expo-doctor found issues::See this step's log. For version mismatches, run 'npx expo install --fix' in mobile/."
 
   compilation:
     name: Compilation (type-check)
