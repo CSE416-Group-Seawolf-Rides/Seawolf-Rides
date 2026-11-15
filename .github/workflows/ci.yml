@@ -4,9 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, codex/m3-demo-routing-limit, codex/commute-calendar-private-locations]
-  pull_request_review:
-    types: [submitted]
+    branches: [main]
 
 permissions:
   contents: read
@@ -18,7 +16,6 @@ concurrency:
 jobs:
   static-analysis:
     name: Static analysis (lint)
-    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,7 +45,6 @@ jobs:
 
   compilation:
     name: Compilation (type-check)
-    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -75,7 +71,6 @@ jobs:
 
   unit-tests:
     name: Unit tests
-    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -126,7 +121,6 @@ jobs:
 
   build:
     name: Build (Expo export)
-    if: github.event_name != 'pull_request_review' || (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     defaults:
       run:
