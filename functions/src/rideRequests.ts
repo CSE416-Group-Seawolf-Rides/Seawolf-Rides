@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { getFirestore, type DocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { requireBackendEnabled } from './runtimeMode';
 import { findMatches, MatchingError, type SavedParticipant } from '../../mobile/src/mvp/service';
 import {
   CAMPUS_POINTS,
@@ -58,16 +59,7 @@ export const commitmentIdFor = (
 };
 const now = () => Math.floor(Date.now() / 1000);
 function localOnly() {
-  if (
-    process.env.FUNCTIONS_EMULATOR !== 'true' ||
-    process.env.GCLOUD_PROJECT !== 'demo-seawolf-rides' ||
-    !process.env.FIRESTORE_EMULATOR_HOST ||
-    !process.env.FIREBASE_AUTH_EMULATOR_HOST
-  )
-    throw new HttpsError(
-      'failed-precondition',
-      'Ride actions are available only in the demo-seawolf-rides emulators.',
-    );
+  requireBackendEnabled('Ride actions are not enabled on this server.');
 }
 const uidValue = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 128 && !value.includes('/');

@@ -36,7 +36,7 @@ import {
 } from '../../mobile/src/payments/paymentHandles';
 
 const now = () => Math.floor(Date.now() / 1000);
-const options = { region: 'us-central1' } as const;
+const options = { region: 'us-central1', maxInstances: 1 } as const;
 
 async function requireUser(call: { auth?: { uid: string } }): Promise<string> {
   requireLocalDemo();

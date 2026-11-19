@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { FieldPath, getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { requireBackendEnabled } from './runtimeMode';
 import {
   calendarDay,
   checkDemoDate,
@@ -34,17 +35,9 @@ const commitmentId = (uid: string, date: string, direction: 'TO_CAMPUS' | 'FROM_
 const timestamp = () => Math.floor(Date.now() / 1000);
 import { loadFuelPrices, pricer } from './payments';
 
+/** Local demo emulators, or the opted-in hosted project (see runtimeMode.ts). */
 export function requireLocalDemo() {
-  if (
-    process.env.FUNCTIONS_EMULATOR !== 'true' ||
-    process.env.GCLOUD_PROJECT !== 'demo-seawolf-rides' ||
-    !process.env.FIRESTORE_EMULATOR_HOST ||
-    !process.env.FIREBASE_AUTH_EMULATOR_HOST
-  )
-    throw new HttpsError(
-      'failed-precondition',
-      'Calendar matching is available only in the demo-seawolf-rides emulators.',
-    );
+  requireBackendEnabled('Calendar matching is not enabled on this server.');
 }
 export async function areUsersMutuallyBlocked(uidA: string, uidB: string): Promise<boolean> {
   if (!uidA || !uidB || uidA === uidB) return false;
