@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 
+import { canUseSeededDemo } from '../../auth/demoAccount';
 import { useSession } from '../../auth/SessionProvider';
 import { WelcomeScreen } from '../../screens/WelcomeScreen';
 
@@ -8,10 +9,15 @@ export default function WelcomeRoute() {
 
   return (
     <WelcomeScreen
-      onContinueAsGuest={async () => {
-        await signInAsGuest();
-        router.replace('/home');
-      }}
+      // The guest is the seeded emulator account; a real project has no such account.
+      onContinueAsGuest={
+        canUseSeededDemo()
+          ? async () => {
+              await signInAsGuest();
+              router.replace('/home');
+            }
+          : undefined
+      }
       onContinueWithEmail={() => router.push('/email')}
     />
   );

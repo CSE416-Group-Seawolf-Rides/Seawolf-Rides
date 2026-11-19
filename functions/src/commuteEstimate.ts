@@ -3,6 +3,7 @@ import { nextForecastDate } from '../../mobile/src/commute/commuteForecast';
 import { suggestedStartMinute } from '../../mobile/src/commute/morningTiming';
 import { weekdays, type Weekday } from '../../mobile/src/commute/commuteModel';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { requireBackendEnabled } from './runtimeMode';
 import {
   eligible,
   withMatchingRouting,
@@ -23,16 +24,7 @@ export const estimateCommuteStart = onCall(
     concurrency: 4,
   },
   async (call) => {
-    if (
-      process.env.FUNCTIONS_EMULATOR !== 'true' ||
-      process.env.GCLOUD_PROJECT !== 'demo-seawolf-rides' ||
-      !process.env.FIRESTORE_EMULATOR_HOST ||
-      !process.env.FIREBASE_AUTH_EMULATOR_HOST
-    )
-      throw new HttpsError(
-        'failed-precondition',
-        'Commute estimates are available only in the local demo.',
-      );
+    requireBackendEnabled('Commute estimates are not enabled on this server.');
     if (!call.auth || !(await eligible(call.auth.uid)))
       throw new HttpsError(
         'permission-denied',

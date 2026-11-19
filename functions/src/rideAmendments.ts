@@ -5,7 +5,7 @@ import type { RideRequest } from '../../mobile/src/mvp/rideRequestModel';
 import type { RideAmendment, RideAmendmentDecision, RideAmendmentType } from '../../mobile/src/mvp/rideAmendmentModel';
 import { amendmentEntry, appendChatEntries, chatIdFor, chatTrip, readRideChatEntries, updateRideChatEntries } from './chatThreads';
 
-const options = { cors: true };
+const options = { region: 'us-central1', maxInstances: 1, cors: true };
 
 async function requireUser(call: { auth?: { uid: string } }): Promise<string> {
   const uid = call.auth?.uid;

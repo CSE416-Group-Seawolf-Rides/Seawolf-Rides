@@ -1,21 +1,13 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { requireBackendEnabled } from './runtimeMode';
 import { eligible } from './matchingRuntime';
 import { parseVehicle } from '../../mobile/src/vehicle/vehicleModel';
 
 export const saveVehicleDetails = onCall(
-  { region: 'us-central1' },
+  { region: 'us-central1', maxInstances: 1 },
   async (call) => {
-    if (
-      process.env.FUNCTIONS_EMULATOR !== 'true' ||
-      process.env.GCLOUD_PROJECT !== 'demo-seawolf-rides' ||
-      !process.env.FIRESTORE_EMULATOR_HOST ||
-      !process.env.FIREBASE_AUTH_EMULATOR_HOST
-    )
-      throw new HttpsError(
-        'failed-precondition',
-        'Vehicle setup is available only in the local demo emulators.',
-      );
+    requireBackendEnabled('Vehicle setup is not enabled on this server.');
     if (!call.auth || !(await eligible(call.auth.uid)))
       throw new HttpsError(
         'permission-denied',
