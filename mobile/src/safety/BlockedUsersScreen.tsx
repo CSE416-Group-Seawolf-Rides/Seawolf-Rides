@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -16,6 +15,7 @@ import { Screen } from '../components/Screen';
 import { colors, radii, spacing } from '../theme';
 import { unblockUser, useBlockedUsers } from './safetyClient';
 import type { BlockedUser } from './safetyModel';
+import { showAlert } from '../components/showAlert';
 
 interface BlockedUsersScreenProps {
   currentUid: string;
@@ -31,7 +31,7 @@ export function BlockedUsersScreen({ currentUid, onBack }: BlockedUsersScreenPro
     try {
       await unblockUser(currentUid, item.targetId);
     } catch {
-      Alert.alert('Error', `Could not unblock ${item.targetName}. Please try again.`);
+      showAlert('Error', `Could not unblock ${item.targetName}. Please try again.`);
     } finally {
       setUnblockingId(null);
     }

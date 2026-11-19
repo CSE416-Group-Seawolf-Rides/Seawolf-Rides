@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../components/Avatar';
 import { AppButton } from '../components/AppButton';
@@ -15,6 +15,7 @@ import {
   USER_DATA_SCHEMA_VERSION,
 } from '../persistence/userDataModel';
 import { colors, spacing } from '../theme';
+import { showAlert } from '../components/showAlert';
 
 export function EditProfileScreen({
   initial,
@@ -79,7 +80,7 @@ export function EditProfileScreen({
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Check your connection and try again.';
       setError(message);
-      Alert.alert('Couldn’t save your profile', message);
+      showAlert('Couldn’t save your profile', message);
     } finally {
       setBusy(false);
     }

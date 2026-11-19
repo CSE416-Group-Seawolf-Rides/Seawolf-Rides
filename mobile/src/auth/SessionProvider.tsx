@@ -20,10 +20,10 @@ import {
   saveProfileDetails,
   saveUserData,
 } from '../persistence/userDataRepository';
-import { Alert } from 'react-native';
 
 import { AuthUser, authUserFromFirebase, signInWithEmail, signOut as signOutFromFirebase } from './authService';
 import { canUseSeededDemo, DEMO_ACCOUNT } from './demoAccount';
+import { showAlert } from '../components/showAlert';
 
 type SessionStatus = 'error' | 'loading' | 'ready';
 
@@ -206,7 +206,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       try {
         await signInWithEmail(DEMO_ACCOUNT);
       } catch {
-        Alert.alert(
+        showAlert(
           'Demo data isn’t loaded',
           'With the demo backend running, run this in mobile/:\n\nnpm run seed:demo',
         );

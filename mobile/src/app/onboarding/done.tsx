@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '../../auth/SessionProvider';
 import { AppButton } from '../../components/AppButton';
@@ -11,6 +11,7 @@ import { buildOnboardingProfile, roleLabels } from '../../onboarding/onboardingM
 import { useOnboarding } from '../../onboarding/OnboardingProvider';
 import { SavePendingError, saveErrorMessage } from '../../persistence/saveCoordinator';
 import { colors, radii, spacing } from '../../theme';
+import { showAlert } from '../../components/showAlert';
 
 export default function OnboardingDoneRoute() {
   const { draft } = useOnboarding();
@@ -29,7 +30,7 @@ export default function OnboardingDoneRoute() {
     try {
       await completeOnboarding(profile);
     } catch (error) {
-      Alert.alert(
+      showAlert(
         error instanceof SavePendingError ? 'Save still pending' : 'Couldn’t save your profile',
         saveErrorMessage(error, 'Check your connection and try again. Your answers are still here.'),
       );

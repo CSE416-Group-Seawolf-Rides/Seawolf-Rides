@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import MapView, { Circle, Marker, type Camera, type MapPressEvent } from 'react-native-maps';
+import MapView, { Circle, Marker, type Camera, type MapPressEvent } from '../map/nativeMaps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { CommuteSchedule } from '../commute/commuteModel';
