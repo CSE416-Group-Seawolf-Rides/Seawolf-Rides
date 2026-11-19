@@ -3,8 +3,11 @@ import { writeFile, unlink, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const file = new URL('../../functions/.env.local', import.meta.url);
+// The fake routers below run locally, so the public-OSRM courtesy gap only slows the suite.
+// Functions read it from .env.local; the tests read it to check pacing against the same value.
+const gap = process.env.DEMO_ROUTING_GAP_MS ?? '0';
 // Never overwrite a developer's local configuration or accidentally call a live router.
-await writeFile(file, 'OSRM_BASE_URL=http://127.0.0.1:5009\nROUTING_PROVIDER=osrm\n', {
+await writeFile(file, `OSRM_BASE_URL=http://127.0.0.1:5009\nROUTING_PROVIDER=osrm\nDEMO_ROUTING_GAP_MS=${gap}\n`, {
   flag: 'wx',
   mode: 0o600,
 });
@@ -26,7 +29,7 @@ const run = (only, command, dataArgs) =>
         ...dataArgs,
         command,
       ],
-      { stdio: 'inherit' },
+      { stdio: 'inherit', env: { ...process.env, DEMO_ROUTING_GAP_MS: gap } },
     );
     child.on('error', reject);
     child.on('exit', (status) => resolve(status ?? 1));
@@ -47,7 +50,7 @@ try {
     // Owned test configuration only: initial exclusive creation above protects local settings.
     await writeFile(
       file,
-      'OSRM_BASE_URL=http://127.0.0.1:5009\nROUTING_PROVIDER=tomtom\nTOMTOM_API_KEY=fake_backend_only_key\nTOMTOM_BASE_URL=http://127.0.0.1:5009\n',
+      `OSRM_BASE_URL=http://127.0.0.1:5009\nROUTING_PROVIDER=tomtom\nTOMTOM_API_KEY=fake_backend_only_key\nTOMTOM_BASE_URL=http://127.0.0.1:5009\nDEMO_ROUTING_GAP_MS=${gap}\n`,
     );
     process.exitCode = await run(
       'auth,firestore,functions',

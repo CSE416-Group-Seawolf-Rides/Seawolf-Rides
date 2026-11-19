@@ -6,6 +6,7 @@ const {
   REQUEST_GAP_MS,
   ROUTING_BUDGET_MS,
   MAX_PROVIDER_REQUESTS,
+  requestGapMs,
 } = require('../lib/functions/src/demoRouting');
 const points = (n) => [
   { latitude: n, longitude: 0 },
@@ -230,4 +231,15 @@ test('thrown upstream and cache errors release ownership after queued work drain
       'usable',
     );
   }
+});
+
+test('only the Functions emulator may shorten the public routing courtesy gap', () => {
+  assert.equal(REQUEST_GAP_MS, 1100);
+  assert.equal(requestGapMs({ DEMO_ROUTING_GAP_MS: '0' }), 1100);
+  assert.equal(requestGapMs({ FUNCTIONS_EMULATOR: 'false', DEMO_ROUTING_GAP_MS: '0' }), 1100);
+  assert.equal(requestGapMs({ FUNCTIONS_EMULATOR: 'true' }), 1100);
+  for (const bad of ['', ' ', '-5', 'fast', 'NaN'])
+    assert.equal(requestGapMs({ FUNCTIONS_EMULATOR: 'true', DEMO_ROUTING_GAP_MS: bad }), 1100);
+  assert.equal(requestGapMs({ FUNCTIONS_EMULATOR: 'true', DEMO_ROUTING_GAP_MS: '0' }), 0);
+  assert.equal(requestGapMs({ FUNCTIONS_EMULATOR: 'true', DEMO_ROUTING_GAP_MS: '25' }), 25);
 });

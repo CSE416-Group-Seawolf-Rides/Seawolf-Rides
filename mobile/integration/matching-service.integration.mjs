@@ -261,8 +261,10 @@ test('two authenticated accounts persist setup, discover real drivers, react to 
   assert.equal(result.candidateLimitReached, true);
   assert.equal(result.candidateLimit, 2);
   assert.equal(result.recommendations.length, 2);
+  // Same gap the functions were given (1.1s by default; 100ms tolerance for clock differences).
+  const gapMs = Number(process.env.DEMO_ROUTING_GAP_MS ?? 1100);
   for (let i = 1; i < providerTimes.length; i++)
-    assert.ok(providerTimes[i] - providerTimes[i - 1] >= 1000);
+    assert.ok(providerTimes[i] - providerTimes[i - 1] >= gapMs - 100);
   await assert.rejects(getDoc(doc(rider.db, '_m3Routing', 'publicOsrm')), /permission/i);
   const cacheDoc = (await getAdminFirestore(admin).collection('_m3RouteCache').limit(1).get())
     .docs[0];
