@@ -8,7 +8,8 @@ import { colors, spacing } from '../theme';
 interface WelcomeScreenProps {
   onContinueWithEmail: () => void;
   // TEMPORARY demo shortcut; remove with SessionProvider.signInAsGuest.
-  onContinueAsGuest: () => void;
+  // Omitted outside the local emulator demo, which hides the guest button.
+  onContinueAsGuest?: () => void;
 }
 
 const roles = [
@@ -50,16 +51,18 @@ export function WelcomeScreen({ onContinueWithEmail, onContinueAsGuest }: Welcom
           label="Continue with email"
           onPress={onContinueWithEmail}
         />
-        <Pressable
-          accessibilityHint="Opens the app with a temporary demo account. Nothing is saved."
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={onContinueAsGuest}
-          style={({ pressed }) => [styles.guest, pressed && styles.guestPressed]}
-        >
-          <Ionicons color={colors.textMuted} name="eye-outline" size={16} />
-          <Text style={styles.guestLabel}>Explore as a guest (demo)</Text>
-        </Pressable>
+        {onContinueAsGuest ? (
+          <Pressable
+            accessibilityHint="Opens the app with a temporary demo account. Nothing is saved."
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={onContinueAsGuest}
+            style={({ pressed }) => [styles.guest, pressed && styles.guestPressed]}
+          >
+            <Ionicons color={colors.textMuted} name="eye-outline" size={16} />
+            <Text style={styles.guestLabel}>Explore as a guest (demo)</Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.legal}>
           By continuing, you agree to the Terms and Privacy Policy.{`\n`}
           A verified @stonybrook.edu email is required.
