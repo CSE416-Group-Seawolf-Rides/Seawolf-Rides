@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { friendlyRideError } from '../mvp/rideErrors';
 import { RideDayDirections } from './RideDayDirections';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -29,6 +29,7 @@ import { homeHeaderDate, partnerName, requestNeedsAnswer, rideEnd } from '../mvp
 import type { RideRequest } from '../mvp/rideRequestModel';
 import { TRAFFIC_ESTIMATE_MAX_AGE_SECONDS } from '../routing/types';
 import { colors, radii, spacing } from '../theme';
+import { showAlert } from '../components/showAlert';
 
 const time = (epoch: number) =>
   new Date(epoch * 1000).toLocaleTimeString('en-US', {
@@ -181,7 +182,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
       return request;
     } catch (error) {
       const copy = friendlyRideError(error, 'request', match.name);
-      Alert.alert(copy.title, copy.message);
+      showAlert(copy.title, copy.message);
     } finally {
       setBusy(false);
       setRequesting(false);

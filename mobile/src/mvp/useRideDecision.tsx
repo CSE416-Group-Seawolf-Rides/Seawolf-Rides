@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
-import { Alert } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import { useVehicle } from '../vehicle/vehicleClient';
 import { VehicleRequiredSheet } from '../vehicle/VehicleRequiredSheet';
 import { decideRideRequest, cancelRideRequest } from './rideRequestClient';
 import type { RideRequest } from './rideRequestModel';
 import { friendlyRideError } from './rideErrors';
+import { showAlert } from '../components/showAlert';
 
 const partnerOf = (item: RideRequest, uid?: string) => (item.driverId === uid ? item.riderName : item.driverName);
 
@@ -40,7 +40,7 @@ export function useRideDecision() {
       else {
         // A dialog says what happened and what to do next, instead of a raw server message.
         const copy = friendlyRideError(caught, decision === 'ACCEPTED' ? 'accept' : 'decline', partnerOf(item, user?.id));
-        Alert.alert(copy.title, copy.message);
+        showAlert(copy.title, copy.message);
       }
     } finally {
       submitting.current = false;
@@ -56,7 +56,7 @@ export function useRideDecision() {
       await cancelRideRequest(item);
     } catch (caught) {
       const copy = friendlyRideError(caught, 'cancel', partnerOf(item, user?.id));
-      Alert.alert(copy.title, copy.message);
+      showAlert(copy.title, copy.message);
     } finally {
       submitting.current = false;
       setBusy(null);

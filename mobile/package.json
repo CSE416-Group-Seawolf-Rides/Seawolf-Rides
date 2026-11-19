@@ -29,7 +29,8 @@
     "react-native-maps": "1.29.11",
     "react-native-safe-area-context": "~5.11.1",
     "react-native-screens": "~4.30.0",
-    "react-native-svg": "15.16.0"
+    "react-native-svg": "15.16.0",
+    "react-native-web": "^0.21.4"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.2",

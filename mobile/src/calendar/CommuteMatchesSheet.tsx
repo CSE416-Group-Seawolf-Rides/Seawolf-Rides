@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import MapView, { Circle, Marker } from 'react-native-maps';
+import MapView, { Circle, Marker } from '../map/nativeMaps';
 import { AppButton } from '../components/AppButton';
 import { PriceBreakdown, PriceTag } from '../payments/components/PriceTag';
 import { Card } from '../components/Card';

@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle, Marker, Polyline, type Camera, type MapPressEvent } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline, type Camera, type MapPressEvent } from '../../map/nativeMaps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '../../theme';

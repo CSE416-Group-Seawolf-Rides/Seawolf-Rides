@@ -1,12 +1,12 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { Alert } from 'react-native';
 
 import { useSession } from '../../../auth/SessionProvider';
 import { buildCommuteSchedule, commuteToDraft } from '../../../commute/commuteModel';
 import { useCommuteRole } from '../../../commute/useCommuteRole';
 import { SavePendingError, saveErrorMessage } from '../../../persistence/saveCoordinator';
 import { AccountScreen } from '../../../screens/AccountScreen';
+import { showAlert } from '../../../components/showAlert';
 
 export default function AccountRoute() {
   const { user, profile, commute, completeOnboarding, signOut } = useSession();
@@ -34,7 +34,7 @@ export default function AccountRoute() {
             nextCommute,
           );
         } catch (error) {
-          Alert.alert(
+          showAlert(
             error instanceof SavePendingError ? 'Save still pending' : 'Couldn’t update your role',
             saveErrorMessage(error, 'Check your connection and try again.'),
           );
@@ -46,7 +46,7 @@ export default function AccountRoute() {
         try {
           await signOut();
         } catch {
-          Alert.alert('Couldn’t sign out', 'Check your connection and try again.');
+          showAlert('Couldn’t sign out', 'Check your connection and try again.');
         }
       }}
       role={role}
