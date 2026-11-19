@@ -1,8 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { ComponentProps } from 'react';
+import { useWindowDimensions } from 'react-native';
 
 import { BottomTabBar } from '../../components/BottomTabBar';
+import { TopNavBar } from '../../components/TopNavBar';
+import { centeredGutter, useIsDesktopWeb } from '../../web/webLayout';
 import { RidesProvider } from '../../rides/RidesProvider';
 import { colors } from '../../theme';
 import { ThreeCarDemoProvider } from '../../matching/ThreeCarDemoProvider';
@@ -31,10 +34,20 @@ function tabIcon(selected: IconName, unselected: IconName) {
 // - Inbox: conversations with matched drivers and riders.
 // - Account: profile, commute role, and sign-out.
 function TabsNavigator() {
+  // Laptop-width web gets a top navigation bar and a centered content column instead of
+  // the phone's bottom tabs (docs/web-app-plan.md, section 11). Phones and native are unchanged.
+  const desktop = useIsDesktopWeb();
+  const { width } = useWindowDimensions();
   return (
     <Tabs
-      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.background } }}
-      tabBar={(props) => <BottomTabBar {...props} />}
+      screenOptions={{
+        headerShown: false,
+        sceneStyle: desktop
+          ? { backgroundColor: colors.background, paddingHorizontal: centeredGutter(width) }
+          : { backgroundColor: colors.background },
+        tabBarPosition: desktop ? 'top' : 'bottom',
+      }}
+      tabBar={(props) => (desktop ? <TopNavBar {...props} /> : <BottomTabBar {...props} />)}
     >
       <Tabs.Screen
         name="index"

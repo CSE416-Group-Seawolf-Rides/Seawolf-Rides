@@ -30,6 +30,7 @@ import type { RideRequest } from '../mvp/rideRequestModel';
 import { TRAFFIC_ESTIMATE_MAX_AGE_SECONDS } from '../routing/types';
 import { colors, radii, spacing } from '../theme';
 import { showAlert } from '../components/showAlert';
+import { isWeb } from '../web/webLayout';
 
 const time = (epoch: number) =>
   new Date(epoch * 1000).toLocaleTimeString('en-US', {
@@ -275,7 +276,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
             Save your usual commute to see your week and find matches.
           </Text>
           <AppButton
-            variant="secondary"
+            variant={isWeb ? 'primary' : 'secondary'}
             label="Set up my commute"
             onPress={() => router.push('/commute-setup')}
           />
@@ -317,7 +318,7 @@ export function CommuteCalendarScreen({ initialDate }: { initialDate?: string } 
               )}
               <AppButton
                 label="View ride"
-                variant="secondary"
+                variant={isWeb ? 'primary' : 'secondary'}
                 onPress={() => router.push(`/rides/${nextTrip.id}`)}
               />
             </Card>
@@ -783,13 +784,17 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   calendarText: { color: colors.accent, fontWeight: '700', fontSize: 14 },
-  nextTrip: { backgroundColor: colors.accent },
+  // Phone: a solid red card. Web: red is an accent, not a surface (docs/web-app-plan.md,
+  // section 11.4), so the card is white with a red top stripe and a red label.
+  nextTrip: isWeb
+    ? { backgroundColor: colors.surface, borderTopColor: colors.accent, borderTopWidth: 4 }
+    : { backgroundColor: colors.accent },
   nextEyebrow: {
-    color: colors.accentSoft,
+    color: isWeb ? colors.accent : colors.accentSoft,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
-  nextHeadline: { color: colors.surface, fontSize: 28, fontWeight: '800' },
-  nextDetail: { color: colors.accentSoft, lineHeight: 21, fontSize: 15 },
+  nextHeadline: { color: isWeb ? colors.text : colors.surface, fontSize: 28, fontWeight: '800' },
+  nextDetail: { color: isWeb ? colors.textMuted : colors.accentSoft, lineHeight: 21, fontSize: 15 },
 });

@@ -250,3 +250,71 @@ Welcome screen; guest sign-in; Home with live trips, weekly view and "Needs you"
 ### Checks
 
 `npx tsc --noEmit` clean · `npx expo lint` clean · 479/479 mobile unit tests · `npx expo export --platform web` and the Android export both succeed.
+
+## 11. UI direction: what we take from Uber (research, Nov 18)
+
+### 11.1 What Uber did
+
+- **Uber's old desktop site was our exact problem.** In its 2019 write-up of the desktop booking redesign, Uber says the previous web version was the mobile site responsively "stretched" across large screens, which made it less attractive and harder to use. The fix was a change in philosophy: treat desktop as a first-class layout, not a bigger phone. ([Uber Engineering, 2019](https://www.uber.com/blog/web-booking-flow/))
+- **Desktop mattered for adoption.** About 30% of Uber's mobile-web riders mainly booked on a computer, and letting people book a first trip on the web instead of installing the app raised first-trip conversions about 10% globally. Same argument as our web-first pilot. (same source)
+- **The map is optional, and the flow works without it.** Uber moved the map on/off toggle up front and made the mapless flow the easy one: it asks where to be picked up and suggests nearby points instead of making people drag a pin. (same source; [m.uber, 2017](https://www.uber.com/blog/m-uber/))
+- **Light and fast.** The original mobile-web app dropped custom fonts entirely and used inline SVG icons, relying on size and weight for hierarchy. ([m.uber, 2017](https://www.uber.com/blog/m-uber/))
+- **One design language, components that adapt.** Uber's design system (Base, and Base Web for React) defines one set of components that resize per screen rather than separate mobile and web designs. ([Base Web](https://www.uber.com/blog/introducing-base-web))
+
+### 11.2 What uber.com/ride looks like today (measured in a browser, Nov 18)
+
+| | Desktop (1440 px) | Phone (375 px) |
+|---|---|---|
+| Navigation | Black top bar, 64 px tall: logo, section links, Log in / Sign up at right | Same bar, links collapse into a menu button |
+| Page width | Content in a centered container (~1150 px, 144 px side margins) | Full width, 16 px margins |
+| Layout | Two equal columns: task on the left, map on the right (576 × 576, 6 px corners) | One column; task first, map pushed down |
+| Headline | 52 px, bold | Smaller, still bold |
+| Form | Narrow column (~360 px), gray-filled inputs with no border | Inputs stretch to full width |
+| Primary button | One solid black button that **hugs its text**, left-aligned | Same button, wider tap target |
+| Secondary actions | Plain text links or **light gray filled** buttons, never outlined | Same |
+| Lists | Icon + two lines of text + divider, not boxed cards | Same |
+| Corners | Small (≈6–8 px) | Same |
+
+### 11.3 Why our web screens look "funky"
+
+From the spike screenshots and the component code:
+
+| What looks off | Cause in our code |
+|---|---|
+| Buttons 1,200 px wide ("View ride", "Request a price change", "Review 2 requests") | `AppButton` always fills its parent; nothing caps it on wide screens |
+| Red outlined boxes everywhere | `AppButton` secondary = white fill + 1 px red border; on desktop every secondary action becomes a long red frame |
+| Giant red Next Trip banner | `NextTripCard` uses `colors.accent` as its background and stretches edge to edge |
+| Cards feel bubbly and stretched | `Card` uses 20 px corners and full-width boxes for every list item |
+| Phone tab bar along the bottom of a laptop screen | `BottomTabBar` is used at every width |
+| Popups slide up from the bottom across the full width | Bottom sheets used as-is on desktop |
+| Chat bubbles at the far edges, composer 1,200 px wide | No max width on the conversation |
+
+### 11.4 What we change (keeps our colors)
+
+**Principle: same screens and flows, two layouts.** Below 768 px the site stays the phone app. At 1024 px and up it gets a desktop layout, like uber.com.
+
+1. **Top navigation bar on desktop** (replaces the left-sidebar idea in section 3.1, to match Uber and keep more width for content). 64 px, white with a bottom border; Seawolf Rides wordmark left; Home · Rides · Map · Inbox · Account; avatar menu at right. Active item: dark text with a 2 px red underline. Under 768 px: bottom tab bar as today.
+2. **Centered page container**: max 1,200 px, 48 px side padding on desktop, 16 px on phones.
+3. **Task + map split** for Home, Rides detail and Map: left column ~480 px for the task (next trip, requests, list); right column for the map in a rounded panel. When the map is unavailable (as now on web), the right column shows the trip summary, so the page never depends on the map, as Uber's mapless flow did.
+4. **Buttons** (`AppButton`):
+   - Desktop: width hugs the label (min 120 px, 44 px tall), left-aligned, grouped in a row. Phone: full width as today.
+   - Primary: solid red (`accent`), white text; one per view.
+   - Secondary: **light gray fill (`surfaceMuted`), dark text, no border**, instead of the red outline.
+   - Tertiary: red text link, no box ("View public profile", "Clear time").
+   - Destructive: red text or outline only inside confirm dialogs.
+5. **Next Trip card**: white card, small red "NEXT TRIP" label, dark headline, compact detail row, one red "View ride" button that hugs its text. No red background.
+6. **Lists instead of boxed cards**: Inbox threads, carpools, gas shares and requests become rows (avatar or icon · two text lines · trailing value or chevron) separated by 1 px dividers inside one white panel. Boxed cards are kept only for the next trip, a selected trip and stats.
+7. **Smaller corners on web**: 8 px for buttons and inputs, 12 px for panels (phone keeps current radii).
+8. **Inputs**: gray-filled (`surfaceMuted`) with no border, 8 px corners, red 2 px focus ring.
+9. **Dialogs not sheets on desktop**: request details, calendar and match results open as a right-side panel (420 px) or centered dialog (≤ 560 px); bottom sheets stay on phones.
+10. **Headlines**: page title 40 px bold on desktop (Uber uses 52 px on marketing pages; 40 suits an app), 28 px on phones. Keep the system font (no font download), like m.uber.
+11. **Hover and focus**: rows and buttons darken slightly on hover; visible focus ring for keyboard users.
+
+### 11.5 Build order
+
+1. Shared pieces: `useBreakpoint`, `PageContainer`, `TopNav`, new `AppButton` variants and sizing, `ListRow`, web radii. Changing these fixes most screens at once.
+2. Home (Next Trip restyle + split layout), Inbox (two-pane), Rides (list + detail).
+3. Request details and calendar as side panels on desktop.
+4. Real web map in the right column.
+
+Screens are checked at 375, 768 and 1440 px after each step.
