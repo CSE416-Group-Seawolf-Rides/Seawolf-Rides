@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Location from 'expo-location';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker } from '../../map/nativeMaps';
 
 import { AuthProviderButton } from '../../components/AuthProviderButton';
 import { FlowProgress, FlowStep } from '../../components/flow/FlowStep';

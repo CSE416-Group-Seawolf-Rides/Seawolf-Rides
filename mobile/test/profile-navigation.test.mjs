@@ -41,7 +41,7 @@ function harness() {
   const routes = [];
   const mocks = { react, 'react-native': native, 'expo-router': { router: { push: (route) => routes.push(route) } },
     'react-native-safe-area-context': { SafeAreaView: 'safe', useSafeAreaInsets: () => ({ bottom: 0 }) },
-    'react-native-maps': { __esModule: true, default: 'map', Circle: 'circle', Marker: 'marker' },
+    '../map/nativeMaps': { __esModule: true, default: 'map', Circle: 'circle', Marker: 'marker' },
     '@expo/vector-icons/Ionicons': { __esModule: true, default: 'icon' },
     '../components/AppButton': { AppButton: 'button' }, '../components/Avatar': { Avatar: 'avatar' },
     '../components/Card': { Card: 'card' }, '../components/Screen': { Screen: 'screen' },

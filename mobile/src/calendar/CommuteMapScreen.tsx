@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { CommuteCalendarSheet } from './CommuteCalendarSheet';
 import { useCalendarOverrides } from './calendarClient';
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle, Marker } from 'react-native-maps';
+import MapView, { Circle, Marker } from '../map/nativeMaps';
 import { useSession } from '../auth/SessionProvider';
 import { useRideRequests } from '../mvp/rideRequestClient';
 import { useAcceptedPickup } from './acceptedPickups';

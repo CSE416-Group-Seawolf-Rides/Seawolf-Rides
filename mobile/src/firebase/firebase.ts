@@ -1,14 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FirebaseApp, FirebaseOptions, getApp, getApps, initializeApp } from 'firebase/app';
-import {
-  Auth,
-  getAuth,
-  getReactNativePersistence,
-  initializeAuth,
-  connectAuthEmulator,
-} from 'firebase/auth';
+import { Auth, getAuth, initializeAuth, connectAuthEmulator } from 'firebase/auth';
 import { Firestore, getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+
+import { getAuthPersistence } from './authPersistence';
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -60,7 +55,7 @@ export function getFirebaseAuth(): Auth {
   const app = getFirebaseApp();
   try {
     firebaseAuth = initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage),
+      persistence: getAuthPersistence(),
     });
   } catch (error) {
     // Fast refresh can preserve Firebase's app while reloading this module.

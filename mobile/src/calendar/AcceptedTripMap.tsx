@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import * as Linking from 'expo-linking';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from '../map/nativeMaps';
 import { getFirebaseFunctions } from '../firebase/firebase';
 import { AppButton } from '../components/AppButton';
 import type { RideRequest } from '../mvp/rideRequestModel';

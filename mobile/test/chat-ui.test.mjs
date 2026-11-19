@@ -48,7 +48,7 @@ function harness() {
     '@expo/vector-icons/Ionicons': { __esModule: true, default: () => null },
     'expo-router': { router: {} },
     'react-native-safe-area-context': { SafeAreaView: View, useSafeAreaInsets: () => ({ bottom: 0 }) },
-    'react-native-maps': { __esModule: true, default: View, Circle: () => null, Marker: () => null },
+    '../map/nativeMaps': { __esModule: true, default: View, Circle: () => null, Marker: () => null },
     '../components/Avatar': { Avatar: () => null }, '../components/Card': { Card: View },
     '../components/Screen': { Screen: View }, '../components/AppButton': { AppButton: Button },
     '../theme': { colors: {}, spacing: {}, radii: {} },

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle } from 'react-native-maps';
+import MapView, { Circle } from '../../map/nativeMaps';
 
 import { colors, radii, spacing } from '../../theme';
 import { METERS_PER_MILE, PrivacyArea } from '../commuteModel';

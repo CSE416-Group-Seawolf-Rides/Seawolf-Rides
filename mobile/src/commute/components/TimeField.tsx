@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radii, spacing } from '../../theme';
 import { formatTime } from '../commuteModel';
+import { WebTimeInput } from './WebTimeInput';
 
 interface TimeFieldProps {
   label: string;
@@ -17,6 +18,7 @@ interface TimeFieldProps {
 }
 
 const isIOS = process.env.EXPO_OS === 'ios';
+const isWeb = process.env.EXPO_OS === 'web';
 
 function toDate(minutes: number): Date {
   const date = new Date();
@@ -29,7 +31,8 @@ function fromDate(date: Date): number {
 }
 
 // Tap the row to reveal the system time wheel right beneath it (like the Calendar and
-// Clock apps on iPhone). Android uses its native time picker dialog instead.
+// Clock apps on iPhone). Android uses its native time picker dialog instead, and the web
+// build uses the browser's time input.
 export function TimeField({
   label,
   emptyLabel = 'Not needed',
@@ -90,6 +93,8 @@ export function TimeField({
                 themeVariant="light"
                 value={toDate(minutes)}
               />
+            ) : isWeb ? (
+              <WebTimeInput label={label} minutes={minutes} onChange={onChange} />
             ) : (
               <Pressable
                 accessibilityRole="button"

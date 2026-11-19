@@ -87,6 +87,7 @@ function harness() {
     '../components/Card': { Card: 'card' },
     '../components/Screen': { Screen: 'screen' },
     '../components/ChoiceSheet': { ChoiceSheet: 'choice-sheet' },
+    '../components/showAlert': { showAlert: () => {} },
     '../theme': { colors: { text: '#000', textMuted: '#666', error: '#900', surface: '#fff' }, spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 }, radii: { sm: 10, md: 14, lg: 20, pill: 999 } },
     './safetyModel': { REPORT_REASONS },
     './safetyClient': {

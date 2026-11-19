@@ -1,13 +1,13 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef } from 'react';
-import { Alert } from 'react-native';
 
 import { useSession } from '../auth/SessionProvider';
 import { SavePendingError, saveErrorMessage } from '../persistence/saveCoordinator';
 import { buildCommuteSchedule } from './commuteModel';
 import { useCommuteDraft } from './CommuteDraftProvider';
 import { useCommuteRole } from './useCommuteRole';
+import { showAlert } from '../components/showAlert';
 
 // Editing a saved commute opens one step at a time (`?edit=1`) from the summary.
 // Saving a step stores the whole commute right away and returns to the summary, so
@@ -32,7 +32,7 @@ export function useCommuteEdit() {
         if (router.canGoBack()) router.back();
         else router.replace('/account');
       } catch (error) {
-        Alert.alert(
+        showAlert(
           error instanceof SavePendingError ? 'Save still pending' : 'Couldn’t save your commute',
           saveErrorMessage(error, 'Check your connection and try again.'),
         );

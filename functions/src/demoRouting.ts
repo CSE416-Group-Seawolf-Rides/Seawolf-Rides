@@ -8,7 +8,21 @@ export const DEMO_CANDIDATE_LIMIT = 2;
 export const FUNCTION_TIMEOUT_SECONDS = 120;
 export const ROUTE_TIMEOUT_MS = 10_000;
 export const ROUTING_BUDGET_MS = 55_000;
-export const REQUEST_GAP_MS = 1_100;
+/**
+ * Courtesy gap between provider calls (and the shared cooldown after each search) for the
+ * public OSRM server. Only the local Functions emulator, whose routers are local fakes,
+ * may shorten it with DEMO_ROUTING_GAP_MS; deployed functions always use 1.1s.
+ */
+export function requestGapMs(env: NodeJS.ProcessEnv = process.env): number {
+  const override = Number(env.DEMO_ROUTING_GAP_MS);
+  return env.FUNCTIONS_EMULATOR === 'true' &&
+    env.DEMO_ROUTING_GAP_MS?.trim() &&
+    Number.isFinite(override) &&
+    override >= 0
+    ? override
+    : 1_100;
+}
+export const REQUEST_GAP_MS = requestGapMs();
 export const MAX_PROVIDER_REQUESTS = 4;
 
 export class DemoBusyError extends Error {}
