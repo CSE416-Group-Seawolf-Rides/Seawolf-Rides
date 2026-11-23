@@ -1,5 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { logUnexpected } from './errorLog';
 import { areUsersMutuallyBlocked, loadCalendarParticipant, prepareCalendarPair, requireLocalDemo } from './calendarMatching';
 import { checkDemoDate } from '../../mobile/src/calendar/commuteCalendar';
 import { eligible, withMatchingRouting } from './matchingRuntime';
@@ -22,6 +23,7 @@ async function authenticated(uid?: string) {
 function mapped(error: unknown): never {
   if (error instanceof HttpsError) throw error;
   if (error instanceof DemoBusyError) throw new HttpsError('resource-exhausted', error.message);
+  logUnexpected('chat', error);
   throw new HttpsError('unavailable', 'Chat is unavailable. Please retry.');
 }
 /** A conversation is one pair of people, independent of date or Either arrangement. */

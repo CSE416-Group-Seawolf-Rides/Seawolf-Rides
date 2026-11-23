@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { FieldPath, getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { logUnexpected } from './errorLog';
 import { requireBackendEnabled } from './runtimeMode';
 import {
   calendarDay,
@@ -167,6 +168,7 @@ function mapped(error: unknown): never {
   if (error instanceof HttpsError) throw error;
   if (error instanceof DemoBusyError)
     throw new HttpsError('resource-exhausted', error.message);
+  logUnexpected('calendar matching', error);
   throw new HttpsError(
     'unavailable',
     'Could not complete calendar matching. Retry later.',
