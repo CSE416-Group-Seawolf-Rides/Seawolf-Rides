@@ -11,6 +11,7 @@ import { colors, radii, spacing } from '../../theme';
 import { Coordinates, PRIVACY_RADIUS_MILES, toPrivacyArea } from '../commuteModel';
 import { useCommuteDraft } from '../CommuteDraftProvider';
 import { PrivacyAreaMap } from '../components/PrivacyAreaMap';
+import { areaNameFor, findPlace } from '../startAreaGeocoder';
 
 interface StartAreaStepProps {
   progress?: FlowProgress;
@@ -24,13 +25,8 @@ type Status = 'idle' | 'locating' | 'searching';
 
 // Town-level name for the snapped (not exact) center, so even the label is approximate.
 async function labelFor(center: Coordinates): Promise<string> {
-  try {
-    const [place] = await Location.reverseGeocodeAsync(center);
-    const name = place?.city ?? place?.district ?? place?.subregion;
-    return name ? `${name} area` : 'Your area';
-  } catch {
-    return 'Your area';
-  }
+  const name = await areaNameFor(center);
+  return name ? `${name} area` : 'Your area';
 }
 
 export function StartAreaStep({
@@ -87,7 +83,7 @@ export function StartAreaStep({
     try {
       // Bias searches toward New York, where nearly every commute starts.
       const address = /\b(ny|new york)\b/i.test(text) ? text : `${text}, NY`;
-      const [result] = await Location.geocodeAsync(address);
+      const result = await findPlace(address);
       if (!result) {
         setError(`We couldn’t find “${text}”. Try a complete address or public meeting point.`);
         return;
