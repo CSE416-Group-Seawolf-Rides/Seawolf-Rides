@@ -5,7 +5,9 @@ import {
   CHECK_SPAM_HINT,
   continueUrlFor,
   isContinueUrlRejection,
+  isRateLimited,
   sendWithContinueLink,
+  unverifiedSignInMessage,
 } from '../src/auth/emailActionLinks.ts';
 import { emailContinueUrl } from '../src/auth/emailContinueUrl.ts';
 
@@ -67,4 +69,26 @@ test('other email errors are not hidden by the fallback', async () => {
 
 test('email notices tell people to check spam', () => {
   assert.match(CHECK_SPAM_HINT, /spam or junk/);
+});
+
+test('only Firebase too-many-requests counts as a throttled email', () => {
+  assert.equal(isRateLimited(firebaseError('auth/too-many-requests')), true);
+  assert.equal(isRateLimited(firebaseError('auth/network-request-failed')), false);
+  assert.equal(isRateLimited(firebaseError('auth/unauthorized-continue-uri')), false);
+  assert.equal(isRateLimited(null), false);
+  assert.equal(isRateLimited('auth/too-many-requests'), false);
+});
+
+test('signing in before verifying explains the email instead of "too many attempts"', () => {
+  const resent = unverifiedSignInMessage('wolfie@stonybrook.edu', true);
+  assert.match(resent, /Verify your Stony Brook email/);
+  assert.match(resent, /new verification link to wolfie@stonybrook\.edu/);
+  assert.match(resent, /spam or junk/);
+
+  const throttled = unverifiedSignInMessage('wolfie@stonybrook.edu', false);
+  assert.match(throttled, /Verify your Stony Brook email/);
+  assert.match(throttled, /already sent a link to wolfie@stonybrook\.edu/);
+  assert.match(throttled, /spam or junk/);
+  assert.match(throttled, /few minutes/);
+  assert.doesNotMatch(throttled, /too many attempts/i);
 });

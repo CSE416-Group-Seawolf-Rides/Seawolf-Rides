@@ -40,3 +40,20 @@ export async function sendWithContinueLink(
 
 /** Added to every "we emailed you" message: campus mail can file these as junk. */
 export const CHECK_SPAM_HINT = 'If it doesn’t arrive in a few minutes, check your spam or junk folder.';
+
+/** Firebase refused to send because the same address asked too often. */
+export function isRateLimited(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? (error as { code: unknown }).code === 'auth/too-many-requests'
+    : false;
+}
+
+/**
+ * Shown when someone signs in before verifying. `resent` is false when Firebase
+ * throttled the new link; the earlier link still works, so that is not a sign-in error.
+ */
+export function unverifiedSignInMessage(email: string, resent: boolean): string {
+  return resent
+    ? `Verify your Stony Brook email before signing in. We sent a new verification link to ${email}. ${CHECK_SPAM_HINT}`
+    : `Verify your Stony Brook email before signing in. We already sent a link to ${email} — check your inbox and your spam or junk folder. You can get a new link in a few minutes.`;
+}
