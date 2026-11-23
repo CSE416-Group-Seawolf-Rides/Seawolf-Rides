@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { getFirestore, type DocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { logUnexpected } from './errorLog';
 import { requireBackendEnabled } from './runtimeMode';
 import { findMatches, MatchingError, type SavedParticipant } from '../../mobile/src/mvp/service';
 import {
@@ -437,6 +438,7 @@ function mapped(error: unknown): never {
   if (error instanceof HttpsError) throw error;
   if (error instanceof DemoBusyError) throw new HttpsError('resource-exhausted', error.message);
   if (error instanceof MatchingError) throw new HttpsError(error.code, error.message);
+  logUnexpected('ride action', error);
   throw new HttpsError(
     'unavailable',
     'The ride action could not be completed. Retry; duplicate actions are safe.',
