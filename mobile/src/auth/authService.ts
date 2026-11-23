@@ -9,7 +9,7 @@ import {
 
 import { getFirebaseAuth } from '../firebase/firebase';
 import { EmailCredentials, isStonyBrookEmail, normalizeEmail } from './authValidation';
-import { CHECK_SPAM_HINT, sendWithContinueLink } from './emailActionLinks';
+import { isRateLimited, sendWithContinueLink, unverifiedSignInMessage } from './emailActionLinks';
 import { emailContinueUrl } from './emailContinueUrl';
 
 export type AuthProvider = 'google' | 'email';
@@ -136,23 +136,24 @@ export function authUserFromFirebase(user: User): AuthUser {
 export async function signInWithEmail({ email, password }: EmailCredentials): Promise<void> {
   const auth = getFirebaseAuth();
   try {
-    const credential = await signInWithEmailAndPassword(
-      auth,
-      requireStonyBrookEmail(email),
-      password,
-    );
+    const address = requireStonyBrookEmail(email);
+    const credential = await signInWithEmailAndPassword(auth, address, password);
     authUserFromFirebase(credential.user);
 
     if (!credential.user.emailVerified) {
+      // Each sign-in before verifying asks for a new link, and Firebase throttles repeat
+      // emails to one address. A throttled resend is not a sign-in failure: the earlier
+      // link still works, so say that instead of "too many attempts".
+      let resent = true;
       try {
         await sendVerificationEmail(credential.user);
+      } catch (error) {
+        if (!isRateLimited(error)) throw error;
+        resent = false;
       } finally {
         await firebaseSignOut(auth);
       }
-      throw new AuthServiceError(
-        'email-not-verified',
-        `Verify your Stony Brook email before signing in. We sent you a new verification link. ${CHECK_SPAM_HINT}`,
-      );
+      throw new AuthServiceError('email-not-verified', unverifiedSignInMessage(address, resent));
     }
   } catch (error) {
     throw toAuthServiceError(error);
