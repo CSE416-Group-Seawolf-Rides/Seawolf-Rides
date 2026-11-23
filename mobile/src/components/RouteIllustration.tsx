@@ -68,11 +68,13 @@ function RouteMap({ width: w, height: h }: Size) {
 
   return (
     <Svg height={h} width={w}>
-      {roads.map((road) => (
+      {roads.map((road, index) => (
         <Path
           d={road}
           fill="none"
-          key={road}
+          // A fixed list, so the position is a stable key; the path text is not unique
+          // when the size is tiny.
+          key={index}
           stroke={colors.surfaceMuted}
           strokeLinecap="round"
           strokeWidth={12}
@@ -118,7 +120,10 @@ export function RouteIllustration() {
       style={styles.frame}
     >
       <View onLayout={measure} style={StyleSheet.absoluteFill}>
-        {size && <RouteMap height={size.height} width={size.width} />}
+        {/* The web can report 0×0 before layout settles; there is nothing to draw yet. */}
+        {size && size.width > 0 && size.height > 0 && (
+          <RouteMap height={size.height} width={size.width} />
+        )}
       </View>
     </View>
   );
