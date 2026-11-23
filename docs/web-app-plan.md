@@ -145,38 +145,34 @@ See section 9 (filled in from a test `expo export --platform web` on a clean cop
 
 ### 6.1 Deploy steps
 
+Deploys always name `--project seawolf-rides`. The repo has no `.firebaserc`, so no script can reach the real project by default; local and CI scripts keep passing `--project demo-seawolf-rides`.
+
 ```bash
-# one time
+# one time, on the deploying machine
 npx firebase-tools login
-npx firebase-tools use seawolf-rides
+# functions/.env.seawolf-rides (git-ignored):
+#   SEAWOLF_HOSTED=true
+#   OSRM_BASE_URL=https://router.project-osrm.org
 
-# backend
-npm run build --prefix functions
-npx firebase-tools deploy --only functions,firestore:rules,firestore:indexes
+# backend (the functions predeploy step builds them)
+npx firebase-tools deploy --project seawolf-rides --only functions,firestore:rules,firestore:indexes
 
-# web app (react-native-web is needed once: npx expo install react-native-web)
-cd mobile
-npx expo export --platform web        # writes mobile/dist; needs EXPO_PUBLIC_FIREBASE_* for seawolf-rides
-cd ..
-npx firebase-tools deploy --only hosting
+# web app: mobile/.env must hold the real seawolf-rides EXPO_PUBLIC_FIREBASE_* values
+# and no EXPO_PUBLIC_FIREBASE_EMULATOR_HOST
+cd mobile && npm run build:web && cd ..   # writes mobile/dist-web (git-ignored)
+npx firebase-tools deploy --project seawolf-rides --only hosting
 ```
 
-`firebase.json` gains a hosting block:
+`firebase.json` serves `mobile/dist-web` with every path rewritten to `/index.html` (`web.output: "single"` in `mobile/app.json`), so links such as `/rides` load the app. `index.html` is sent with `Cache-Control: no-cache` so a new deploy shows up on the next visit; the content-hashed files under `/_expo` and `/assets` are cached for a year.
 
-```json
-"hosting": {
-  "public": "mobile/dist",
-  "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-  "rewrites": [{ "source": "**", "destination": "/index.html" }]
-}
-```
+A production build that still points at the `demo-` project stops on load (`firebase.ts`), so a wrong `.env` fails loudly instead of showing demo data. The guest sign-in and the developer demo routes are not available in production builds.
 
-and `mobile/app.json` sets `"web": { "output": "single", "bundler": "metro", "favicon": "./assets/favicon.png" }` so Expo Router serves one page and handles routes in the browser.
+The site is served at `https://seawolf-rides.web.app`. Firebase Auth allows that domain by default.
 
 ### 6.2 CI and automatic deploys
 
-- Add a `Web build` job to `.github/workflows/ci.yml` that runs `npx expo export --platform web` on every PR, so a change that breaks the browser build fails CI like any other check.
-- Optional: on merge to `main`, deploy hosting with the official Firebase Hosting GitHub Action and a service account secret; on PRs, deploy a free preview channel and post its URL for reviewers.
+- The CI `Build (Expo export)` job runs `npm run build:web` next to the Android export, so a change that breaks the browser build fails CI.
+- Optional later: on merge to `main`, deploy hosting with the official Firebase Hosting GitHub Action and a service account secret; on PRs, deploy a free preview channel and post its URL for reviewers.
 
 ## 7. Testing and acceptance
 
