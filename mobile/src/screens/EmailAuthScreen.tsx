@@ -25,6 +25,7 @@ import {
   normalizeEmail,
   validateCredentials,
 } from '../auth/authValidation';
+import { CHECK_SPAM_HINT } from '../auth/emailActionLinks';
 import { AppButton } from '../components/AppButton';
 import { Screen } from '../components/Screen';
 import { TextField } from '../components/TextField';
@@ -93,7 +94,7 @@ export function EmailAuthScreen({ onBack }: EmailAuthScreenProps) {
         setMode('signIn');
         setPassword('');
         setNotice(
-          `We sent a verification link to ${normalizeEmail(email)}. Verify it, then sign in.`,
+          `We sent a verification link to ${normalizeEmail(email)}. Verify it, then sign in. ${CHECK_SPAM_HINT}`,
         );
       } else {
         router.replace('/home');
@@ -120,7 +121,7 @@ export function EmailAuthScreen({ onBack }: EmailAuthScreenProps) {
     try {
       await requestPasswordReset(email);
       setNotice(
-        `If an account exists for ${normalizeEmail(email)}, a password-reset link is on its way.`,
+        `If an account exists for ${normalizeEmail(email)}, a password-reset link is on its way. ${CHECK_SPAM_HINT}`,
       );
     } catch (error) {
       setFormError(toAuthServiceError(error).message);
