@@ -9,6 +9,8 @@ import {
 
 import { getFirebaseAuth } from '../firebase/firebase';
 import { EmailCredentials, isStonyBrookEmail, normalizeEmail } from './authValidation';
+import { CHECK_SPAM_HINT, sendWithContinueLink } from './emailActionLinks';
+import { emailContinueUrl } from './emailContinueUrl';
 
 export type AuthProvider = 'google' | 'email';
 
@@ -143,13 +145,13 @@ export async function signInWithEmail({ email, password }: EmailCredentials): Pr
 
     if (!credential.user.emailVerified) {
       try {
-        await sendEmailVerification(credential.user);
+        await sendVerificationEmail(credential.user);
       } finally {
         await firebaseSignOut(auth);
       }
       throw new AuthServiceError(
         'email-not-verified',
-        'Verify your Stony Brook email before signing in. We sent you a new verification link.',
+        `Verify your Stony Brook email before signing in. We sent you a new verification link. ${CHECK_SPAM_HINT}`,
       );
     }
   } catch (error) {
@@ -166,7 +168,7 @@ export async function registerWithEmail({ email, password }: EmailCredentials): 
       password,
     );
     try {
-      await sendEmailVerification(credential.user);
+      await sendVerificationEmail(credential.user);
     } finally {
       await firebaseSignOut(auth);
     }
@@ -175,9 +177,19 @@ export async function registerWithEmail({ email, password }: EmailCredentials): 
   }
 }
 
+// On the web, emails carry a link back to the site's sign-in page (see emailContinueUrl).
+function sendVerificationEmail(user: User): Promise<void> {
+  return sendWithContinueLink(emailContinueUrl(), (settings) =>
+    sendEmailVerification(user, settings),
+  );
+}
+
 export async function requestPasswordReset(email: string): Promise<void> {
   try {
-    await sendPasswordResetEmail(getFirebaseAuth(), requireStonyBrookEmail(email));
+    const address = requireStonyBrookEmail(email);
+    await sendWithContinueLink(emailContinueUrl(), (settings) =>
+      sendPasswordResetEmail(getFirebaseAuth(), address, settings),
+    );
   } catch (error) {
     // Do not reveal whether a campus email has an account.
     if (firebaseErrorCode(error) === 'auth/user-not-found') {
